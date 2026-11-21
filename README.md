@@ -1,6 +1,6 @@
 # POS Repuestos Félix
 
-PWA instalable para teléfono y computadora, con ventas, inventario, compras, clientes, suplidores, resumen de caja y respaldos JSON. Se conserva JavaScript nativo, CSS y HTML, con una API Node.js y **PostgreSQL local o Supabase**. Las contraseñas permanecen en el servidor.
+PWA instalable para teléfono y computadora, con ventas, inventario, compras, clientes, suplidores, resumen de caja y respaldos JSON. Se conserva JavaScript nativo, CSS y HTML, con una API compartida entre **Cloudflare Workers y Node.js local**, y **PostgreSQL local o Supabase**. Las contraseñas permanecen en el servidor.
 
 ## Organización del proyecto
 
@@ -9,7 +9,9 @@ public/                  Interfaz que recibe el navegador
   assets/brand/          Imagen original de Repuestos Félix
   icons/                 Iconos de instalación de la PWA
 src/
-  server.js              Servidor HTTP y arranque
+  worker.js              Frontend y API en Cloudflare Workers
+  server.js              Adaptador HTTP y arranque Node local
+  http/app.js            Rutas y protección compartidas Request/Response
   hosting.js             Acceso, origen permitido y HTTPS
   db/config.js           Conexión PostgreSQL y verificación SSL
   db/migrations.js       Migraciones administrativas explícitas
@@ -26,6 +28,8 @@ docs/                    Decisiones y planes de trabajo
 El servidor entrega únicamente los archivos públicos incluidos en su lista permitida. Las carpetas `src/`, `scripts/`, `supabase/`, las credenciales y los respaldos no se publican. Las rutas de la interfaz siguen siendo `/app.js`, `/styles.css`, `/sw.js`, etc.; `public/` es su ubicación en disco, no un prefijo de la dirección web. Los datos de ejemplo se usan únicamente en pruebas.
 
 La cabecera utiliza la imagen proporcionada por el negocio, con su proporción original, y una paleta roja, negra y blanca. La imagen también forma parte de la caché estática de la PWA.
+
+El POS utiliza todo el ancho disponible de la pantalla y el panel activo se extiende hasta completar la altura disponible. En teléfonos conserva los controles adaptables y el desplazamiento interno de las tablas.
 
 ## Instalar en Android o iPhone
 
@@ -147,9 +151,11 @@ Para copiar datos entre ellas: exporta desde **Configuración → Copia de segur
 
 ## Preparar el acceso por internet
 
-El código está preparado para Node.js persistente o Docker y una base Supabase. **GitHub guarda el código; GitHub Pages no ejecuta esta API ni conecta el navegador directamente a PostgreSQL.** Configura el alojamiento y sus secretos para publicar.
+La [guía de publicación en Cloudflare](docs/publicar-pos.md) prepara el frontend y el backend del POS con inicio de sesión, assets y Supabase mediante Hyperdrive. El código del Worker se empaqueta con `pnpm build:worker`. Para publicarlo se necesita autenticar la cuenta, configurar Hyperdrive y el origen HTTPS real, y ejecutar `pnpm deploy:worker`.
 
-En el panel de variables privadas del alojamiento configura:
+Cloudflare ejecuta el mismo manejador y las mismas transacciones que el servidor local. Hyperdrive mantiene las conexiones a Supabase, con verificación TLS y caché SQL desactivada al configurar el recurso. **GitHub guarda el código; GitHub Pages no ejecuta esta API ni conecta el navegador directamente a PostgreSQL.**
+
+Para Cloudflare utiliza la guía anterior. Para el servidor Node.js o Docker, configura estas variables:
 
 | Variable | Uso |
 | --- | --- |
@@ -157,6 +163,7 @@ En el panel de variables privadas del alojamiento configura:
 | `DATABASE_SSL` | `true` para Supabase |
 | `DATABASE_LABEL` | `Supabase` o nombre del destino |
 | `DATABASE_CA_FILE` | Ruta al certificado CA montado como archivo secreto, si tu proyecto lo necesita |
+| `DATABASE_CA` | Alternativa a `DATABASE_CA_FILE`: contenido PEM de la CA en una variable privada del alojamiento |
 | `HOST` | `0.0.0.0` dentro del servicio alojado |
 | `PORT` | Puerto indicado por el proveedor; por defecto `3000` |
 | `PUBLIC_ORIGIN` | Dirección exacta, por ejemplo `https://pos.tu-dominio.com`, sin rutas ni parámetros |

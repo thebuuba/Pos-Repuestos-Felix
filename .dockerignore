@@ -8,3 +8,7 @@ docs/
 supabase/.temp/
 supabase/.branches/
 *.log
+.wrangler/
+.dev.vars
+.dev.vars.*
+dist/

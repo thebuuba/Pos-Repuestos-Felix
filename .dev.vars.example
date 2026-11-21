@@ -1,0 +1,5 @@
+# Solo para desarrollo local de Workers. Copiar a .dev.vars, que está ignorado.
+PUBLIC_ORIGIN=https://localhost:8787
+APP_USERNAME=admin
+APP_PASSWORD=CAMBIAR_POR_UNA_CONTRASENA_LARGA_Y_UNICA
+# La conexión a PostgreSQL se configura por HYPERDRIVE, nunca en public/.

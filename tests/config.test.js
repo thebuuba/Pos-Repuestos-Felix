@@ -32,3 +32,11 @@ test('no habilita un servidor público sin HTTPS y contraseña suficiente', asyn
   assert.throws(() => hostingConfig({ PUBLIC_ORIGIN: 'https://pos.example', APP_PASSWORD: '123' }), /contraseña/);
   assert.equal(hostingConfig({}).host, '127.0.0.1');
 });
+
+test('acepta la CA desde una variable privada del alojamiento conservando verificación TLS', () => {
+  const pem = '-----BEGIN CERTIFICATE-----\ncontenido-de-prueba\n-----END CERTIFICATE-----';
+  const config = databaseConfig({ DATABASE_URL: 'postgresql://user:password@remote.example/postgres', DATABASE_CA: pem.replaceAll('\n', '\\n') });
+  assert.equal(config.ssl.ca, pem);
+  assert.equal(config.ssl.rejectUnauthorized, true);
+  assert.throws(() => databaseConfig({ DATABASE_URL: 'postgresql://user:password@remote.example/postgres', DATABASE_CA: pem, DATABASE_CA_FILE: 'archivo-no-usado.crt' }), /DATABASE_CA/);
+});

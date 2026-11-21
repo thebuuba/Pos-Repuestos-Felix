@@ -7,6 +7,8 @@ export function databaseConfig(env = process.env) {
   if (!['postgres:', 'postgresql:'].includes(url.protocol)) throw new Error('DATABASE_URL debe ser una conexión PostgreSQL.');
   const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
   const useSSL = env.DATABASE_SSL === 'true' || !local;
+  if (env.DATABASE_CA && env.DATABASE_CA_FILE) throw new Error('Usa solamente DATABASE_CA o DATABASE_CA_FILE para el certificado.');
+  const ca = useSSL ? (env.DATABASE_CA?.replaceAll('\\n', '\n') || (env.DATABASE_CA_FILE ? readFileSync(resolve(env.DATABASE_CA_FILE), 'utf8') : null)) : null;
   // La configuración SSL de la URL sobreescribe el objeto ssl en pg.
   // Centralizarla aquí evita perder la validación del certificado o su CA.
   for (const option of ['ssl', 'sslmode', 'sslrootcert', 'sslcert', 'sslkey']) {
@@ -20,7 +22,7 @@ export function databaseConfig(env = process.env) {
     connectionString: url.toString(), max: 5, connectionTimeoutMillis: 10000, query_timeout: 15000,
     ssl: useSSL ? {
       rejectUnauthorized: true,
-      ...(env.DATABASE_CA_FILE ? { ca: readFileSync(resolve(env.DATABASE_CA_FILE), 'utf8') } : {}),
+      ...(ca ? { ca } : {}),
     } : false,
   };
 }

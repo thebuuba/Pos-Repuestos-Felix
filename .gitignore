@@ -6,3 +6,8 @@ node_modules/
 !.env.migrations.example
 certs/
 *.log
+.wrangler/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+dist/

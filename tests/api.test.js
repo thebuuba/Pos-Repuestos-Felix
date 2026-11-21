@@ -112,6 +112,7 @@ test('responde con 413 si el respaldo supera 10 MB', async () => {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: ' '.repeat(10 * 1024 * 1024 + 1),
   });
   assert.equal(response.status, 413);
+  assert.equal((await fetch(`${base}/api/state`)).status, 200, 'El siguiente acceso debe funcionar después de rechazar el cuerpo grande');
 });
 
 test('rechaza nombres de host externos aunque apunten al servidor local', async () => {
@@ -145,6 +146,10 @@ test('publica el manifiesto y todos sus iconos con tipos correctos', async () =>
     assert.equal(png.readUInt32BE(16), Number(icon.sizes.split('x')[0]));
     assert.equal(png.readUInt32BE(20), Number(icon.sizes.split('x')[1]));
   }
+  const head = await fetch(base + '/icons/icon-192.png', { method: 'HEAD' });
+  assert.equal(head.status, 200);
+  assert.equal(head.headers.get('content-type'), 'image/png');
+  assert.equal((await head.arrayBuffer()).byteLength, 0);
   for (const path of ['/sw.js', '/styles.css', '/pwa.js', '/icons/apple-touch-icon.png']) {
     assert.equal((await fetch(base + path)).status, 200, path);
   }
