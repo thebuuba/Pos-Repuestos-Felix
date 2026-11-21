@@ -7,6 +7,13 @@ const productFields = new Set([
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const changedDatabase = 'La base cambió. Revisa la solicitud y los datos antes de continuar.';
 const unconfirmed = 'No se confirmó la operación. Reintenta la solicitud pendiente.';
+// These are the catalog conflicts for which the service rolls back a first
+// attempt. An unknown conflict needs its original packet for reconciliation.
+const rejectedCatalogConflicts = new Set([
+  'El producto cambió. Actualiza los datos antes de editar.',
+  'Ya existe un registro con ese código o número de factura.',
+  'Otra caja está usando estos datos. Reintenta la misma operación.',
+]);
 
 function checkTarget(method, path) {
   if (method === 'POST' && path === '/api/productos') return;
@@ -28,9 +35,9 @@ function checkSnapshot(snapshot) {
   return snapshot;
 }
 
-async function serviceError(response) {
+async function serviceMessage(response) {
   const body = await response.json().catch(() => null);
-  return new Error(typeof body?.error === 'string' ? body.error : unconfirmed);
+  return typeof body?.error === 'string' && body.error.trim() ? body.error : null;
 }
 
 export function createPosClient() {
@@ -39,6 +46,7 @@ export function createPosClient() {
   const retired = new Set();
   const changes = new BroadcastChannel('repuestos-felix-operaciones');
   let active = 0, issued = 0, latestConfirmed = 0, etag = null, disposed = false;
+  let reading = null;
 
   function set(fields) {
     if (disposed) return;
@@ -87,9 +95,10 @@ export function createPosClient() {
     }
   }
 
-  function reload() {
+  function reload({ fresh = false } = {}) {
+    if (reading && !fresh) return reading;
     const sequence = ++issued;
-    return working(async () => {
+    const job = working(async () => {
       await readPending();
       const previousTag = etag;
       const previous = state.snapshot;
@@ -97,6 +106,7 @@ export function createPosClient() {
         const response = await fetch('/api/state', {
           credentials: 'same-origin', mode: 'same-origin', redirect: 'error', cache: 'no-store',
           headers: previousTag ? { 'If-None-Match': previousTag } : {},
+          signal: AbortSignal.timeout(15_000),
         });
         if (response.status === 304) {
           if (!previous || !previousTag) throw new Error('No hay una copia confirmada del catálogo.');
@@ -105,16 +115,18 @@ export function createPosClient() {
             set({ connection: 'connected', lastSync: new Date().toISOString() });
           }
         } else {
-          if (response.status !== 200) throw await serviceError(response);
+          if (response.status !== 200) throw new Error(await serviceMessage(response) || 'El servicio no confirmó la lectura del catálogo.');
           apply(checkSnapshot(await response.json()), response.headers.get('ETag'), sequence);
         }
         return state.snapshot;
       } catch (error) {
         if (sequence === issued) set({ connection: 'unavailable' });
-        if (error instanceof TypeError) throw new Error('No se pudo conectar con el servicio.');
+        if (error instanceof TypeError || error.name === 'TimeoutError') throw new Error('No se pudo conectar con el servicio.');
         throw error;
       }
-    });
+    }).finally(() => { if (reading === job) reading = null; });
+    reading = job;
+    return job;
   }
 
   function checkGeneration(databaseId) {
@@ -147,14 +159,22 @@ export function createPosClient() {
           body: sending.body,
         });
         if (received.status !== 200) {
-          const error = await serviceError(received);
-          const generationConflict = /la base (cambió|fue restaurada)/i.test(error.message);
-          definitive = firstAttempt && received.status >= 400 && received.status < 500 &&
-            received.status !== 408 && !generationConflict && sending.databaseId === state.snapshot?.databaseId;
-          throw error;
+          const message = await serviceMessage(received);
+          definitive = firstAttempt && !!message && received.status >= 400 &&
+            received.status < 500 && received.status !== 408;
+          if (received.status === 409) {
+            // A conditional read started before the rejection cannot confirm
+            // which database generation produced the conflict.
+            const refreshed = await reload({ fresh: true }).catch(() => null);
+            definitive = definitive && rejectedCatalogConflicts.has(message) && refreshed?.databaseId === sending.databaseId;
+          }
+          definitive = definitive && state.snapshot?.databaseId === sending.databaseId;
+          throw new Error(message || unconfirmed);
         }
         const snapshot = checkSnapshot(await received.json());
-        if (!Number.isSafeInteger(snapshot.result?.id) || snapshot.result.id < 1) throw new Error(unconfirmed);
+        const target = snapshot.result?.id;
+        if (!Number.isSafeInteger(target) || target < 1 ||
+            (sending.method !== 'POST' && sending.path !== '/api/productos/' + target)) throw new Error(unconfirmed);
         if (snapshot.databaseId !== sending.databaseId) throw new Error(changedDatabase);
         checkGeneration(sending.databaseId);
         apply(snapshot, null, request);
@@ -166,10 +186,8 @@ export function createPosClient() {
         }
         if (definitive) {
           await updatePending(current => current?.id === sending.id ? null : current);
-          if (received.status === 409) await reload().catch(() => {});
           throw cause;
         }
-        if (received?.status === 409) await reload().catch(() => {});
         const error = new Error(cause instanceof TypeError || cause instanceof SyntaxError ? unconfirmed : cause.message);
         error.uncertain = true;
         throw error;

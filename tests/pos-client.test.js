@@ -148,6 +148,65 @@ test('a conditional refresh preserves snapshot identity and a stale edit fails w
   assert.equal(await page.evaluate(() => client.getState().pending), null);
 });
 
+for (const method of ['PUT', 'DELETE']) {
+  test(method + ' keeps the original packet when the 200 confirms a different product', async t => {
+    const page = await tab(t);
+    const snapshot = await page.evaluate(() => client.getState().snapshot);
+    let packet;
+    await page.route('**/api/productos/7', async route => {
+      const request = route.request();
+      packet = { id: request.headers()['idempotency-key'], body: request.postData() };
+      await route.fulfill({ json: { ...snapshot, revision: snapshot.revision + 1, result: { id: 8 } } });
+    });
+    const uncertain = await page.evaluate(async method => {
+      try {
+        await client.writeOperation({ method, path: '/api/productos/7', payload: { version: 1 }, databaseId: client.getState().snapshot.databaseId });
+        return false;
+      } catch (error) { return error.uncertain; }
+    }, method);
+    assert.equal(uncertain, true);
+    const state = await page.evaluate(() => client.getState());
+    assert.equal(state.snapshot.revision, snapshot.revision);
+    assert.equal(state.pending.id, packet.id);
+    assert.equal(state.pending.body, packet.body);
+  });
+}
+
+test('an unreadable first 409 preserves the packet and checks the generation after the rejection', { timeout: 20_000 }, async t => {
+  const page = await tab(t);
+  const snapshot = await page.evaluate(() => client.getState().snapshot);
+  const newGeneration = randomUUID();
+  const started = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  let reads = 0;
+  await page.route('**/api/state', async route => {
+    if (++reads === 1) {
+      started.resolve();
+      await release.promise;
+      return route.fulfill({ status: 304 });
+    }
+    return route.fulfill({ json: { ...snapshot, databaseId: newGeneration } });
+  });
+  await page.route('**/api/productos', route => route.fulfill({ status: 409, body: 'incompleto' }));
+  const earlier = page.evaluate(() => client.reload());
+  await started.promise;
+  try {
+    const uncertain = await page.evaluate(async () => {
+      try {
+        await client.writeOperation({ method: 'POST', path: '/api/productos', payload: { codigo: 'CONFLICTO' }, databaseId: client.getState().snapshot.databaseId });
+      } catch (error) { return error.uncertain; }
+    });
+    assert.equal(uncertain, true);
+    const state = await page.evaluate(() => client.getState());
+    assert.equal(state.snapshot.databaseId, newGeneration);
+    assert.equal(state.pending.databaseId, snapshot.databaseId);
+  } finally {
+    release.resolve();
+    await earlier;
+  }
+  assert.equal(reads, 2);
+});
+
 test('reloads never regress in revision or resurrect a retired generation', async t => {
   const page = await tab(t);
   const observed = await page.evaluate(async () => {
@@ -156,7 +215,8 @@ test('reloads never regress in revision or resurrect a retired generation', asyn
     const queue = [];
     window.fetch = () => new Promise(resolve => queue.push(value => resolve(Response.json(value))));
     async function start() {
-      const job = client.reload();
+      // Conflict verification can supersede a regular read in flight.
+      const job = client.reload({ fresh: true });
       while (!queue.length) await new Promise(done => setTimeout(done, 0));
       return { job, answer: queue.shift() };
     }

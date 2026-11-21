@@ -17,10 +17,17 @@ export function OperationalStoreProvider({ client, children }) {
   const state = useSyncExternalStore(client.subscribe, client.getState);
   useEffect(() => {
     const reload = () => { client.reload().catch(() => {}); };
+    const refreshVisible = () => { if (!document.hidden) reload(); };
     reload();
+    const timer = window.setInterval(refreshVisible, 5_000);
+    window.addEventListener('focus', refreshVisible);
+    document.addEventListener('visibilitychange', refreshVisible);
     window.addEventListener('online', reload);
     window.addEventListener('offline', reload);
     return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refreshVisible);
+      document.removeEventListener('visibilitychange', refreshVisible);
       window.removeEventListener('online', reload);
       window.removeEventListener('offline', reload);
     };
