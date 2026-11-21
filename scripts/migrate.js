@@ -1,6 +1,6 @@
 import pg from 'pg';
-import { databaseConfig } from '../server.js';
-import { migrateDatabase } from '../database.js';
+import { databaseConfig } from '../src/db/config.js';
+import { migrateDatabase } from '../src/db/migrations.js';
 
 const pool = new pg.Pool(databaseConfig({ ...process.env, DATABASE_URL: process.env.MIGRATION_DATABASE_URL || process.env.DATABASE_URL }));
 try {

@@ -4,9 +4,9 @@ import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
 import pg from 'pg';
 import { temporaryPostgres } from './postgres.js';
-import { createApp } from '../server.js';
-import { migrateDatabase } from '../database.js';
-import { initialState } from '../state.js';
+import { createApp } from '../src/server.js';
+import { migrateDatabase } from '../src/db/migrations.js';
+import { initialState } from './fixtures/legacy-state.js';
 
 let database, pool, server, base, dom, interval;
 const nativeFetch = globalThis.fetch;
@@ -36,7 +36,7 @@ before(async () => {
   base = `http://127.0.0.1:${server.address().port}`;
   for (const product of initialState.productos) await write('POST', '/api/productos', product);
   for (const supplier of initialState.suplidores) await write('POST', '/api/suplidores', supplier);
-  dom = new JSDOM(await readFile(new URL('../index.html', import.meta.url), 'utf8'), { url: base });
+  dom = new JSDOM(await readFile(new URL('../public/index.html', import.meta.url), 'utf8'), { url: base });
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
   globalThis.alert = (message) => alerts.push(message);
@@ -44,7 +44,7 @@ before(async () => {
   globalThis.fetch = (path, options) => nativeFetch(new URL(path, base), options);
   globalThis.setInterval = (...args) => { interval = nativeInterval(...args); return interval; };
   window.open = () => ({ document: { write() {}, close() {} }, focus() {}, print() { prints++; } });
-  await import('../app.js');
+  await import('../public/app.js');
 });
 after(async () => {
   clearInterval(interval);

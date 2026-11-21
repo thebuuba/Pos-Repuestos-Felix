@@ -25,7 +25,7 @@ async function worker() {
     caches, URL, Response,
     fetch: async () => { throw new TypeError('Sin conexión'); },
   };
-  vm.runInNewContext(await readFile(new URL('../sw.js', import.meta.url), 'utf8'), context);
+  vm.runInNewContext(await readFile(new URL('../public/sw.js', import.meta.url), 'utf8'), context);
   let installed;
   handlers.get('install')({ waitUntil: (promise) => { installed = promise; } });
   await installed;
@@ -40,6 +40,14 @@ test('la interfaz instalada se puede abrir sin conexión', async () => {
     respondWith: (response) => { result = response; },
   });
   assert.equal(await (await result).text(), 'shell:/');
+});
+
+test('la imagen del negocio está disponible sin conexión junto a la interfaz', async () => {
+  const { handlers, origin } = await worker();
+  let result;
+  handlers.get('fetch')({ request: { method: 'GET', url: `${origin}/assets/brand/repuestos-felix.jpg` }, respondWith: value => { result = value; } });
+  assert.ok(result, 'La imagen debe pertenecer al conjunto estático de la PWA');
+  assert.equal(await (await result).text(), 'shell:/assets/brand/repuestos-felix.jpg');
 });
 
 test('el service worker no intercepta API, escrituras ni inicio de sesión', async () => {

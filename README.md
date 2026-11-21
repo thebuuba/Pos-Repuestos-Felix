@@ -2,6 +2,31 @@
 
 PWA instalable para teléfono y computadora, con ventas, inventario, compras, clientes, suplidores, resumen de caja y respaldos JSON. Se conserva JavaScript nativo, CSS y HTML, con una API Node.js y **PostgreSQL local o Supabase**. Las contraseñas permanecen en el servidor.
 
+## Organización del proyecto
+
+```text
+public/                  Interfaz que recibe el navegador
+  assets/brand/          Imagen original de Repuestos Félix
+  icons/                 Iconos de instalación de la PWA
+src/
+  server.js              Servidor HTTP y arranque
+  hosting.js             Acceso, origen permitido y HTTPS
+  db/config.js           Conexión PostgreSQL y verificación SSL
+  db/migrations.js       Migraciones administrativas explícitas
+  pos/store.js           Operaciones, transacciones y respaldos
+  pos/legacy-state.js    Validación del formato de respaldo anterior
+supabase/
+  migrations/            Historial SQL aplicado en orden
+  schema.sql             Estructura actual de referencia
+scripts/                 Comandos administrativos
+tests/                   Pruebas y datos ficticios en fixtures/
+docs/                    Decisiones y planes de trabajo
+```
+
+El servidor entrega únicamente los archivos públicos incluidos en su lista permitida. Las carpetas `src/`, `scripts/`, `supabase/`, las credenciales y los respaldos no se publican. Las rutas de la interfaz siguen siendo `/app.js`, `/styles.css`, `/sw.js`, etc.; `public/` es su ubicación en disco, no un prefijo de la dirección web. Los datos de ejemplo se usan únicamente en pruebas.
+
+La cabecera utiliza la imagen proporcionada por el negocio, con su proporción original, y una paleta roja, negra y blanca. La imagen también forma parte de la caché estática de la PWA.
+
 ## Instalar en Android o iPhone
 
 Abre la dirección **HTTPS** del sistema e inicia sesión. En Android pulsa **Instalar app** o usa el menú del navegador. En iPhone abre la página en Safari y elige **Compartir → Añadir a pantalla de inicio**. La app también funciona directamente en el navegador. La disponibilidad del aviso automático depende del navegador; el botón incluye instrucciones alternativas.
@@ -10,7 +35,7 @@ Los controles se adaptan a pantallas pequeñas, los menús se abren al tocar y l
 
 **Sin conexión:** una vez preparada la caché, se puede abrir la interfaz. No se guardan clientes, inventario, facturas ni contraseñas en la caché del service worker. Las operaciones requieren conexión y confirmación del servidor. Si hay un carrito pendiente, conserva esa pantalla: cerrar la app no guarda borradores. No hay sincronización de ventas sin conexión.
 
-**Actualizaciones:** el service worker instala una versión completa de los archivos estáticos y espera a que se cierren las pestañas/instancias anteriores. Para publicar cambios en la interfaz, incrementa `CACHE` en `sw.js` en el mismo despliegue. No se fuerza una actualización en medio de una venta.
+**Actualizaciones:** el service worker instala una versión completa de los archivos estáticos y espera a que se cierren las pestañas/instancias anteriores. Para publicar cambios en la interfaz, incrementa `CACHE` en `public/sw.js` en el mismo despliegue. No se fuerza una actualización en medio de una venta.
 
 El manifiesto, los iconos y la implementación siguen las [guías de instalación de PWA](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable) y de [service workers](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API/Using_Service_Workers). En desarrollo, `http://127.0.0.1` también permite probar la PWA; abrir `index.html` directamente no ejecuta el servidor.
 
@@ -67,7 +92,7 @@ pnpm db:migrate:supabase
 
 El migrador serializa las ejecuciones, aplica cada archivo pendiente en una transacción y registra su versión en `supabase_migrations.schema_migrations`, compatible con el CLI. El vínculo del CLI y la conexión de PostgreSQL son configuraciones independientes: verifica el destino antes de migrar. Haz un respaldo antes de actualizar una base con datos.
 
-La conversión conserva productos, contactos, saldos y documentos. Archiva el JSON original y crea movimientos de apertura con el inventario al momento del cambio. Si encuentra referencias ambiguas o importes inconsistentes, aborta sin aplicar una conversión parcial. El archivo `schema.sql` describe la estructura actual.
+La conversión conserva productos, contactos, saldos y documentos. Archiva el JSON original y crea movimientos de apertura con el inventario al momento del cambio. Si encuentra referencias ambiguas o importes inconsistentes, aborta sin aplicar una conversión parcial. El archivo `supabase/schema.sql` describe la estructura actual.
 
 Copia `.env.migrations.example` a `.env.migrations` para Supabase, o a `.env.local.migrations` para el perfil local, y configura allí la conexión administrativa. Los comandos de migración cargan ese archivo separado; los comandos `start` solo cargan la conexión de aplicación. Estos archivos reales están excluidos de Git.
 
@@ -138,13 +163,13 @@ En el panel de variables privadas del alojamiento configura:
 | `APP_USERNAME` | Usuario de acceso, por ejemplo `admin` |
 | `APP_PASSWORD` | Contraseña larga y única, de al menos 16 caracteres |
 
-Instalación del servicio: `pnpm install --prod --frozen-lockfile`. Aplica migraciones desde un entorno administrativo antes del despliegue; no configures `MIGRATION_DATABASE_URL` en el proceso web. Inicio: `node server.js`. Usa pnpm 10.8.0 en el alojamiento. El `Dockerfile` prepara esta versión; los `.env` y certificados locales se excluyen del contexto de construcción. Monta los certificados como secretos en ejecución cuando sean necesarios.
+Instalación del servicio: `pnpm install --prod --frozen-lockfile`. Aplica migraciones desde un entorno administrativo antes del despliegue; no configures `MIGRATION_DATABASE_URL` en el proceso web. Inicio: `node src/server.js`. Usa pnpm 10.8.0 en el alojamiento. El `Dockerfile` prepara esta versión; los `.env` y certificados locales se excluyen del contexto de construcción. Monta los certificados como secretos en ejecución cuando sean necesarios.
 
 El proveedor debe terminar HTTPS, redirigir HTTP a HTTPS y **sobrescribir** `X-Forwarded-Proto` con el protocolo real. Mantén el puerto de Node privado, accesible solo desde ese proxy: no basta con enviar una cabecera para asegurar el transporte. El servidor rechaza nombres de host ajenos, tráfico sin indicación HTTPS en modo público y escrituras de otros orígenes. `GET /health` es un indicador público de que el proceso está activo y no expone datos del negocio.
 
 El navegador pide usuario y contraseña mediante autenticación HTTP Basic sobre HTTPS. Esta versión utiliza una cuenta compartida del negocio; no incorpora perfiles ni permisos individuales. Si necesitas volver a autenticar una PWA abierta, el enlace **Volver a iniciar sesión** abre `/login` en otra pestaña y conserva el carrito original. Vuelve después y pulsa **Actualizar datos**. Para cambiar la contraseña modifica el secreto del alojamiento y reinicia el servicio.
 
-Los archivos estáticos de la interfaz, manifiesto e iconos son públicos; el acceso a los datos de PostgreSQL exige autenticación en modo público. No introduzcas datos reales del negocio ni credenciales en `state.js` o los demás archivos estáticos.
+Los archivos de `public/`, el manifiesto y los iconos son públicos; el acceso a los datos de PostgreSQL exige autenticación en modo público. No introduzcas datos reales del negocio ni credenciales en los archivos estáticos.
 
 ## Pruebas
 

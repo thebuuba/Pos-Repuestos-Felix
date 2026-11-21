@@ -9,7 +9,7 @@ export async function migrateDatabase(pool) {
     await client.query(`CREATE SCHEMA IF NOT EXISTS supabase_migrations;
       CREATE TABLE IF NOT EXISTS supabase_migrations.schema_migrations
       (version text PRIMARY KEY, statements text[], name text)`);
-    const directory = new URL('./supabase/migrations/', import.meta.url);
+    const directory = new URL('../../supabase/migrations/', import.meta.url);
     for (const filename of (await readdir(directory)).filter(name => /^\d+_.+\.sql$/.test(name)).sort()) {
       const [, version, name] = filename.match(/^(\d+)_(.+)\.sql$/);
       if ((await client.query('SELECT 1 FROM supabase_migrations.schema_migrations WHERE version=$1', [version])).rowCount) continue;

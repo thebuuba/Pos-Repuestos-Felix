@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import { request as httpRequest } from 'node:http';
 import pg from 'pg';
 import { randomUUID } from 'node:crypto';
-import { migrateDatabase } from '../database.js';
+import { migrateDatabase } from '../src/db/migrations.js';
 import { temporaryPostgres } from './postgres.js';
 
 let database, pool, server, base, createApp;
 let remoteServer;
 before(async () => {
-  ({ createApp } = await import('../server.js'));
+  ({ createApp } = await import('../src/server.js'));
   database = await temporaryPostgres();
   pool = new pg.Pool({ connectionString: database.connectionString });
   await migrateDatabase(pool);
@@ -25,7 +25,7 @@ after(async () => {
 });
 
 test('el acceso público requiere HTTPS, origen y credenciales válidas', async () => {
-  const { hostingConfig } = await import('../hosting.js');
+  const { hostingConfig } = await import('../src/hosting.js');
   const hosting = hostingConfig({
     HOST: '0.0.0.0', PUBLIC_ORIGIN: 'https://pos.example', APP_USERNAME: 'felix', APP_PASSWORD: 'clave-de-pruebas-12345',
   });
@@ -83,11 +83,28 @@ test('rechaza JSON roto, tipos de contenido ajenos y peticiones de otros sitios'
 });
 
 test('no publica credenciales, SQL ni archivos del servidor', async () => {
-  for (const path of ['/.env', '/.env.supabase', '/server.js', '/schema.sql', '/package.json']) {
+  for (const path of ['/.env', '/.env.supabase', '/server.js', '/schema.sql', '/package.json', '/src/server.js', '/src/db/config.js', '/src/pos/legacy-state.js', '/supabase/schema.sql', '/public/index.html', '/assets/brand/../../.env']) {
     assert.equal((await fetch(base + path)).status, 404, path);
   }
   assert.equal((await fetch(base + '/')).status, 200);
   assert.equal((await fetch(base + '/app.js')).status, 200);
+});
+
+test('la cabecera muestra la imagen original y el servidor entrega el JPEG completo', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { JSDOM } = await import('jsdom');
+  const html = new JSDOM(await (await fetch(base + '/')).text());
+  try {
+    const image = html.window.document.querySelector('.brand-banner');
+    assert.ok(image, 'La cabecera debe incluir la imagen del negocio');
+    assert.equal(image.getAttribute('alt'), 'Repuestos Félix · Tanaka · 829-782-3872');
+    assert.equal(image.getAttribute('width'), '2272');
+    assert.equal(image.getAttribute('height'), '464');
+    const response = await fetch(base + image.getAttribute('src'));
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type'), /image\/jpeg/);
+    assert.deepEqual(Buffer.from(await response.arrayBuffer()), await readFile(new URL('../public/assets/brand/repuestos-felix.jpg', import.meta.url)));
+  } finally { html.window.close(); }
 });
 
 test('responde con 413 si el respaldo supera 10 MB', async () => {

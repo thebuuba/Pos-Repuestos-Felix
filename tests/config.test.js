@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { databaseConfig } from '../server.js';
+import { databaseConfig } from '../src/db/config.js';
 import pg from 'pg';
 
 test('local puede conectarse sin SSL y remoto exige un certificado válido', () => {
@@ -26,7 +26,7 @@ test('la URL no permite reemplazar un host local mediante un parámetro', () => 
 });
 
 test('no habilita un servidor público sin HTTPS y contraseña suficiente', async () => {
-  const { hostingConfig } = await import('../hosting.js');
+  const { hostingConfig } = await import('../src/hosting.js');
   assert.throws(() => hostingConfig({ HOST: '0.0.0.0' }), /PUBLIC_ORIGIN/);
   assert.throws(() => hostingConfig({ PUBLIC_ORIGIN: 'http://pos.example' }), /HTTPS/);
   assert.throws(() => hostingConfig({ PUBLIC_ORIGIN: 'https://pos.example', APP_PASSWORD: '123' }), /contraseña/);

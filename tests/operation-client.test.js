@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
 
 test('envía IDs y conserva la misma operación al perder la respuesta, incluso después de actualizar', async () => {
-  const dom = new JSDOM(await readFile(new URL('../index.html', import.meta.url), 'utf8'), { url: 'http://127.0.0.1' });
+  const dom = new JSDOM(await readFile(new URL('../public/index.html', import.meta.url), 'utf8'), { url: 'http://127.0.0.1' });
   const original = { fetch: globalThis.fetch, setInterval: globalThis.setInterval };
   const state = { empresa: 'Félix', itbisRate: .18, configuracionVersion: 1,
     productos: [{ id: 8, version: 3, codigo: 'P1', nombre: 'Pieza', costo: 10, stock: 2, precio1: 118, precio2: 110, precio3: 100 }],
@@ -29,7 +29,7 @@ test('envía IDs y conserva la misma operación al perder la respuesta, incluso 
     return Response.json({ ...snapshot(), result: { id: 31 } });
   };
   try {
-    await import('../app.js');
+    await import('../public/app.js');
     document.getElementById('fac-buscar-prod').value = 'P1';
     window.agregarLineaFactura();
     await window.procesarFactura();

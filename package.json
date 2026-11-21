@@ -11,9 +11,9 @@
     "db:migrate": "node --env-file-if-exists=.env --env-file-if-exists=.env.migrations scripts/migrate.js",
     "db:migrate:local": "node --env-file=.env.local --env-file-if-exists=.env.local.migrations scripts/migrate.js",
     "db:migrate:supabase": "node --env-file=.env.supabase --env-file-if-exists=.env.migrations scripts/migrate.js",
-    "start": "node --env-file-if-exists=.env server.js",
-    "start:local": "node --env-file=.env.local server.js",
-    "start:supabase": "node --env-file=.env.supabase server.js",
+    "start": "node --env-file-if-exists=.env src/server.js",
+    "start:local": "node --env-file=.env.local src/server.js",
+    "start:supabase": "node --env-file=.env.supabase src/server.js",
     "test": "node --test tests/*.test.js"
   },
   "dependencies": {

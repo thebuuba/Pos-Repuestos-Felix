@@ -6,7 +6,7 @@
 <title>Repuestos Félix · Punto de venta</title>
 
 
-<meta name="theme-color" content="#0056b3">
+<meta name="theme-color" content="#bd0c18">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Félix POS">
@@ -62,20 +62,23 @@
 </details>
 </nav>
 <input type="file" id="input-respaldo" accept=".json" onchange="importarRespaldo(event)" hidden="">
-<div class="header-info">
+<header class="header-info">
 <div class="business-info">
+<img class="brand-banner" src="/assets/brand/repuestos-felix.jpg" width="2272" height="464" alt="Repuestos Félix · Tanaka · 829-782-3872" fetchpriority="high" decoding="async">
+<div class="business-meta">
 <span class="eyebrow">PUNTO DE VENTA</span>
 <h1 id="nombre-negocio">REPUESTOS FELIX</h1>
 <span id="database-status" role="status" aria-live="polite">Conectando a PostgreSQL…</span>
 <small id="fecha-hora">
 </small>
 </div>
+</div>
 <div class="header-actions">
 <a id="login-again" href="/login" target="_blank" rel="noopener" hidden>Volver a iniciar sesi&#243;n</a>
 <button onclick="actualizarDatos()">Actualizar datos</button>
 <button id="install-app" onclick="instalarApp()" aria-controls="install-help" aria-expanded="false">Instalar app</button>
 </div>
-</div>
+</header>
 <aside id="install-help" class="install-help" hidden="">
 <strong>Instalar Repuestos Félix</strong>
 <p>

@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { temporaryPostgres } from './postgres.js';
-import { createApp } from '../server.js';
-import { writeOperation } from '../store.js';
+import { createApp } from '../src/server.js';
+import { writeOperation } from '../src/pos/store.js';
 
 let database, pool, server, base;
 before(async () => {
   database = await temporaryPostgres();
   pool = new pg.Pool({ connectionString: database.connectionString });
-  const { migrateDatabase } = await import('../database.js'); await migrateDatabase(pool);
+  const { migrateDatabase } = await import('../src/db/migrations.js'); await migrateDatabase(pool);
   await pool.end();
   // Exercise the complete runtime with the restricted production role.
   pool = new pg.Pool({ connectionString: database.connectionString, options: '-c role=pos_app' });

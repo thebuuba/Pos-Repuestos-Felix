@@ -19,7 +19,7 @@ const legacy = {
 
 before(async () => {
   legacyMigration = await readFile(new URL('../supabase/migrations/20261121150000_inicializar_pos.sql', import.meta.url), 'utf8');
-  schema = await readFile(new URL('../schema.sql', import.meta.url), 'utf8');
+  schema = await readFile(new URL('../supabase/schema.sql', import.meta.url), 'utf8');
   migration = await readFile(new URL('../supabase/migrations/20261121190000_normalizar_pos.sql', import.meta.url), 'utf8').catch(error => {
     if (error.code === 'ENOENT') return ''; throw error;
   });
