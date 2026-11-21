@@ -24,3 +24,11 @@ test('la URL no permite reemplazar un host local mediante un parámetro', () => 
     DATABASE_URL: 'postgresql://user:password@127.0.0.1/pos?host=remote.example',
   }), /parámetros/);
 });
+
+test('no habilita un servidor público sin HTTPS y contraseña suficiente', async () => {
+  const { hostingConfig } = await import('../hosting.js');
+  assert.throws(() => hostingConfig({ HOST: '0.0.0.0' }), /PUBLIC_ORIGIN/);
+  assert.throws(() => hostingConfig({ PUBLIC_ORIGIN: 'http://pos.example' }), /HTTPS/);
+  assert.throws(() => hostingConfig({ PUBLIC_ORIGIN: 'https://pos.example', APP_PASSWORD: '123' }), /contraseña/);
+  assert.equal(hostingConfig({}).host, '127.0.0.1');
+});

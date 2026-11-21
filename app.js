@@ -1,4 +1,5 @@
 import { initialState, validateState } from './state.js';
+import { setupPWA } from './pwa.js';
 
 const $ = (id) => document.getElementById(id);
 const h = (value) => String(value).replace(/[&<>"']/g, (c) => ({
@@ -23,7 +24,7 @@ function status(text, ok = false) {
 async function request(method, body) {
   const response = await fetch('/api/state', {
     method, headers: body ? { 'Content-Type': 'application/json' } : {},
-    body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(20000),
+    body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(20000), cache: 'no-store',
   });
   const result = await response.json();
   if (!response.ok) {
@@ -39,14 +40,16 @@ function applyState(result) {
   revision = result.revision;
   sessionId = result.sessionId;
   ready = true;
+  $('login-again').hidden = true;
   status(`Conectado: ${result.databaseLabel}`, true);
   actualizarVistas();
 }
 
 async function cargarDatos() {
   try { applyState(await request('GET')); return true; }
-  catch {
+  catch (error) {
     ready = false;
+    $('login-again').hidden = error.status !== 401;
     status('Sin conexión. Pulsa Actualizar datos para reintentar.');
     return false;
   }
@@ -81,8 +84,11 @@ async function guardarCambio(change) {
       alert(error.message);
     } else {
       ready = false;
+      $('login-again').hidden = error.status !== 401;
       status('Guardado sin confirmar. Actualiza los datos.');
-      alert('No se confirmó el guardado. Conservamos el formulario y el carrito. Actualiza los datos y revisa los reportes antes de reintentar para evitar duplicar una operación.');
+      alert(error.status === 401
+        ? 'Inicia sesión de nuevo con el enlace superior y vuelve a actualizar los datos. Conservamos el formulario y el carrito.'
+        : 'No se confirmó el guardado. Conservamos el formulario y el carrito. Actualiza los datos y revisa los reportes antes de reintentar para evitar duplicar una operación.');
     }
     return false;
   } finally { saving = false; document.body.inert = false; }
@@ -102,6 +108,11 @@ function clear(ids) { ids.forEach((id) => { $(id).value = ''; }); }
 window.abrirVentana = function (id) {
   document.querySelectorAll('.ventana').forEach((view) => view.classList.remove('activa'));
   $(id)?.classList.add('activa');
+  document.querySelectorAll('.menu-item').forEach((menu) => { menu.open = false; });
+  if (window.innerWidth <= 760) $('main-menu').open = false;
+  document.querySelectorAll('[data-screen]').forEach((button) => {
+    button.setAttribute('aria-pressed', String(button.dataset.screen === id));
+  });
   if (id === 'win-config') {
     $('cfg-empresa').value = window.db.empresa;
     $('cfg-itbis').value = window.db.itbisRate * 100;
@@ -376,6 +387,30 @@ $('tabla-facturas').addEventListener('click', (event) => {
   if (invoice) window.imprimirTicket(invoice);
 });
 const updateClock = () => { $('fecha-hora').textContent = new Date().toLocaleString('es-DO', { timeZone: 'America/Santo_Domingo' }); };
+const mobile = window.matchMedia?.('(max-width: 760px)');
+if (mobile) {
+  $('main-menu').open = !mobile.matches;
+  mobile.addEventListener('change', (event) => { $('main-menu').open = !event.matches; });
+}
+document.querySelectorAll('.menu-item').forEach((menu) => {
+  menu.addEventListener('toggle', () => {
+    if (menu.open) document.querySelectorAll('.menu-item').forEach((other) => { if (other !== menu) other.open = false; });
+  });
+});
+document.addEventListener('click', (event) => {
+  if (!event.target.closest('.navbar')) {
+    document.querySelectorAll('.menu-item').forEach((menu) => { menu.open = false; });
+    if (mobile?.matches) $('main-menu').open = false;
+  }
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    const open = document.querySelector('.menu-item[open]');
+    if (open) { open.open = false; open.querySelector('summary').focus(); }
+    else if (mobile?.matches) { $('main-menu').open = false; $('main-menu').querySelector('summary').focus(); }
+  }
+});
+setupPWA();
 updateClock(); setInterval(updateClock, 1000);
 actualizarVistas();
 await cargarDatos();

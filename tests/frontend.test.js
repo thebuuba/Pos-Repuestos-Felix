@@ -49,6 +49,79 @@ test('carga clientes, inventario y reportes vacíos desde PostgreSQL', () => {
   assert.match($('database-status').textContent, /Conectado/);
 });
 
+test('la navegación funciona por toque y cierra el menú al elegir una pantalla', () => {
+  const navigation = document.querySelector('nav');
+  assert.ok(navigation, 'Falta navegación semántica');
+  const menu = navigation.querySelector('.menu-item');
+  assert.ok(menu, 'El menú debe abrirse sin depender de hover');
+  menu.open = true;
+  window.abrirVentana('win-inventario');
+  assert.equal(menu.open, false);
+  assert.equal($('win-inventario').classList.contains('activa'), true);
+  assert.equal($('win-facturacion').classList.contains('activa'), false);
+  window.abrirVentana('win-facturacion');
+});
+
+test('cada campo tiene etiqueta y las tablas pueden desplazarse con teclado', () => {
+  for (const input of document.querySelectorAll('input:not([type=file]), select')) {
+    assert.ok(document.querySelector(`label[for="${input.id}"]`), `Falta etiqueta para ${input.id}`);
+  }
+  for (const table of document.querySelectorAll('table')) {
+    assert.equal(table.parentElement.getAttribute('role'), 'region');
+    assert.equal(table.parentElement.tabIndex, 0);
+    assert.ok(table.parentElement.getAttribute('aria-label'));
+  }
+});
+
+test('ofrece instrucciones de instalación cuando el navegador no muestra un aviso nativo', async () => {
+  assert.ok(document.querySelector('link[rel=manifest]'));
+  assert.equal(typeof window.instalarApp, 'function');
+  await window.instalarApp();
+  assert.equal($('install-help').hidden, false);
+  assert.match($('install-help').textContent, /iPhone/);
+  assert.match($('install-help').textContent, /Android/);
+  await window.instalarApp();
+  assert.equal($('install-help').hidden, true);
+});
+
+test('usa el aviso nativo de instalación y oculta el botón cuando se acepta', async () => {
+  const event = new window.Event('beforeinstallprompt', { cancelable: true });
+  event.prompt = async () => {};
+  event.userChoice = Promise.resolve({ outcome: 'accepted' });
+  window.dispatchEvent(event);
+  assert.equal(event.defaultPrevented, true);
+  await window.instalarApp();
+  assert.equal($('install-app').hidden, true);
+  assert.equal($('install-help').hidden, true);
+});
+
+test('muestra el aviso sin conexión y lo retira al recuperar red', () => {
+  Object.defineProperty(window.navigator, 'onLine', { configurable: true, value: false });
+  window.dispatchEvent(new window.Event('offline'));
+  assert.equal($('offline-notice').hidden, false);
+  Object.defineProperty(window.navigator, 'onLine', { configurable: true, value: true });
+  window.dispatchEvent(new window.Event('online'));
+  assert.equal($('offline-notice').hidden, true);
+});
+
+test('un acceso vencido conserva la venta y permite volver a iniciar sesión', async () => {
+  fill({ 'fac-buscar-prod': 'BUJ-01', 'fac-cantidad': 1 });
+  window.agregarLineaFactura();
+  globalThis.fetch = async () => new Response(JSON.stringify({ error: 'Inicia sesión' }), {
+    status: 401, headers: { 'Content-Type': 'application/json' },
+  });
+  try { await window.procesarFactura(); }
+  finally { globalThis.fetch = (path, options) => nativeFetch(new URL(path, base), options); }
+  assert.equal($('login-again').hidden, false);
+  assert.equal($('login-again').getAttribute('target'), '_blank');
+  assert.equal($('fac-total').textContent, '150.00');
+  assert.equal(prints, 0);
+  assert.equal((await saved()).state.facturas.length, 0);
+  await window.actualizarDatos();
+  assert.equal($('login-again').hidden, true);
+  window.quitarLineaFactura(0);
+});
+
 test('el carrito impide exceder existencias y permite quitar líneas', () => {
   fill({ 'fac-buscar-prod': 'BUJ-01', 'fac-cantidad': 2 });
   window.agregarLineaFactura();

@@ -6,11 +6,18 @@ import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { initialState, validateState } from './state.js';
+import { hostingConfig, authorized } from './hosting.js';
 
 const root = new URL('./', import.meta.url);
 const publicFiles = {
   '/': ['index.html', 'text/html'], '/index.html': ['index.html', 'text/html'],
   '/app.js': ['app.js', 'text/javascript'], '/state.js': ['state.js', 'text/javascript'],
+  '/pwa.js': ['pwa.js', 'text/javascript'], '/styles.css': ['styles.css', 'text/css'],
+  '/sw.js': ['sw.js', 'text/javascript'], '/manifest.webmanifest': ['manifest.webmanifest', 'application/manifest+json'],
+  '/icons/icon-192.png': ['icons/icon-192.png', 'image/png'],
+  '/icons/icon-512.png': ['icons/icon-512.png', 'image/png'],
+  '/icons/maskable-512.png': ['icons/maskable-512.png', 'image/png'],
+  '/icons/apple-touch-icon.png': ['icons/apple-touch-icon.png', 'image/png'],
 };
 
 export function databaseConfig(env = process.env) {
@@ -61,18 +68,30 @@ async function readBody(request) {
   catch { const error = new Error('El contenido JSON no es válido.'); error.status = 400; throw error; }
 }
 
-export async function createApp(pool, { databaseLabel = 'PostgreSQL' } = {}) {
+export async function createApp(pool, { databaseLabel = 'PostgreSQL', hosting = hostingConfig({}) } = {}) {
   const sessionId = randomUUID();
   await pool.query(await readFile(new URL('schema.sql', root), 'utf8'));
   await pool.query('INSERT INTO pos_privado.estado (id, datos) VALUES (1, $1) ON CONFLICT (id) DO NOTHING', [initialState]);
 
   return createServer(async (request, response) => {
     try {
-      const host = new URL(`http://${request.headers.host}`).hostname;
-      if (!['127.0.0.1', 'localhost', '[::1]'].includes(host)) {
-        send(response, 403, { error: 'Solo se permite acceso mediante localhost.' }); return;
-      }
       const pathname = new URL(request.url, 'http://localhost').pathname;
+      if (pathname === '/health' && request.method === 'GET') { send(response, 200, { ok: true }); return; }
+      const host = new URL(`http://${request.headers.host}`);
+      const allowed = hosting.origin
+        ? host.host === new URL(hosting.origin).host
+        : ['127.0.0.1', 'localhost', '[::1]'].includes(host.hostname);
+      if (!allowed) { send(response, 403, { error: 'Nombre de servidor no permitido.' }); return; }
+      if (hosting.origin && request.headers['x-forwarded-proto']?.split(',')[0].trim() !== 'https') {
+        send(response, 426, { error: 'Accede mediante HTTPS. El proxy debe configurar X-Forwarded-Proto.' }); return;
+      }
+      if (['/', '/index.html', '/api/state', '/login'].includes(pathname) && !authorized(request, hosting)) {
+        response.setHeader('WWW-Authenticate', 'Basic realm="Repuestos Felix", charset="UTF-8"');
+        send(response, 401, { error: 'Inicia sesión para acceder al sistema.' }); return;
+      }
+      if (pathname === '/login' && request.method === 'GET') {
+        response.writeHead(303, { Location: '/', 'Cache-Control': 'no-store' }); response.end(); return;
+      }
       if (pathname === '/api/state') {
         if (request.method === 'GET') {
           const { rows } = await pool.query('SELECT datos, revision FROM pos_privado.estado WHERE id = 1');
@@ -80,7 +99,7 @@ export async function createApp(pool, { databaseLabel = 'PostgreSQL' } = {}) {
           return;
         }
         if (request.method !== 'PUT') { send(response, 405, { error: 'Método no permitido.' }); return; }
-        const expectedOrigin = `http://${request.headers.host}`;
+        const expectedOrigin = hosting.origin || `http://${request.headers.host}`;
         if ((request.headers.origin && request.headers.origin !== expectedOrigin) ||
             request.headers['sec-fetch-site'] === 'cross-site') {
           send(response, 403, { error: 'Origen no permitido.' }); return;
@@ -128,14 +147,15 @@ export async function createApp(pool, { databaseLabel = 'PostgreSQL' } = {}) {
 }
 
 async function main() {
+  const hosting = hostingConfig();
   const pool = new pg.Pool(databaseConfig());
   pool.on('error', (error) => console.error('Error de PostgreSQL:', error.code || error.name));
   try {
     const databaseLabel = process.env.DATABASE_LABEL || 'PostgreSQL';
-    const server = await createApp(pool, { databaseLabel });
+    const server = await createApp(pool, { databaseLabel, hosting });
     const port = Number(process.env.PORT || 3000);
     if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw new Error('PORT debe estar entre 1 y 65535.');
-    server.listen(port, '127.0.0.1', () => console.log(`POS disponible en http://127.0.0.1:${port} (${databaseLabel})`));
+    server.listen(port, hosting.host, () => console.log(`POS disponible en ${hosting.origin || `http://127.0.0.1:${port}`} (${databaseLabel})`));
     server.on('error', async (error) => {
       console.error('No se pudo abrir el servidor:', error.code || error.name);
       await pool.end(); process.exitCode = 1;

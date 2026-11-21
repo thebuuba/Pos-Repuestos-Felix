@@ -1,6 +1,18 @@
 # POS Repuestos Félix
 
-La interfaz conserva ventas, inventario, compras, clientes, suplidores, resumen de caja y respaldos JSON. Node.js se conecta a **PostgreSQL local o a PostgreSQL de Supabase**. Las contraseñas permanecen en el servidor.
+PWA instalable para teléfono y computadora, con ventas, inventario, compras, clientes, suplidores, resumen de caja y respaldos JSON. Se conserva JavaScript nativo, CSS y HTML, con una API Node.js y **PostgreSQL local o Supabase**. Las contraseñas permanecen en el servidor.
+
+## Instalar en Android o iPhone
+
+Abre la dirección **HTTPS** del sistema e inicia sesión. En Android pulsa **Instalar app** o usa el menú del navegador. En iPhone abre la página en Safari y elige **Compartir → Añadir a pantalla de inicio**. La app también funciona directamente en el navegador. La disponibilidad del aviso automático depende del navegador; el botón incluye instrucciones alternativas.
+
+Los controles se adaptan a pantallas pequeñas, los menús se abren al tocar y las tablas se desplazan dentro de su propio recuadro. La interfaz conserva el mismo servidor y base de datos que la versión de escritorio.
+
+**Sin conexión:** una vez preparada la caché, se puede abrir la interfaz. No se guardan clientes, inventario, facturas ni contraseñas en la caché del service worker. Las operaciones requieren conexión y confirmación del servidor. Si hay un carrito pendiente, conserva esa pantalla: cerrar la app no guarda borradores. No hay sincronización de ventas sin conexión.
+
+**Actualizaciones:** el service worker instala una versión completa de los archivos estáticos y espera a que se cierren las pestañas/instancias anteriores. Para publicar cambios en la interfaz, incrementa `CACHE` en `sw.js` en el mismo despliegue. No se fuerza una actualización en medio de una venta.
+
+El manifiesto, los iconos y la implementación siguen las [guías de instalación de PWA](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable) y de [service workers](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API/Using_Service_Workers). En desarrollo, `http://127.0.0.1` también permite probar la PWA; abrir `index.html` directamente no ejecuta el servidor.
 
 ## Instalar
 
@@ -71,8 +83,34 @@ Para copiar datos entre ellas: exporta desde **Configuración → Copia de segur
 - Si se pierde la conexión durante el guardado, el resultado puede ser incierto. Pulsa **Actualizar datos** y revisa facturas/compras antes de repetirlo. No se guarda automáticamente sin conexión.
 - Las compras quedan registradas con suplidor y número. Se rechaza registrar de nuevo el mismo número para el mismo suplidor.
 - El respaldo admite hasta 10 MB. El documento completo se envía en cada guardado. Para más volumen o trabajo intensivo con varias cajas, conviene migrar a tablas por entidad y operaciones específicas en el servidor.
-- El servidor escucha únicamente en `127.0.0.1`: se puede usar Supabase desde esta computadora sin publicar la aplicación. El acceso público o desde otras computadoras requiere añadir autenticación y configurar el alojamiento.
+- Por defecto el servidor escucha únicamente en `127.0.0.1`. El modo público requiere origen HTTPS explícito, usuario y contraseña de acceso; consulta la siguiente sección. No se han configurado credenciales reales ni publicado un servicio.
 - El resumen de caja y el listado de facturas mantienen las funciones que tenía el HTML. No se ha añadido cierre contable, anulación ni exportación fiscal 607.
+
+## Preparar el acceso por internet
+
+El código está preparado para una sola instancia Node.js persistente o compatible con Docker y una base Supabase. **GitHub guarda el código; GitHub Pages no ejecuta esta API ni conecta el navegador directamente a PostgreSQL.** La publicación y los archivos `.env` reales quedan para cuando se configuren el alojamiento y sus credenciales.
+
+En el panel de variables privadas del alojamiento configura:
+
+| Variable | Uso |
+| --- | --- |
+| `DATABASE_URL` | Conexión real de PostgreSQL/Supabase |
+| `DATABASE_SSL` | `true` para Supabase |
+| `DATABASE_LABEL` | `Supabase` o nombre del destino |
+| `DATABASE_CA_FILE` | Ruta al certificado CA montado como archivo secreto, si tu proyecto lo necesita |
+| `HOST` | `0.0.0.0` dentro del servicio alojado |
+| `PORT` | Puerto indicado por el proveedor; por defecto `3000` |
+| `PUBLIC_ORIGIN` | Dirección exacta, por ejemplo `https://pos.tu-dominio.com`, sin rutas ni parámetros |
+| `APP_USERNAME` | Usuario de acceso, por ejemplo `admin` |
+| `APP_PASSWORD` | Contraseña larga y única, de al menos 16 caracteres |
+
+Instalación del servicio: `npm ci --omit=dev`. Inicio: `node server.js`. También se incluye un `Dockerfile`; los `.env` y certificados locales se excluyen del contexto de construcción. Monta los certificados como secretos en ejecución cuando sean necesarios.
+
+El proveedor debe terminar HTTPS, redirigir HTTP a HTTPS y **sobrescribir** `X-Forwarded-Proto` con el protocolo real. Mantén el puerto de Node privado, accesible solo desde ese proxy: no basta con enviar una cabecera para asegurar el transporte. El servidor rechaza nombres de host ajenos, tráfico sin indicación HTTPS en modo público y escrituras de otros orígenes. `GET /health` es un indicador público de que el proceso está activo y no expone datos del negocio.
+
+El navegador pide usuario y contraseña mediante autenticación HTTP Basic sobre HTTPS. Esta versión utiliza una cuenta compartida del negocio; no incorpora perfiles ni permisos individuales. Si necesitas volver a autenticar una PWA abierta, el enlace **Volver a iniciar sesión** abre `/login` en otra pestaña y conserva el carrito original. Vuelve después y pulsa **Actualizar datos**. Para cambiar la contraseña modifica el secreto del alojamiento y reinicia el servicio.
+
+Los archivos estáticos de la interfaz, manifiesto e iconos son públicos; el acceso a los datos de PostgreSQL exige autenticación en modo público. No introduzcas datos reales del negocio ni credenciales en `state.js` o los demás archivos estáticos.
 
 ## Pruebas
 
@@ -87,4 +125,4 @@ $env:PG_BIN = 'C:/Program Files/PostgreSQL/17/bin'
 npm test
 ```
 
-La conexión real de Supabase se comprueba al iniciar con tus credenciales; las pruebas automáticas no necesitan una cuenta remota.
+La conexión real de Supabase se comprueba al iniciar con tus credenciales; las pruebas automáticas no necesitan una cuenta remota. Cubren navegación, formularios, instalación, aislamiento de la caché, autenticación pública y los flujos existentes del POS. La instalación y autenticación en dispositivos Android/iPhone reales deben comprobarse con la dirección HTTPS definitiva.
