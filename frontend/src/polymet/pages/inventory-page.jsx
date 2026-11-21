@@ -1,5 +1,5 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
-import { usePosStore } from "../data/pos-store.jsx";
+import { usePosStore } from "../../data/pos-context.jsx";
 import { PageHeader } from "../components/page-header.jsx";
 import { Button } from "../../components/ui/button.jsx";
 import { Link } from "react-router-dom";
@@ -14,10 +14,10 @@ import { ConfirmDialog } from "../components/confirm-dialog.jsx";
 import { Fragment } from "react";
 import { useState } from "react";
 function InventoryPage() {
-  const { products, formulas, settings, saveProduct, deleteProduct } =
+  const { products, formulas, settings, saveProduct, deleteProduct, runtime } =
     usePosStore();
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [editing, setEditing] = useState(null);
+  const [draft, setDraft] = useState(null);
   const [toDelete, setToDelete] = useState(null);
   const totalUnits = products.reduce((s, p) => s + p.stock, 0);
   const stockValue = products.reduce((s, p) => s + p.stock * p.cost, 0);
@@ -26,8 +26,14 @@ function InventoryPage() {
     .filter((p) => p.stock <= p.minStock)
     .sort((a, b) => a.stock / (a.minStock || 1) - b.stock / (b.minStock || 1));
   const outCount = products.filter((p) => p.stock === 0).length;
-  const openNew = () => {
-    setEditing(null);
+  const openProduct = (product = null) => {
+    setDraft({
+      product,
+      id: product?.id ?? crypto.randomUUID(),
+      databaseId: product?.databaseId ?? runtime?.databaseId,
+      version: product?.version,
+      existingCodes: products.map((p) => p.code),
+    });
     setSheetOpen(true);
   };
   return (
@@ -49,7 +55,7 @@ function InventoryPage() {
             </Button>
             <Button
               className="h-10 rounded-full px-5 shadow-md shadow-primary/20"
-              onClick={openNew}
+              onClick={() => openProduct()}
             >
               <Plus />
               {"Nuevo artículo"}
@@ -95,10 +101,7 @@ function InventoryPage() {
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
         <InventoryTable
           products={products}
-          onEdit={(p) => {
-            setEditing(p);
-            setSheetOpen(true);
-          }}
+          onEdit={openProduct}
           onDelete={setToDelete}
         />
         <LowStockList products={lowStock} />
@@ -106,15 +109,17 @@ function InventoryPage() {
       <ProductFormSheet
         open={sheetOpen}
         onOpenChange={setSheetOpen}
-        product={editing}
+        draft={draft}
         formulas={formulas}
         rounding={settings.rounding}
-        existingCodes={products.map((p) => p.code)}
-        onSave={(p) => {
-          saveProduct(p);
-          ue.success(editing ? "Artículo actualizado" : "Artículo creado", {
-            description: `${p.code} · ${p.name}`,
-          });
+        onSave={async (p) => {
+          await saveProduct(p);
+          ue.success(
+            draft.product ? "Artículo actualizado" : "Artículo creado",
+            {
+              description: `${p.code} · ${p.name}`,
+            },
+          );
           setSheetOpen(false);
         }}
       />
@@ -123,12 +128,11 @@ function InventoryPage() {
         onOpenChange={(o) => !o && setToDelete(null)}
         title="¿Eliminar artículo?"
         description={`Se quitará ${toDelete?.name ?? ""} del catálogo. Las facturas anteriores no se modifican.`}
-        onConfirm={() => {
+        onConfirm={async () => {
           if (toDelete) {
-            deleteProduct(toDelete.id);
+            await deleteProduct(toDelete);
             ue("Artículo eliminado");
           }
-          setToDelete(null);
         }}
       />
     </div>

@@ -13,7 +13,7 @@ import { Select2 } from "../../components/ui/select.jsx";
 import { SelectTrigger2 } from "../../components/ui/select.jsx";
 import { SelectValue2 } from "../../components/ui/select.jsx";
 import { SelectContent2 } from "../../components/ui/select.jsx";
-import { CATEGORIES } from "../data/pos-data.js";
+import { CATEGORIES } from "../../data/catalog-options.js";
 import { SelectItem2 } from "../../components/ui/select.jsx";
 import { formulaSummary } from "../lib/pricing.js";
 import { Button } from "../../components/ui/button.jsx";
@@ -23,8 +23,7 @@ import { marginPct } from "../lib/pricing.js";
 import { formatMoney } from "../lib/format.js";
 import { Switch2 } from "../../components/ui/switch.jsx";
 import { SheetFooter } from "../../components/ui/sheet.jsx";
-import { useEffect } from "react";
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 var EMPTY = {
   code: "",
   name: "",
@@ -64,45 +63,68 @@ function fromProduct(p) {
     },
   };
 }
+function validMoney(value) {
+  return (
+    /^(?:\d+|\d*\.\d{1,2})$/.test(value) && Number(value) <= 999999999999.99
+  );
+}
+function validQuantity(value) {
+  return /^\d*$/.test(value) && Number(value) <= 2147483647;
+}
 function ProductFormSheet({
   open,
   onOpenChange,
-  product,
+  draft,
   formulas,
   rounding,
-  existingCodes,
   onSave,
 }) {
+  const product = draft?.product;
   const [form, setForm] = useState(EMPTY);
   const [formulaId, setFormulaId] = useState(formulas[0]?.id ?? "");
   const [submitted, setSubmitted] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState(null);
+  const [retryPayload, setRetryPayload] = useState(null);
+  const inFlight = useRef(false);
+  const fields = useRef(null);
+  const formId = useId();
+  const fieldId = (key) => `${formId}-${key}`;
+  const locked = sending || retryPayload !== null;
   useEffect(() => {
     if (open) {
       setForm(product ? fromProduct(product) : EMPTY);
       setSubmitted(false);
+      setError(null);
+      setRetryPayload(null);
     }
-  }, [open, product]);
+  }, [open, draft, product]);
   const set = (key, value) =>
     setForm((f) => ({
       ...f,
       [key]: value,
     }));
-  const cost = Number(form.cost) || 0;
-  const formula = formulas.find((f) => f.id === formulaId);
-  const suggested = pricesFromFormula(cost, formula, rounding);
-  const applyFormula = () =>
+  const cost = validMoney(form.cost) ? Number(form.cost) : 0;
+  const formula = formulas.find((f) => f.id === formulaId) ?? formulas[0];
+  const suggested =
+    formula && cost > 0 ? pricesFromFormula(cost, formula, rounding) : null;
+  const applyFormula = () => {
+    if (!suggested) return;
     set("prices", {
       p1: String(suggested.p1),
       p2: String(suggested.p2),
       p3: String(suggested.p3),
     });
+  };
   const codeTaken =
     form.code.trim() !== "" &&
-    existingCodes.some(
+    draft?.existingCodes.some(
       (c) =>
         c.toLowerCase() === form.code.trim().toLowerCase() &&
         c.toLowerCase() !== product?.code.toLowerCase(),
     );
+  const moneyError = "Usa un importe válido con hasta dos decimales";
+  const quantityError = "Usa un entero entre 0 y 2147483647";
   const errors = {
     code: !form.code.trim()
       ? "Requerido"
@@ -110,35 +132,81 @@ function ProductFormSheet({
         ? "Ese código ya existe"
         : undefined,
     name: !form.name.trim() ? "Requerido" : undefined,
-    cost: cost <= 0 ? "Indica el costo" : undefined,
-    p1: !(Number(form.prices.p1) > 0) ? "Indica el precio" : undefined,
+    cost:
+      form.cost && !validMoney(form.cost)
+        ? moneyError
+        : cost <= 0
+          ? "Indica el costo"
+          : undefined,
+    stock: validQuantity(form.stock) ? undefined : quantityError,
+    minStock: validQuantity(form.minStock) ? undefined : quantityError,
+    p1:
+      form.prices.p1 && !validMoney(form.prices.p1)
+        ? moneyError
+        : Number(form.prices.p1) <= 0
+          ? "Indica el precio"
+          : undefined,
+    p2: form.prices.p2 && !validMoney(form.prices.p2) ? moneyError : undefined,
+    p3: form.prices.p3 && !validMoney(form.prices.p3) ? moneyError : undefined,
   };
   const valid = !Object.values(errors).some(Boolean);
-  const handleSubmit = () => {
-    setSubmitted(true);
-    if (!valid) return;
-    const p1 = Number(form.prices.p1);
-    onSave({
-      id: product?.id ?? `p-${Date.now().toString(36)}`,
-      code: form.code.trim().toUpperCase(),
-      name: form.name.trim(),
-      brand: form.brand.trim() || "—",
-      category: form.category,
-      location: form.location.trim().toUpperCase() || "—",
-      cost,
-      stock: Math.max(0, Number(form.stock) || 0),
-      minStock: Math.max(0, Number(form.minStock) || 0),
-      taxable: form.taxable,
-      prices: {
-        p1,
-        p2: Number(form.prices.p2) || p1,
-        p3: Number(form.prices.p3) || Number(form.prices.p2) || p1,
-      },
-    });
+  const handleSubmit = async () => {
+    if (inFlight.current || !draft) return;
+    setError(null);
+    let payload = retryPayload;
+    if (!payload) {
+      setSubmitted(true);
+      const badInput = Array.from(
+        fields.current.querySelectorAll('input[type="number"]'),
+      ).find((input) => input.validity.badInput);
+      if (badInput) {
+        setError("Revisa los campos numéricos del artículo.");
+        badInput.focus();
+        return;
+      }
+      if (!valid) return;
+      const p1 = Number(form.prices.p1);
+      const p2 = form.prices.p2 === "" ? p1 : Number(form.prices.p2);
+      const p3 = form.prices.p3 === "" ? p2 : Number(form.prices.p3);
+      payload = {
+        id: draft.id,
+        databaseId: draft.databaseId,
+        ...(draft.version === undefined ? {} : { version: draft.version }),
+        code: form.code.trim().toUpperCase(),
+        name: form.name.trim(),
+        brand: form.brand.trim() || "—",
+        category: form.category,
+        location: form.location.trim().toUpperCase() || "—",
+        cost,
+        stock: Number(form.stock),
+        minStock: Number(form.minStock),
+        taxable: form.taxable,
+        prices: { p1, p2, p3 },
+      };
+    }
+    inFlight.current = true;
+    setSending(true);
+    try {
+      await onSave(payload);
+    } catch (cause) {
+      setError(cause?.message || "No se pudo guardar el artículo.");
+      if (cause?.uncertain) setRetryPayload(payload);
+    } finally {
+      inFlight.current = false;
+      setSending(false);
+    }
   };
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-lg">
+    <Sheet
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!inFlight.current) onOpenChange(nextOpen);
+      }}
+    >
+      <SheetContent
+        className="flex w-full flex-col gap-0 p-0 sm:max-w-lg"
+        aria-busy={sending}
+      >
         <SheetHeader className="border-b border-border px-6 py-5 text-left">
           <SheetTitle>
             {product ? "Editar artículo" : "Nuevo artículo"}
@@ -147,10 +215,20 @@ function ProductFormSheet({
             {"Los campos con precio se pueden calcular solos con una fórmula."}
           </SheetDescription>
         </SheetHeader>
-        <div className="flex-1 space-y-6 overflow-y-auto px-6 py-5">
+        <div
+          ref={fields}
+          className="flex-1 space-y-6 overflow-y-auto px-6 py-5"
+        >
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Código" error={submitted ? errors.code : undefined}>
+            <Field
+              label="Código"
+              htmlFor={fieldId("code")}
+              error={submitted ? errors.code : undefined}
+            >
               <Input
+                id={fieldId("code")}
+                disabled={locked}
+                aria-invalid={submitted && !!errors.code}
                 value={form.code}
                 onChange={(e) => set("code", e.target.value)}
                 placeholder="Ej. BUJ-C7HSA"
@@ -158,8 +236,10 @@ function ProductFormSheet({
                 autoFocus={true}
               />
             </Field>
-            <Field label="Marca">
+            <Field label="Marca" htmlFor={fieldId("brand")}>
               <Input
+                id={fieldId("brand")}
+                disabled={locked}
                 value={form.brand}
                 onChange={(e) => set("brand", e.target.value)}
                 placeholder="Ej. NGK"
@@ -168,22 +248,27 @@ function ProductFormSheet({
             </Field>
             <Field
               label="Descripción"
+              htmlFor={fieldId("name")}
               className="col-span-2"
               error={submitted ? errors.name : undefined}
             >
               <Input
+                id={fieldId("name")}
+                disabled={locked}
+                aria-invalid={submitted && !!errors.name}
                 value={form.name}
                 onChange={(e) => set("name", e.target.value)}
                 placeholder="Ej. Bujía NGK C7HSA"
                 className={inputClass}
               />
             </Field>
-            <Field label="Categoría">
+            <Field label="Categoría" htmlFor={fieldId("category")}>
               <Select2
                 value={form.category}
                 onValueChange={(v) => set("category", v)}
+                disabled={locked}
               >
-                <SelectTrigger2 className={inputClass}>
+                <SelectTrigger2 id={fieldId("category")} className={inputClass}>
                   <SelectValue2 />
                 </SelectTrigger2>
                 <SelectContent2>
@@ -195,8 +280,14 @@ function ProductFormSheet({
                 </SelectContent2>
               </Select2>
             </Field>
-            <Field label="Ubicación" hint="Pasillo / tramo">
+            <Field
+              label="Ubicación"
+              htmlFor={fieldId("location")}
+              hint="Pasillo / tramo"
+            >
               <Input
+                id={fieldId("location")}
+                disabled={locked}
                 value={form.location}
                 onChange={(e) => set("location", e.target.value)}
                 placeholder="Ej. A-01"
@@ -207,9 +298,13 @@ function ProductFormSheet({
           <div className="grid grid-cols-3 gap-4 rounded-xl bg-muted/60 p-4">
             <Field
               label="Costo base RD$"
+              htmlFor={fieldId("cost")}
               error={submitted ? errors.cost : undefined}
             >
               <Input
+                id={fieldId("cost")}
+                disabled={locked}
+                aria-invalid={submitted && !!errors.cost}
                 type="number"
                 inputMode="decimal"
                 value={form.cost}
@@ -218,8 +313,15 @@ function ProductFormSheet({
                 className={inputClass}
               />
             </Field>
-            <Field label="Existencia">
+            <Field
+              label="Existencia"
+              htmlFor={fieldId("stock")}
+              error={submitted ? errors.stock : undefined}
+            >
               <Input
+                id={fieldId("stock")}
+                disabled={locked}
+                aria-invalid={submitted && !!errors.stock}
                 type="number"
                 value={form.stock}
                 onChange={(e) => set("stock", e.target.value)}
@@ -227,8 +329,16 @@ function ProductFormSheet({
                 className={inputClass}
               />
             </Field>
-            <Field label="Mínimo" hint="Avisa al bajar">
+            <Field
+              label="Mínimo"
+              htmlFor={fieldId("minStock")}
+              hint="Avisa al bajar"
+              error={submitted ? errors.minStock : undefined}
+            >
               <Input
+                id={fieldId("minStock")}
+                disabled={locked}
+                aria-invalid={submitted && !!errors.minStock}
                 type="number"
                 value={form.minStock}
                 onChange={(e) => set("minStock", e.target.value)}
@@ -238,9 +348,20 @@ function ProductFormSheet({
           </div>
           <div className="space-y-4">
             <div className="flex flex-wrap items-end gap-2">
-              <Field label="Fórmula de precios" className="min-w-0 flex-1">
-                <Select2 value={formulaId} onValueChange={setFormulaId}>
-                  <SelectTrigger2 className={inputClass}>
+              <Field
+                label="Fórmula de precios"
+                htmlFor={fieldId("formula")}
+                className="min-w-0 flex-1"
+              >
+                <Select2
+                  value={formula?.id ?? ""}
+                  onValueChange={setFormulaId}
+                  disabled={locked || !formula}
+                >
+                  <SelectTrigger2
+                    id={fieldId("formula")}
+                    className={inputClass}
+                  >
                     <SelectValue2 />
                   </SelectTrigger2>
                   <SelectContent2>
@@ -260,7 +381,7 @@ function ProductFormSheet({
                 variant="outline"
                 className="h-10 rounded-xl bg-card"
                 onClick={applyFormula}
-                disabled={cost <= 0}
+                disabled={locked || !suggested}
               >
                 <Sparkles />
                 {"Calcular"}
@@ -268,12 +389,15 @@ function ProductFormSheet({
             </div>
             <div className="grid grid-cols-3 gap-3">
               {PRICE_KEYS.map((k) => {
-                const price = Number(form.prices[k]) || 0;
+                const price = validMoney(form.prices[k])
+                  ? Number(form.prices[k])
+                  : 0;
                 const m = marginPct(price, cost);
                 return (
                   <Field
                     label={LEVEL_LABEL2[k]}
-                    error={submitted && k === "p1" ? errors.p1 : undefined}
+                    htmlFor={fieldId(k)}
+                    error={submitted ? errors[k] : undefined}
                     hint={
                       price > 0 && cost > 0 ? (
                         <span
@@ -283,13 +407,16 @@ function ProductFormSheet({
                           {m.toFixed(1)}
                           {"%"}
                         </span>
-                      ) : cost > 0 ? (
+                      ) : suggested ? (
                         `Sugerido ${formatMoney(suggested[k])}`
                       ) : undefined
                     }
                     key={k}
                   >
                     <Input
+                      id={fieldId(k)}
+                      disabled={locked}
+                      aria-invalid={submitted && !!errors[k]}
                       type="number"
                       inputMode="decimal"
                       value={form.prices[k]}
@@ -299,7 +426,7 @@ function ProductFormSheet({
                           [k]: e.target.value,
                         })
                       }
-                      placeholder={cost > 0 ? String(suggested[k]) : "0.00"}
+                      placeholder={suggested ? String(suggested[k]) : "0.00"}
                       className={inputClass}
                     />
                   </Field>
@@ -315,24 +442,47 @@ function ProductFormSheet({
               </p>
             </div>
             <Switch2
+              aria-label="Aplica ITBIS"
+              disabled={locked}
               checked={form.taxable}
               onCheckedChange={(v) => set("taxable", v)}
             />
           </label>
         </div>
+        {error && (
+          <p role="alert" className="px-6 pb-2 text-sm text-primary">
+            {error}
+          </p>
+        )}
         <SheetFooter className="gap-2 border-t border-border px-6 py-4 sm:space-x-0">
           <Button
             variant="outline"
             className="h-11 rounded-xl bg-card"
-            onClick={() => (product ? onOpenChange(false) : setForm(EMPTY))}
+            disabled={sending}
+            onClick={() => {
+              if (inFlight.current) return;
+              if (product || retryPayload) onOpenChange(false);
+              else {
+                setForm(EMPTY);
+                setSubmitted(false);
+                setError(null);
+              }
+            }}
           >
-            {product ? "Cancelar" : "Limpiar"}
+            {retryPayload ? "Cerrar" : product ? "Cancelar" : "Limpiar"}
           </Button>
           <Button
             className="h-11 flex-1 rounded-xl font-semibold"
+            aria-disabled={sending || undefined}
             onClick={handleSubmit}
           >
-            {product ? "Guardar cambios" : "Guardar artículo"}
+            {sending
+              ? "Guardando…"
+              : retryPayload
+                ? "Reintentar guardado"
+                : product
+                  ? "Guardar cambios"
+                  : "Guardar artículo"}
           </Button>
         </SheetFooter>
       </SheetContent>
