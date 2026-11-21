@@ -1,0 +1,1771 @@
+{
+  "referenceVersion": "99fdb61658b9417c680d007618ae1c23bf135b1e",
+  "fixedTime": "2026-11-21T20:00:00Z",
+  "clockStrategy": "Fixed Date constructor for fixture business dates; real Date.now for JavaScript animations",
+  "checkedAt": "2026-11-21T21:36:49.537Z",
+  "caseCount": 72,
+  "textMatches": 72,
+  "measuredGeometryMatches": 70,
+  "identicalPngPairs": 53,
+  "maximumChangedPercentWhereDimensionsMatch": 0.36,
+  "cases": [
+    {
+      "route": "/",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 1924164,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": true,
+        "local": true
+      }
+    },
+    {
+      "route": "/ventas",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 903630,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/inventario",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 1412970,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/compras",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 935220,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/caja",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 717210,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/clientes",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 367770,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/suplidores",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 996213,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": true,
+        "local": true
+      }
+    },
+    {
+      "route": "/reportes",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 1278,
+        "totalPixels": 2427022,
+        "differenceBounds": {
+          "minX": 49,
+          "minY": 2422,
+          "maxX": 127,
+          "maxY": 2599
+        },
+        "changedPercent": 0.05,
+        "meanMaxChannelDifference": 0.058
+      },
+      "overflow": {
+        "reference": true,
+        "local": true
+      }
+    },
+    {
+      "route": "/cuentas-por-cobrar",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 737880,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/cuentas-por-pagar",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 497640,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/configuracion",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 329160,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/ayuda",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 659880,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 1924164,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": true,
+        "local": true
+      }
+    },
+    {
+      "route": "/ventas",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 903630,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/inventario",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 1412970,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/compras",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 935220,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/caja",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 717210,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/clientes",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 367770,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/suplidores",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 996213,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": true,
+        "local": true
+      }
+    },
+    {
+      "route": "/reportes",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 1294,
+        "totalPixels": 2427022,
+        "differenceBounds": {
+          "minX": 49,
+          "minY": 2422,
+          "maxX": 127,
+          "maxY": 2599
+        },
+        "changedPercent": 0.05,
+        "meanMaxChannelDifference": 0.059
+      },
+      "overflow": {
+        "reference": true,
+        "local": true
+      }
+    },
+    {
+      "route": "/cuentas-por-cobrar",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 737880,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/cuentas-por-pagar",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 497640,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/configuracion",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 329160,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/ayuda",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 659880,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 1763328,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/ventas",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 1456896,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/inventario",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 2345472,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/compras",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 1437,
+        "totalPixels": 1321728,
+        "differenceBounds": {
+          "minX": 494,
+          "minY": 1523,
+          "maxX": 553,
+          "maxY": 1673
+        },
+        "changedPercent": 0.11,
+        "meanMaxChannelDifference": 0.13
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/caja",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 2616,
+        "totalPixels": 1220352,
+        "differenceBounds": {
+          "minX": 650,
+          "minY": 1257,
+          "maxX": 722,
+          "maxY": 1551
+        },
+        "changedPercent": 0.21,
+        "meanMaxChannelDifference": 0.255
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/clientes",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 786432,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/suplidores",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 1099008,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/reportes",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 1518,
+        "totalPixels": 2906880,
+        "differenceBounds": {
+          "minX": 57,
+          "minY": 2052,
+          "maxX": 742,
+          "maxY": 3668
+        },
+        "changedPercent": 0.05,
+        "meanMaxChannelDifference": 0.053
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/cuentas-por-cobrar",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 1277184,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/cuentas-por-pagar",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 804096,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/configuracion",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 786432,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/ayuda",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 1079808,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 1763328,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/ventas",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 1456896,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/inventario",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 2345472,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/compras",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 1527,
+        "totalPixels": 1321728,
+        "differenceBounds": {
+          "minX": 494,
+          "minY": 1523,
+          "maxX": 553,
+          "maxY": 1673
+        },
+        "changedPercent": 0.12,
+        "meanMaxChannelDifference": 0.126
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/caja",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 2885,
+        "totalPixels": 1220352,
+        "differenceBounds": {
+          "minX": 651,
+          "minY": 1253,
+          "maxX": 722,
+          "maxY": 1547
+        },
+        "changedPercent": 0.24,
+        "meanMaxChannelDifference": 0.229
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/clientes",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 786432,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/suplidores",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 1099008,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/reportes",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 1384,
+        "totalPixels": 2906880,
+        "differenceBounds": {
+          "minX": 57,
+          "minY": 2052,
+          "maxX": 742,
+          "maxY": 3668
+        },
+        "changedPercent": 0.05,
+        "meanMaxChannelDifference": 0.051
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/cuentas-por-cobrar",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 1277184,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/cuentas-por-pagar",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 804096,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/configuracion",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 786432,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/ayuda",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 1079808,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 1850400,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/ventas",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 1807200,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/inventario",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 3607200,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/compras",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": false,
+      "identicalPngBytes": false,
+      "pixels": {
+        "dimensionsMatch": false,
+        "referenceSize": [
+          1440,
+          1170
+        ],
+        "localSize": [
+          1440,
+          1173
+        ]
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/caja",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 2248,
+        "totalPixels": 1697760,
+        "differenceBounds": {
+          "minX": 1299,
+          "minY": 938,
+          "maxX": 1378,
+          "maxY": 1133
+        },
+        "changedPercent": 0.13,
+        "meanMaxChannelDifference": 0.141
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/clientes",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 1440000,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/suplidores",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 1540800,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/reportes",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 8693,
+        "totalPixels": 3615840,
+        "differenceBounds": {
+          "minX": 1078,
+          "minY": 1086,
+          "maxX": 1303,
+          "maxY": 2399
+        },
+        "changedPercent": 0.24,
+        "meanMaxChannelDifference": 0.26
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/cuentas-por-cobrar",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 6022,
+        "totalPixels": 1872000,
+        "differenceBounds": {
+          "minX": 820,
+          "minY": 520,
+          "maxX": 931,
+          "maxY": 1200
+        },
+        "changedPercent": 0.32,
+        "meanMaxChannelDifference": 0.433
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/cuentas-por-pagar",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 2011,
+        "totalPixels": 1440000,
+        "differenceBounds": {
+          "minX": 784,
+          "minY": 520,
+          "maxX": 895,
+          "maxY": 712
+        },
+        "changedPercent": 0.14,
+        "meanMaxChannelDifference": 0.185
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/configuracion",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 1440000,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/ayuda",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 1440000,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 1850400,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/ventas",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 1807200,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/inventario",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 3607200,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/compras",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": false,
+      "identicalPngBytes": false,
+      "pixels": {
+        "dimensionsMatch": false,
+        "referenceSize": [
+          1440,
+          1170
+        ],
+        "localSize": [
+          1440,
+          1173
+        ]
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/caja",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 2247,
+        "totalPixels": 1697760,
+        "differenceBounds": {
+          "minX": 1292,
+          "minY": 934,
+          "maxX": 1384,
+          "maxY": 1130
+        },
+        "changedPercent": 0.13,
+        "meanMaxChannelDifference": 0.119
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/clientes",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 1440000,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/suplidores",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 1540800,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/reportes",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 7579,
+        "totalPixels": 3615840,
+        "differenceBounds": {
+          "minX": 1078,
+          "minY": 1085,
+          "maxX": 1302,
+          "maxY": 2399
+        },
+        "changedPercent": 0.21,
+        "meanMaxChannelDifference": 0.181
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/cuentas-por-cobrar",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 6771,
+        "totalPixels": 1872000,
+        "differenceBounds": {
+          "minX": 820,
+          "minY": 519,
+          "maxX": 931,
+          "maxY": 1201
+        },
+        "changedPercent": 0.36,
+        "meanMaxChannelDifference": 0.457
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/cuentas-por-pagar",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 2241,
+        "totalPixels": 1440000,
+        "differenceBounds": {
+          "minX": 784,
+          "minY": 519,
+          "maxX": 895,
+          "maxY": 713
+        },
+        "changedPercent": 0.16,
+        "meanMaxChannelDifference": 0.194
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/configuracion",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 1440000,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    },
+    {
+      "route": "/ayuda",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "measuredGeometryMatches": true,
+      "identicalPngBytes": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "totalPixels": 1440000,
+        "differenceBounds": null,
+        "changedPercent": 0,
+        "meanMaxChannelDifference": 0
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      }
+    }
+  ],
+  "runtimeChartCheck": {
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "dateMocked": false,
+    "barWidth": 44,
+    "firstBarX": 315.82501220703125,
+    "lastNonzeroBarX": 898.3250122070312,
+    "referenceAndLocalGeometryMatch": true,
+    "identicalViewportPngBytes": true,
+    "screenshots": [
+      "reference/1440-light-panel-runtime-reference.png",
+      "reference/1440-light-panel-runtime-local.png"
+    ]
+  }
+}

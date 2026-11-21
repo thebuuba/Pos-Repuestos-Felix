@@ -43,6 +43,10 @@ Los controles se adaptan a pantallas pequeñas, los menús se abren al tocar y l
 
 El manifiesto, los iconos y la implementación siguen las [guías de instalación de PWA](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable) y de [service workers](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API/Using_Service_Workers). En desarrollo, `http://127.0.0.1` también permite probar la PWA; abrir `index.html` directamente no ejecuta el servidor.
 
+## Diseño compartido de Polymet (rama de trabajo)
+
+La referencia visual aprobada, reglas y procedencia están en [la documentación del diseño](docs/design/recuperacion-polymet.md). `pnpm preview:design` compila y sirve las doce pantallas recuperadas en `http://127.0.0.1:3001`, con datos demostrativos en memoria y sin conexión a la base real. `pnpm test:design` comprueba la navegación con Edge instalado. Esta vista es una etapa de integración: todavía no reemplaza el POS operativo ni incluye la aplicación Windows o sincronización offline.
+
 ## Instalar
 
 Necesitas Node.js 24.15 o posterior dentro de la rama 24 (recomendado), Node.js 22.22.2 o posterior dentro de la rama 22, o Node.js 26 o posterior; además de PostgreSQL local o un proyecto Supabase. Se verificó con Node.js 24.16 y PostgreSQL 17.

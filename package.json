@@ -16,14 +16,43 @@
     "start:supabase": "node --env-file=.env.supabase src/server.js",
     "dev:worker": "wrangler dev --local-protocol https",
     "build:worker": "wrangler deploy --dry-run --outdir dist/worker",
+    "build:design": "node scripts/build-design.mjs",
+    "preview:design": "node scripts/serve-design.mjs",
+    "test:design": "node --test tests/design-preview.test.js",
     "deploy:worker": "node scripts/deploy-worker.mjs",
     "test": "node --test tests/*.test.js"
   },
   "dependencies": {
-    "pg": "^8.23.1"
+    "@fontsource-variable/inter": "5.3.0",
+    "@radix-ui/react-accordion": "1.3.1",
+    "@radix-ui/react-alert-dialog": "1.2.1",
+    "@radix-ui/react-avatar": "1.3.1",
+    "@radix-ui/react-dialog": "1.3.1",
+    "@radix-ui/react-icons": "1.3.2",
+    "@radix-ui/react-label": "2.1.17",
+    "@radix-ui/react-select": "2.4.1",
+    "@radix-ui/react-slot": "1.5.0",
+    "@radix-ui/react-switch": "1.4.1",
+    "@radix-ui/react-tabs": "1.2.1",
+    "@radix-ui/react-tooltip": "1.4.1",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "lucide-react": "0.507.0",
+    "next-themes": "0.3.0",
+    "pg": "^8.23.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-router-dom": "6.30.6",
+    "recharts": "2.15.4",
+    "sonner": "1.7.4",
+    "tailwind-merge": "2.6.2"
   },
   "devDependencies": {
+    "@babel/core": "8.1.3",
+    "esbuild": "0.28.2",
     "jsdom": "^31.0.1",
+    "playwright-core": "1.65.1",
+    "prettier": "3.10.1",
     "wrangler": "4.166.0"
   }
 }

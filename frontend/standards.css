@@ -1,0 +1,6 @@
+/* Polymet's published document omits a doctype and renders in quirks mode.
+ * Explicit label boxes preserve its measured form spacing with a valid HTML5
+ * doctype in browsers and WebView2. Keep this outside the recovered CSS. */
+label {
+  display: block;
+}

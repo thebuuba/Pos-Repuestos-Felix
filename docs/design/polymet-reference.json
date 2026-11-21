@@ -1,0 +1,32 @@
+{
+  "projectId": "daf93922-3928-485b-9fd0-701458f9a6ad",
+  "preview": "https://dev-untitled-pro-bq7q4q8y.polymet.app/",
+  "canvas": "https://polymet.ai/canvas/daf93922-3928-485b-9fd0-701458f9a6ad",
+  "retrievedOn": "2026-11-21",
+  "version": "99fdb61658b9417c680d007618ae1c23bf135b1e",
+  "bundleSha256": "e3336f21633d743825d9f4bb1d42fc11ec4796fc11f6d830b7476dfc7a9404a5",
+  "sourceKind": "Published compiled JavaScript with source file boundaries; recovered JSX, not the original TypeScript export",
+  "designSystem": "design-system/repuestos-felix/MASTER.md",
+  "routes": [
+    { "path": "/", "label": "Panel", "component": "DashboardPage" },
+    { "path": "/ventas", "label": "Punto de venta", "component": "PointOfSalePage" },
+    { "path": "/inventario", "label": "Inventario", "component": "InventoryPage" },
+    { "path": "/compras", "label": "Compras", "component": "PurchasesPage" },
+    { "path": "/caja", "label": "Caja", "component": "CashRegisterPage" },
+    { "path": "/clientes", "label": "Clientes", "component": "CustomersPage" },
+    { "path": "/suplidores", "label": "Suplidores", "component": "SuppliersPage" },
+    { "path": "/reportes", "label": "Reportes", "component": "ReportsPage" },
+    { "path": "/cuentas-por-cobrar", "label": "Cuentas x cobrar", "component": "ReceivablesPage" },
+    { "path": "/cuentas-por-pagar", "label": "Cuentas x pagar", "component": "PayablesPage" },
+    { "path": "/configuracion", "label": "Configuración", "component": "SettingsPage" },
+    { "path": "/ayuda", "label": "Centro de ayuda", "component": "HelpPage" }
+  ],
+  "referenceData": "Demonstration only; must never seed the business database",
+  "platformsRequired": ["web", "pwa", "windows"],
+  "offlineRequired": "One Windows computer with durable local storage and idempotent synchronization",
+  "visualVerificationViewports": [
+    { "width": 390, "height": 844 },
+    { "width": 768, "height": 1024 },
+    { "width": 1440, "height": 1000 }
+  ]
+}
