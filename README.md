@@ -19,8 +19,10 @@ El manifiesto, los iconos y la implementación siguen las [guías de instalació
 Necesitas Node.js 24.15 o posterior dentro de la rama 24 (recomendado), Node.js 22.22.2 o posterior dentro de la rama 22, o Node.js 26 o posterior; además de PostgreSQL local o un proyecto Supabase. Se verificó con Node.js 24.16 y PostgreSQL 17.
 
 ```powershell
-npm install
+pnpm install --frozen-lockfile
 ```
+
+El proyecto usa **pnpm 10.8.0**, fijado en `packageManager`, y `pnpm-lock.yaml` para reproducir las versiones instaladas. Si tu equipo tiene Corepack pero no el comando `pnpm`, puedes ejecutar `corepack pnpm` en lugar de `pnpm`.
 
 ## Usar PostgreSQL local
 
@@ -39,12 +41,14 @@ npm install
 3. Inicia:
 
    ```powershell
-   npm run start:local
+   pnpm start:local
    ```
 
 4. Abre **http://127.0.0.1:3000**. El servidor crea su esquema y tabla al iniciar. Una base nueva contiene los dos productos de ejemplo y los contactos del HTML original.
 
 ## Usar Supabase
+
+El CLI se configura de forma independiente del gestor de paquetes del proyecto. Para cambiar su cuenta usa `supabase logout` y después `supabase login --name "Repuestos Felix"`; completa el acceso en el navegador con la cuenta correcta. Comprueba los proyectos disponibles con `supabase projects list` y vincula el proyecto elegido con `supabase link --project-ref ID_DEL_PROYECTO`. La carpeta `supabase/.temp` es local y está excluida de Git. El vínculo del CLI no configura automáticamente `DATABASE_URL` del servidor.
 
 1. En tu proyecto Supabase abre **Connect** y copia la conexión PostgreSQL. Para este servidor persistente usa **Session pooler**, compatible con redes IPv4, o conexión directa si tu red permite el acceso a su dirección IPv6.
 2. Prepara el archivo:
@@ -59,7 +63,7 @@ npm install
 6. Ejecuta:
 
    ```powershell
-   npm run start:supabase
+   pnpm start:supabase
    ```
 
 Abre la misma dirección local. El indicador superior muestra qué destino está activo. La tabla se crea en el esquema privado `pos_privado`, fuera de `public`, y el navegador accede únicamente a la API Node.js.
@@ -72,7 +76,7 @@ Detén el servidor con `Ctrl+C` e inicia el otro comando. **Local y Supabase man
 
 Para copiar datos entre ellas: exporta desde **Configuración → Copia de seguridad**, cambia el destino del servidor y usa **Restaurar copia**. La restauración pide confirmación y reemplaza los datos de la base seleccionada. También acepta el JSON exportado desde el HTML original con Firebase. La migración no consulta ni modifica Firebase automáticamente.
 
-`npm start` permite usar un archivo `.env` en lugar de los dos perfiles anteriores. Las variables ya presentes en el entorno tienen prioridad sobre el archivo seleccionado; evita dejar `DATABASE_URL` de otro destino definida en la terminal.
+`pnpm start` permite usar un archivo `.env` en lugar de los dos perfiles anteriores. Las variables ya presentes en el entorno tienen prioridad sobre el archivo seleccionado; evita dejar `DATABASE_URL` de otro destino definida en la terminal.
 
 ## Guardado y alcance
 
@@ -104,7 +108,7 @@ En el panel de variables privadas del alojamiento configura:
 | `APP_USERNAME` | Usuario de acceso, por ejemplo `admin` |
 | `APP_PASSWORD` | Contraseña larga y única, de al menos 16 caracteres |
 
-Instalación del servicio: `npm ci --omit=dev`. Inicio: `node server.js`. También se incluye un `Dockerfile`; los `.env` y certificados locales se excluyen del contexto de construcción. Monta los certificados como secretos en ejecución cuando sean necesarios.
+Instalación del servicio: `pnpm install --prod --frozen-lockfile`. Inicio: `node server.js`. Usa pnpm 10.8.0 en el alojamiento. También se incluye un `Dockerfile` que prepara esta versión; los `.env` y certificados locales se excluyen del contexto de construcción. Monta los certificados como secretos en ejecución cuando sean necesarios.
 
 El proveedor debe terminar HTTPS, redirigir HTTP a HTTPS y **sobrescribir** `X-Forwarded-Proto` con el protocolo real. Mantén el puerto de Node privado, accesible solo desde ese proxy: no basta con enviar una cabecera para asegurar el transporte. El servidor rechaza nombres de host ajenos, tráfico sin indicación HTTPS en modo público y escrituras de otros orígenes. `GET /health` es un indicador público de que el proceso está activo y no expone datos del negocio.
 
@@ -115,14 +119,14 @@ Los archivos estáticos de la interfaz, manifiesto e iconos son públicos; el ac
 ## Pruebas
 
 ```powershell
-npm test
+pnpm test
 ```
 
 Las pruebas crean un clúster PostgreSQL temporal, comprueban la API con conexiones reales y los flujos de la interfaz mediante un DOM con jsdom, y luego eliminan su clúster. Nunca usan `.env.local` ni `.env.supabase`. Necesitas `psql`, `initdb` y `pg_ctl` en el mismo directorio; si `psql` no está en PATH, indica su carpeta:
 
 ```powershell
 $env:PG_BIN = 'C:/Program Files/PostgreSQL/17/bin'
-npm test
+pnpm test
 ```
 
 La conexión real de Supabase se comprueba al iniciar con tus credenciales; las pruebas automáticas no necesitan una cuenta remota. Cubren navegación, formularios, instalación, aislamiento de la caché, autenticación pública y los flujos existentes del POS. La instalación y autenticación en dispositivos Android/iPhone reales deben comprobarse con la dirección HTTPS definitiva.
