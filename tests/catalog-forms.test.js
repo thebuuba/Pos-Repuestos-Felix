@@ -138,6 +138,41 @@ test(
 );
 
 test(
+  "confirming the last product deletion with the keyboard focuses Nuevo artículo",
+  { timeout: 30_000 },
+  async (t) => {
+    const { page, state } = await openInventory(t, [product]);
+    await page.route("**/api/productos/7", (route) => {
+      state.revision++;
+      state.state.productos = [];
+      return route.fulfill({ json: { ...state, result: { id: product.id } } });
+    });
+    const row = page.getByRole("row").filter({ hasText: product.codigo });
+    await row.getByRole("button", { name: "Eliminar", exact: true }).focus();
+    await page.keyboard.press("Enter");
+
+    const dialog = page.getByRole("alertdialog");
+    await dialog
+      .getByRole("button", { name: "Cancelar", exact: true })
+      .and(page.locator(":focus"))
+      .waitFor();
+    await page.keyboard.press("Tab");
+    await dialog
+      .getByRole("button", { name: "Eliminar", exact: true })
+      .and(page.locator(":focus"))
+      .waitFor();
+    await page.keyboard.press("Enter");
+
+    await dialog.waitFor({ state: "hidden" });
+    await row.waitFor({ state: "hidden" });
+    await page
+      .getByRole("button", { name: "Nuevo artículo", exact: true })
+      .and(page.locator(":focus"))
+      .waitFor({ timeout: 3_000 });
+  },
+);
+
+test(
   "a rejected save retains the draft and allows a correction",
   { timeout: 30_000 },
   async (t) => {

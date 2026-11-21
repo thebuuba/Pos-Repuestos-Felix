@@ -15,6 +15,7 @@ function ConfirmDialog({
   description,
   confirmLabel = "Eliminar",
   onConfirm,
+  fallbackFocusRef,
 }) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
@@ -58,9 +59,13 @@ function ConfirmDialog({
           opener.current = document.activeElement;
         }}
         onCloseAutoFocus={(event) => {
-          if (!opener.current?.isConnected) return;
+          const previous = opener.current;
+          const target = previous?.isConnected
+            ? previous
+            : fallbackFocusRef?.current;
+          if (!target?.isConnected) return;
           event.preventDefault();
-          opener.current.focus({ preventScroll: true });
+          target.focus({ preventScroll: target === previous });
         }}
       >
         <AlertDialogHeader>

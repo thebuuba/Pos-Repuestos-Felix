@@ -11,14 +11,14 @@ import { LowStockList } from "../components/low-stock-list.jsx";
 import { ProductFormSheet } from "../components/product-form-sheet.jsx";
 import { toast as ue } from "sonner";
 import { ConfirmDialog } from "../components/confirm-dialog.jsx";
-import { Fragment } from "react";
-import { useState } from "react";
+import { Fragment, useRef, useState } from "react";
 function InventoryPage() {
   const { products, formulas, settings, saveProduct, deleteProduct, runtime } =
     usePosStore();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [draft, setDraft] = useState(null);
   const [toDelete, setToDelete] = useState(null);
+  const newProductButtonRef = useRef(null);
   const totalUnits = products.reduce((s, p) => s + p.stock, 0);
   const stockValue = products.reduce((s, p) => s + p.stock * p.cost, 0);
   const retailValue = products.reduce((s, p) => s + p.stock * p.prices.p1, 0);
@@ -54,6 +54,7 @@ function InventoryPage() {
               </Link>
             </Button>
             <Button
+              ref={newProductButtonRef}
               className="h-10 rounded-full px-5 shadow-md shadow-primary/20"
               onClick={() => openProduct()}
             >
@@ -125,6 +126,7 @@ function InventoryPage() {
       />
       <ConfirmDialog
         open={Boolean(toDelete)}
+        fallbackFocusRef={newProductButtonRef}
         onOpenChange={(o) => !o && setToDelete(null)}
         title="¿Eliminar artículo?"
         description={`Se quitará ${toDelete?.name ?? ""} del catálogo. Las facturas anteriores no se modifican.`}
