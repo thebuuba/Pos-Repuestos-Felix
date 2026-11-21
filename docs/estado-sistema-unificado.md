@@ -9,7 +9,7 @@ Actualizado el 21 de noviembre de 2026. Trabajo en `feat/sistema-unificado-offli
 | PWA | La versión anterior instala/cachea la interfaz; el nuevo diseño ya tiene recursos locales | Conectar instalación, caché y actualizaciones al frontend compartido; probar instalada |
 | Offline y sincronización | Diario IndexedDB para una solicitud web incierta: persistencia antes del envío, reintento exacto y recuperación al recargar. Clientes visibles reciben cambios mediante consultas condicionales cada cinco segundos | Cola de operaciones confirmadas localmente en Windows, identidades compartidas, conciliación, descarga incremental, reinicios y conflictos. El diario web no constituye ese modo offline |
 | Windows | C++ Build Tools, Rust/Cargo 1.100.0 y dependencias de Tauri 2.12.7 preparados. Una comprobación Rust sobre una fixture aislada compila sin red; no se modificó PATH persistente | Proyecto de aplicación, SQLite, comandos transaccionales locales, instalador y verificación del ejecutable instalado |
-| Cloudflare | Compilación del Worker existente pasa; los recursos publicados siguen limitados al POS actual de `public/` | Cuenta autorizada, Hyperdrive/CA/origen reales y despliegue del sistema integrado; Vercel sigue aplazado |
+| Cloudflare | Compilación del Worker pasa. Sesión CLI de la cuenta configurada verificada el 21/11; el dominio indicado responde 404 en `/health` y `/api/state`. Se detectaron cambios concurrentes locales de cuenta/origen/Hyperdrive en `wrangler.jsonc`, preservados durante esta entrega | Validar y guardar esa configuración, comprobar Hyperdrive/CA y desplegar el sistema integrado tras preparar el negocio. El paquete del Worker aún usa `public/`; Vercel sigue aplazado |
 
 ## Referencia ejecutable
 

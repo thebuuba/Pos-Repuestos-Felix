@@ -32,9 +32,9 @@
 - Añadir únicamente assets públicos conocidos: `/assets/fonts/inter-latin-wght-normal.woff2` (`font/woff2`) y `/assets/Inter-OFL.txt`. Conservar los existentes.
 
 **Verificación:**
-- [ ] Escribir y ver fallar prueba: GET inicial con tag, 304 sin cuerpo con una consulta, edición devuelve nuevo tag/200 y conserva snapshot; restauración invalida generación/tag.
-- [ ] Probar auth antes del 304; fonts binarias/HEAD y navegación profunda protegida; rutas privadas permanecen 404.
-- [ ] Implementar y ejecutar pruebas focalizadas y compatibilidad HTTP/Worker con PostgreSQL temporal. No editar pruebas ajenas.
+- [x] Escribir y ver fallar prueba: GET inicial con tag, 304 sin cuerpo con una consulta, edición devuelve nuevo tag/200 y conserva snapshot; restauración invalida generación/tag.
+- [x] Probar auth antes del 304; fonts binarias/HEAD y navegación profunda protegida; rutas privadas permanecen 404.
+- [x] Implementar y ejecutar pruebas focalizadas y compatibilidad HTTP/Worker con PostgreSQL temporal. No editar pruebas ajenas.
 
 ### Task 2: cliente persistente, contexto y entrada operativa
 
@@ -54,9 +54,9 @@
 - `scripts/build-operational.mjs`: exportar `buildOperational(outdir)`, salida `index.html`, `app.js`, `styles.css`, `assets/fonts/inter-latin-wght-normal.woff2`, `assets/Inter-OFL.txt`; puede copiar iconos/manifiesto/imagen del negocio. La entrada es `frontend/operational.jsx`. Mantener `build:worker` con `public/` hasta integrar todo.
 
 **Verificación:**
-- [ ] Prueba nueva `tests/pos-client.test.js` con IndexedDB real en Edge y servicios/base desechables: pérdida de respuesta después de COMMIT, recargar cliente y reintentar mismo UUID/cuerpo => una fila/movimiento; almacenamiento fallido => cero escrituras; conflicto preserva borrador; cambio de generación bloquea pendientes; respuesta tardía no regresa revisión/generación.
-- [ ] Comprobar que el grafo/bundle operativo no contiene `seed-data.js`, proveedor demo ni datos demo; no basta con un comentario. No cambiar el CSS aprobado para resolver la persistencia.
-- [ ] Pasar `pnpm test:design`, sin requests externos nuevos. No hacer commit/push; informar archivos, contratos y limitaciones al controlador.
+- [x] Prueba nueva `tests/pos-client.test.js` con IndexedDB real en Edge y servicios/base desechables: pérdida de respuesta después de COMMIT, recargar cliente y reintentar mismo UUID/cuerpo => una fila/movimiento; almacenamiento fallido => cero escrituras; conflicto preserva borrador; cambio de generación bloquea pendientes; respuesta tardía no regresa revisión/generación.
+- [x] Comprobar que el grafo/bundle operativo no contiene `seed-data.js`, proveedor demo ni datos demo; no basta con un comentario. No cambiar el CSS aprobado para resolver la persistencia.
+- [x] Pasar `pnpm test:design`, sin requests externos nuevos. No hacer commit/push; informar archivos, contratos y limitaciones al controlador.
 
 ### Task 3: formulario y confirmación asíncronos
 
@@ -65,19 +65,25 @@
 **Consumir:** `usePosStore` desde `../../data/pos-context.jsx` en InventoryPage. El proveedor de referencia sigue exportando el hook antiguo durante la transición si se necesita, pero el componente final usa contexto sin semillas. Store operativo provee `runtime` opcional con `databaseId,pending,busy,reload,retryPending`; el demo no necesita runtime. `saveProduct(p)` y `deleteProduct(p)` pueden devolver promesa; pasar objeto producto para eliminar, conservando ID/version/generación. El controlador de datos hará compatible el proveedor demo con este contrato.
 
 **Comportamiento:**
-- [ ] Crear una prueba que falla antes del cambio: un guardado diferido no muestra éxito/cierra hasta resolver; rechazo conserva los valores/hoja. Doble clic solo envía una vez.
-- [ ] Capturar `databaseId` al abrir nuevo/editar, junto con versión de producto. Incluirlos en `onSave`, sin renovarlos al llegar un snapshot de otra caja mientras el usuario escribe. Nuevo artículo usa identidad local UUID, nunca un supuesto ID de servidor.
-- [ ] Validar dinero finito de hasta 2 decimales y cantidades/mínimo enteros dentro de int32; no truncar silenciosamente 1.5, negativos o cantidades gigantes con Math.max. Campos vacíos/precios opcionales conservan el comportamiento de autocompletado aprobado; no convertir un cero explícito en otro precio.
-- [ ] Esperar `saveProduct` antes de toast/cerrar. Campos/botones bloqueados mientras se envía; preservar borrador/error. Si error expone `uncertain:true`, bloquear modificación del cuerpo y ofrecer reintento del mismo guardado. No generar un UUID nuevo de operación desde la UI: lo administra el cliente.
-- [ ] No aplicar fórmulas inventadas cuando `formulas` está vacío; permitir precios manuales y deshabilitar cálculo no configurado sin cambiar la distribución de la referencia cuando hay fórmulas.
-- [ ] ConfirmDialog no se autocierra por Radix Action antes del resultado asíncrono. Evitar doble confirmación, conservar errores y foco; los usos sincrónicos existentes deben seguir funcionando.
-- [ ] Asignar etiquetas accesibles a los campos tocados sin cambiar la apariencia (usar ID estable); mantener controles de precio/categoría y sus nombres.
-- [ ] Compatibilidad con la referencia: `await` admite callbacks sincrónicos, éxito luce igual; cambios visibles nuevos solo en estados de envío/error. No tocar fuente/paleta/espaciado ni reescribir el formulario con otro componente.
+- [x] Crear una prueba que falla antes del cambio: un guardado diferido no muestra éxito/cierra hasta resolver; rechazo conserva los valores/hoja. Doble clic solo envía una vez.
+- [x] Capturar `databaseId` al abrir nuevo/editar, junto con versión de producto. Incluirlos en `onSave`, sin renovarlos al llegar un snapshot de otra caja mientras el usuario escribe. Nuevo artículo usa identidad local UUID, nunca un supuesto ID de servidor.
+- [x] Validar dinero finito de hasta 2 decimales y cantidades/mínimo enteros dentro de int32; no truncar silenciosamente 1.5, negativos o cantidades gigantes con Math.max. Campos vacíos/precios opcionales conservan el comportamiento de autocompletado aprobado; no convertir un cero explícito en otro precio.
+- [x] Esperar `saveProduct` antes de toast/cerrar. Campos/botones bloqueados mientras se envía; preservar borrador/error. Si error expone `uncertain:true`, bloquear modificación del cuerpo y ofrecer reintento del mismo guardado. No generar un UUID nuevo de operación desde la UI: lo administra el cliente.
+- [x] No aplicar fórmulas inventadas cuando `formulas` está vacío; permitir precios manuales y deshabilitar cálculo no configurado sin cambiar la distribución de la referencia cuando hay fórmulas.
+- [x] ConfirmDialog no se autocierra por Radix Action antes del resultado asíncrono. Evitar doble confirmación, conservar errores y foco; los usos sincrónicos existentes deben seguir funcionando.
+- [x] Asignar etiquetas accesibles a los campos tocados sin cambiar la apariencia (usar ID estable); mantener controles de precio/categoría y sus nombres.
+- [x] Compatibilidad con la referencia: `await` admite callbacks sincrónicos, éxito luce igual; cambios visibles nuevos solo en estados de envío/error. No tocar fuente/paleta/espaciado ni reescribir el formulario con otro componente.
 
 ### Task 4: integración, revisión y continuación
 
 **Propietario:** controlador.
 
-- [ ] Probar `buildOperational` con `createApp(pool,{assetsDirectory})` sobre PostgreSQL temporal en `tests/catalog-runtime.test.js`: alta con todos los campos, recarga, edición obsoleta, respuesta perdida/recarga/reintento, baja que conserva historial, errores de formulario y ruta privada. Usar la app renderizada, no solo métodos aislados.
-- [ ] Revisar cada tarea con agente fresco, corregir hallazgos importantes y verificar el diff real. Ejecutar suite completa, compilaciones, comparar Inventario con datos equivalentes y registrar alcance/limitaciones.
-- [ ] Actualizar `docs/estado-sistema-unificado.md`, guardar commits en la rama y mantener `main`/base real intactos. No marcar completo el objetivo general: continuar con configuración/contactos, ventas/caja/cuentas, modo local/sincronización, PWA, Windows y publicación.
+- [x] Probar `buildOperational` con `createApp(pool,{assetsDirectory})` sobre PostgreSQL temporal en `tests/catalog-runtime.test.js`: alta con todos los campos, recarga, edición obsoleta, respuesta perdida/recarga/reintento, baja que conserva historial, errores de formulario y ruta privada. Usar la app renderizada, no solo métodos aislados.
+- [x] Revisar cada tarea con agente fresco, corregir hallazgos importantes y verificar el diff real. Ejecutar suite completa, compilaciones, comparar Inventario con datos equivalentes y registrar alcance/limitaciones.
+- [x] Actualizar `docs/estado-sistema-unificado.md`, guardar commits en la rama y mantener `main`/base real intactos. No marcar completo el objetivo general: continuar con configuración/contactos, ventas/caja/cuentas, modo local/sincronización, PWA, Windows y publicación.
+
+## Cierre de la entrega
+
+Revisiones por tarea y revisi?n general aprobadas. Suite completa: 124/124; compilaciones de referencia, operativo y Worker correctas; seis pares del contenido principal de Inventario coinciden byte por byte con Polymet. Evidencia en `docs/design/validacion-catalogo-2026-11-21.md`. Se conserva la rama `feat/sistema-unificado-offline`; el objetivo general contin?a con contactos/configuraci?n, los dem?s m?dulos y las plataformas pendientes. Sin migraciones ni pruebas sobre la base del negocio.
+
+Durante el cierre aparecieron cambios concurrentes en `wrangler.jsonc`. Se preservaron fuera de los commits de esta entrega; la cuenta se verific? en modo lectura y no se public? el Worker.
