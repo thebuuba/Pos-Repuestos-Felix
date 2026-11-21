@@ -39,7 +39,8 @@ function ConfirmDialog({
       onOpenChange(false);
     } catch (cause) {
       setError(cause?.message || "No se pudo confirmar la operación.");
-      if (cause?.uncertain) setUncertain(true);
+      if (cause?.definitive === true) setUncertain(false);
+      else if (cause?.uncertain) setUncertain(true);
     } finally {
       inFlight.current = false;
       setSending(false);

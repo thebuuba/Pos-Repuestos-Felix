@@ -190,7 +190,8 @@ function ProductFormSheet({
       await onSave(payload);
     } catch (cause) {
       setError(cause?.message || "No se pudo guardar el artículo.");
-      if (cause?.uncertain) setRetryPayload(payload);
+      if (cause?.definitive === true) setRetryPayload(null);
+      else if (cause?.uncertain) setRetryPayload(payload);
     } finally {
       inFlight.current = false;
       setSending(false);

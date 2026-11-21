@@ -308,6 +308,202 @@ test(
 );
 
 test(
+  "a definitive save rejection unlocks the preserved draft for a corrected operation",
+  { timeout: 30_000 },
+  async (t) => {
+    const { page, state } = await openInventory(t);
+    const duplicate =
+      "Ya existe un registro con ese código o número de factura.";
+    const expired = "La sesión expiró.";
+    const packets = [];
+    await page.route("**/api/productos", (route) => {
+      packets.push({
+        body: route.request().postData(),
+        key: route.request().headers()["idempotency-key"],
+      });
+      switch (packets.length) {
+        case 1:
+          return route.abort("failed");
+        case 2:
+          return route.fulfill({ status: 409, body: "Respuesta incompleta" });
+        case 3:
+          return route.fulfill({ status: 401, json: { error: expired } });
+        case 4:
+          state.revision = 2;
+          state.state.productos = [product];
+          return route.fulfill({ status: 409, json: { error: duplicate } });
+        default:
+          state.revision = 3;
+          state.state.productos.push({
+            ...product,
+            id: 8,
+            codigo: "CORREGIDO",
+          });
+          return route.fulfill({ json: { ...state, result: { id: 8 } } });
+      }
+    });
+    const sheet = await newDraft(page);
+    const code = sheet.getByLabel("Código", { exact: true });
+    const description = sheet.getByLabel("Descripción", { exact: true });
+    const save = sheet.getByRole("button", {
+      name: "Guardar artículo",
+      exact: true,
+    });
+    const retry = sheet.getByRole("button", {
+      name: "Reintentar guardado",
+      exact: true,
+    });
+    const alert = sheet.getByRole("alert");
+    await save.click();
+    for (const message of [
+      /No se confirmó la operación/,
+      /No se confirmó la operación/,
+      expired,
+    ]) {
+      await alert.getByText(message).waitFor();
+      assert.equal(await code.isDisabled(), true);
+      await noToast(page, "Artículo creado");
+      await retry.click();
+    }
+    await alert.getByText(duplicate).waitFor();
+    await noToast(page, "Artículo creado");
+    assert.equal(await code.inputValue(), "PRUEBA");
+    assert.equal(await description.inputValue(), product.nombre);
+    assert.equal(
+      await sheet.getByLabel("Costo base RD$", { exact: true }).inputValue(),
+      "10.25",
+    );
+    assert.equal(await code.isEditable(), true);
+    assert.equal(await description.isEditable(), true);
+    assert.equal(await retry.count(), 0);
+    assert.deepEqual(packets, Array(4).fill(packets[0]));
+
+    await code.fill("CORREGIDO");
+    await save.click();
+    await sheet.waitFor({ state: "hidden" });
+    await page.getByText("Artículo creado", { exact: true }).waitFor();
+    assert.equal(packets.length, 5);
+    assert.ok(packets[4].key);
+    assert.notEqual(packets[4].key, packets[0].key);
+    assert.deepEqual(JSON.parse(packets[4].body), {
+      ...JSON.parse(packets[0].body),
+      codigo: "CORREGIDO",
+    });
+  },
+);
+
+test(
+  "another tab's pending operation keeps the original draft locked",
+  { timeout: 30_000 },
+  async (t) => {
+    const { page, state } = await openInventory(t);
+    let originalRequests = 0;
+    await page.route("**/api/productos", (route) => {
+      originalRequests++;
+      return route.abort("failed");
+    });
+    const sheet = await newDraft(page);
+    await sheet
+      .getByRole("button", { name: "Guardar artículo", exact: true })
+      .click();
+    await sheet
+      .getByRole("alert")
+      .getByText(/No se confirmó la operación/)
+      .waitFor();
+
+    const peer = await page.context().newPage();
+    let peerRequests = 0;
+    await peer.route("**/api/state", (route) => route.fulfill({ json: state }));
+    await peer.route("**/api/productos", (route) => {
+      if (++peerRequests > 1) return route.abort("failed");
+      state.revision = 2;
+      state.state.productos = [product];
+      return route.fulfill({ json: { ...state, result: { id: product.id } } });
+    });
+    await peer.goto(server.origin + "/inventario");
+    await peer
+      .getByRole("button", { name: "Reintentar solicitud", exact: true })
+      .click();
+    await peer.getByRole("row").filter({ hasText: product.codigo }).waitFor();
+    const peerSheet = await newDraft(peer);
+    await peerSheet
+      .getByLabel("Código", { exact: true })
+      .fill("OTRA-SOLICITUD");
+    await peerSheet
+      .getByRole("button", { name: "Guardar artículo", exact: true })
+      .click();
+    await peerSheet
+      .getByRole("alert")
+      .getByText(/No se confirmó la operación/)
+      .waitFor();
+
+    const retry = sheet.getByRole("button", {
+      name: "Reintentar guardado",
+      exact: true,
+    });
+    await retry.click();
+    await sheet
+      .getByRole("alert")
+      .getByText(/La solicitud pendiente cambió/)
+      .waitFor();
+    await retry.waitFor();
+    const originalCode = sheet.getByLabel("Código", { exact: true });
+    assert.equal(await originalCode.inputValue(), "PRUEBA");
+    assert.equal(await originalCode.isDisabled(), true);
+    await noToast(page, "Artículo creado");
+    assert.equal(originalRequests, 1);
+    assert.equal(peerRequests, 2);
+  },
+);
+
+test(
+  "a definitive delete rejection clears the uncertain confirmation state",
+  { timeout: 30_000 },
+  async (t) => {
+    const { page, state } = await openInventory(t, [product]);
+    const versionConflict =
+      "El producto cambió. Actualiza los datos antes de editar.";
+    const packets = [];
+    await page.route("**/api/productos/7", (route) => {
+      packets.push({
+        body: route.request().postData(),
+        key: route.request().headers()["idempotency-key"],
+      });
+      if (packets.length === 1) return route.abort("failed");
+      state.revision = 2;
+      state.state.productos = [{ ...product, version: 3 }];
+      return route.fulfill({ status: 409, json: { error: versionConflict } });
+    });
+    await page
+      .getByRole("row")
+      .filter({ hasText: product.codigo })
+      .getByRole("button", { name: "Eliminar", exact: true })
+      .click();
+    const dialog = page.getByRole("alertdialog");
+    await dialog.getByRole("button", { name: "Eliminar", exact: true }).click();
+    await dialog
+      .getByRole("alert")
+      .getByText(/No se confirmó la operación/)
+      .waitFor();
+    const retry = dialog.getByRole("button", {
+      name: "Reintentar",
+      exact: true,
+    });
+    await retry.click();
+    await dialog.getByRole("alert").getByText(versionConflict).waitFor();
+    await noToast(page, "Artículo eliminado");
+    assert.equal(await retry.count(), 0);
+    assert.equal(
+      await dialog
+        .getByRole("button", { name: "Eliminar", exact: true })
+        .count(),
+      1,
+    );
+    assert.deepEqual(packets, [packets[0], packets[0]]);
+  },
+);
+
+test(
   "a refresh from another generation does not change an open draft",
   { timeout: 30_000 },
   async (t) => {
