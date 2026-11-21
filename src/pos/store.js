@@ -91,9 +91,13 @@ async function exportBackup(client) {
   for (const table of Object.keys(tables)) data[table] = await rows(client, table);
   return { version: 3, format: 'repuestos-felix-relacional', exportedAt: new Date().toISOString(), tables: data };
 }
-async function snapshot(client, databaseLabel) {
+async function snapshotVersion(client, databaseLabel) {
   const system = (await client.query('SELECT database_id,revision FROM pos_privado.sistema WHERE id=1')).rows[0];
   if (!system) fail('Ejecuta las migraciones de la base antes de iniciar.', 503);
+  return { databaseId: system.database_id, revision: number(system.revision), databaseLabel };
+}
+async function snapshot(client, databaseLabel) {
+  const version = await snapshotVersion(client, databaseLabel);
   const data = {};
   for (const table of Object.keys(tables)) data[table] = await rows(client, table);
   const config = data.configuracion[0];
@@ -103,7 +107,7 @@ async function snapshot(client, databaseLabel) {
   const balances = (await client.query(`SELECT c.id,(c.saldo_apertura+COALESCE(sum(v.total) FILTER(WHERE v.condicion='Credito'),0))::text AS deuda
     FROM clientes c LEFT JOIN ventas v ON v.cliente_id=c.id GROUP BY c.id`)).rows;
   return {
-    databaseId: system.database_id, revision: number(system.revision), databaseLabel,
+    ...version,
     state: {
       empresa: config.empresa, itbisRate: Number(config.tasa_itbis), configuracionVersion: number(config.version),
       productos: data.productos.filter(p => p.activo).map(p => ({ ...p, id: number(p.id), version: number(p.version), stockMinimo: p.stock_minimo, costo: Number(p.costo), precio1: Number(p.precio1), precio2: Number(p.precio2), precio3: Number(p.precio3) })),
@@ -115,15 +119,20 @@ async function snapshot(client, databaseLabel) {
     },
   };
 }
-export async function readSnapshot(pool, databaseLabel, backup = false) {
+export async function readSnapshot(pool, databaseLabel, backup = false, matchesVersion) {
   const client = await pool.connect();
   try {
+    if (!backup && matchesVersion) {
+      const version = await snapshotVersion(client, databaseLabel);
+      if (matchesVersion(version)) return { notModified: version };
+    }
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
-    await client.query('SELECT pg_advisory_xact_lock_shared($1)', [maintenanceLock]);
-    const result = backup ? await exportBackup(client) : await snapshot(client, databaseLabel);
-    await client.query('COMMIT'); return result;
-  } catch (error) { await client.query('ROLLBACK'); throw error; }
-  finally { client.release(); }
+    try {
+      await client.query('SELECT pg_advisory_xact_lock_shared($1)', [maintenanceLock]);
+      const result = backup ? await exportBackup(client) : await snapshot(client, databaseLabel);
+      await client.query('COMMIT'); return result;
+    } catch (error) { await client.query('ROLLBACK'); throw error; }
+  } finally { client.release(); }
 }
 async function movement(client, productId, quantity, stock, type, detailId = null, reason = '') {
   if (!quantity) return;

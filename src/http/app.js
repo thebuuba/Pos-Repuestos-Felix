@@ -1,8 +1,13 @@
+import { createHash } from 'node:crypto';
 import { readSnapshot, writeOperation } from '../pos/store.js';
 import { hostingConfig, authorized } from '../hosting.js';
 
+const pageRoutes = new Set([
+  '/', '/index.html', '/ventas', '/inventario', '/compras', '/caja', '/clientes', '/suplidores',
+  '/reportes', '/cuentas-por-cobrar', '/cuentas-por-pagar', '/configuracion', '/ayuda',
+]);
+const pageAsset = ['index.html', 'text/html'];
 const publicFiles = {
-  '/': ['index.html', 'text/html'], '/index.html': ['index.html', 'text/html'],
   '/app.js': ['app.js', 'text/javascript'],
   '/pwa.js': ['pwa.js', 'text/javascript'], '/styles.css': ['styles.css', 'text/css'],
   '/sw.js': ['sw.js', 'text/javascript'], '/manifest.webmanifest': ['manifest.webmanifest', 'application/manifest+json'],
@@ -11,9 +16,25 @@ const publicFiles = {
   '/icons/maskable-512.png': ['icons/maskable-512.png', 'image/png'],
   '/icons/apple-touch-icon.png': ['icons/apple-touch-icon.png', 'image/png'],
   '/assets/brand/repuestos-felix.jpg': ['assets/brand/repuestos-felix.jpg', 'image/jpeg'],
+  '/assets/fonts/inter-latin-wght-normal.woff2': ['assets/fonts/inter-latin-wght-normal.woff2', 'font/woff2'],
+  '/assets/Inter-OFL.txt': ['assets/Inter-OFL.txt', 'text/plain'],
 };
 const securityHeaders = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY' };
 const maxBodyBytes = 10 * 1024 * 1024;
+const snapshotRepresentationVersion = 1;
+
+function stateTag({ databaseId, revision, databaseLabel }) {
+  const version = JSON.stringify([snapshotRepresentationVersion, databaseId, revision, databaseLabel]);
+  return `"${createHash('sha256').update(version).digest('hex')}"`;
+}
+
+function matchesStateTag(condition, tag) {
+  if (condition === '*') return true;
+  for (const [, candidate] of condition.matchAll(/(?:^|,)\s*(?:W\/)?("[^"]*")\s*(?=,|$)/g)) {
+    if (candidate === tag) return true;
+  }
+  return false;
+}
 
 function json(status, data, headers = {}) {
   return new Response(JSON.stringify(data), { status, headers: { ...securityHeaders, 'Content-Type': 'application/json; charset=utf-8', ...headers } });
@@ -47,6 +68,7 @@ export async function handleRequest(request, { pool, hosting = hostingConfig({})
   try {
     const url = new URL(request.url);
     const pathname = url.pathname;
+    const isPage = pageRoutes.has(pathname);
     if (pathname === '/health' && request.method === 'GET') return json(200, { ok: true });
     const hostHeader = request.headers.get('host');
     let headerHost;
@@ -59,7 +81,7 @@ export async function handleRequest(request, { pool, hosting = hostingConfig({})
     if (hosting.origin && request.headers.get('x-forwarded-proto')?.split(',')[0].trim() !== 'https') {
       return json(426, { error: 'Accede mediante HTTPS. El proxy debe configurar X-Forwarded-Proto.' });
     }
-    if ((pathname.startsWith('/api/') || ['/', '/index.html', '/login'].includes(pathname)) && !authorized(request, hosting)) {
+    if ((pathname.startsWith('/api/') || isPage || pathname === '/login') && !authorized(request, hosting)) {
       return json(401, { error: 'Inicia sesión para acceder al sistema.' }, { 'WWW-Authenticate': 'Basic realm="Repuestos Felix", charset="UTF-8"' });
     }
     if (pathname === '/login' && request.method === 'GET') {
@@ -69,14 +91,22 @@ export async function handleRequest(request, { pool, hosting = hostingConfig({})
       if (pathname === '/api/state' && request.method === 'PUT') {
         return json(410, { error: 'La escritura global fue retirada. Cierra y vuelve a abrir la aplicación para actualizarla.' });
       }
-      if (request.method === 'GET' && ['/api/state', '/api/backup'].includes(pathname)) {
-        return json(200, await readSnapshot(pool, databaseLabel, pathname === '/api/backup'));
+      if (request.method === 'GET' && pathname === '/api/backup') {
+        return json(200, await readSnapshot(pool, databaseLabel, true));
       }
-      if (!['POST', 'PUT', 'DELETE'].includes(request.method)) return json(405, { error: 'Método no permitido.' });
+      const isStateRead = request.method === 'GET' && pathname === '/api/state';
+      if (!isStateRead && !['POST', 'PUT', 'DELETE'].includes(request.method)) return json(405, { error: 'Método no permitido.' });
       const expectedOrigin = hosting.origin || url.origin;
       const origin = request.headers.get('origin');
       if ((origin && origin !== expectedOrigin) || request.headers.get('sec-fetch-site') === 'cross-site') {
         return json(403, { error: 'Origen no permitido.' });
+      }
+      if (isStateRead) {
+        const condition = request.headers.get('if-none-match');
+        const state = await readSnapshot(pool, databaseLabel, false, condition ? version => matchesStateTag(condition, stateTag(version)) : undefined);
+        const headers = { ETag: stateTag(state.notModified ?? state) };
+        if (state.notModified) return new Response(null, { status: 304, headers: { ...securityHeaders, ...headers } });
+        return json(200, state, headers);
       }
       if (request.headers.get('content-type')?.split(';')[0].trim() !== 'application/json') {
         return json(415, { error: 'Se requiere application/json.' });
@@ -84,7 +114,7 @@ export async function handleRequest(request, { pool, hosting = hostingConfig({})
       const body = await readBody(request);
       return json(200, await writeOperation(pool, request.method, pathname, body, request.headers.get('idempotency-key'), databaseLabel));
     }
-    const asset = publicFiles[pathname];
+    const asset = isPage ? pageAsset : publicFiles[pathname];
     if (!asset || !['GET', 'HEAD'].includes(request.method)) return json(404, { error: 'No encontrado.' });
     const content = await readAsset(asset[0]);
     const headers = new Headers(content instanceof Response ? content.headers : undefined);

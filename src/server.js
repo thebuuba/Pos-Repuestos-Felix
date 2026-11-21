@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import pg from 'pg';
 import { readSnapshot } from './pos/store.js';
 import { databaseConfig } from './db/config.js';
@@ -12,8 +12,9 @@ import { handleRequest } from './http/app.js';
 
 const root = new URL('../public/', import.meta.url);
 
-export async function createApp(pool, options = {}) {
-  const readAsset = path => readFile(new URL(path, root));
+export async function createApp(pool, { assetsDirectory = root, ...options } = {}) {
+  const directory = fileURLToPath(assetsDirectory);
+  const readAsset = path => readFile(join(directory, path));
   return createServer(async (request, response) => {
     try {
       const method = request.method;
