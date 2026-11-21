@@ -3,9 +3,8 @@ import { readFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
-import { randomUUID } from 'node:crypto';
 import pg from 'pg';
-import { initialState, validateState } from './state.js';
+import { readSnapshot, writeOperation } from './store.js';
 import { hostingConfig, authorized } from './hosting.js';
 
 const root = new URL('./', import.meta.url);
@@ -69,10 +68,6 @@ async function readBody(request) {
 }
 
 export async function createApp(pool, { databaseLabel = 'PostgreSQL', hosting = hostingConfig({}) } = {}) {
-  const sessionId = randomUUID();
-  await pool.query(await readFile(new URL('schema.sql', root), 'utf8'));
-  await pool.query('INSERT INTO pos_privado.estado (id, datos) VALUES (1, $1) ON CONFLICT (id) DO NOTHING', [initialState]);
-
   return createServer(async (request, response) => {
     try {
       const pathname = new URL(request.url, 'http://localhost').pathname;
@@ -85,50 +80,30 @@ export async function createApp(pool, { databaseLabel = 'PostgreSQL', hosting = 
       if (hosting.origin && request.headers['x-forwarded-proto']?.split(',')[0].trim() !== 'https') {
         send(response, 426, { error: 'Accede mediante HTTPS. El proxy debe configurar X-Forwarded-Proto.' }); return;
       }
-      if (['/', '/index.html', '/api/state', '/login'].includes(pathname) && !authorized(request, hosting)) {
+      if ((pathname.startsWith('/api/') || ['/', '/index.html', '/login'].includes(pathname)) && !authorized(request, hosting)) {
         response.setHeader('WWW-Authenticate', 'Basic realm="Repuestos Felix", charset="UTF-8"');
         send(response, 401, { error: 'Inicia sesión para acceder al sistema.' }); return;
       }
       if (pathname === '/login' && request.method === 'GET') {
         response.writeHead(303, { Location: '/', 'Cache-Control': 'no-store' }); response.end(); return;
       }
-      if (pathname === '/api/state') {
-        if (request.method === 'GET') {
-          const { rows } = await pool.query('SELECT datos, revision FROM pos_privado.estado WHERE id = 1');
-          send(response, 200, { state: rows[0].datos, revision: rows[0].revision, databaseLabel, sessionId });
-          return;
+      if (pathname.startsWith('/api/')) {
+        if (pathname === '/api/state' && request.method === 'PUT') {
+          send(response, 410, { error: 'La escritura global fue retirada. Cierra y vuelve a abrir la aplicación para actualizarla.' }); return;
         }
-        if (request.method !== 'PUT') { send(response, 405, { error: 'Método no permitido.' }); return; }
+        if (request.method === 'GET' && ['/api/state', '/api/backup'].includes(pathname)) {
+          send(response, 200, await readSnapshot(pool, databaseLabel, pathname === '/api/backup')); return;
+        }
+        if (!['POST', 'PUT', 'DELETE'].includes(request.method)) { send(response, 405, { error: 'Método no permitido.' }); return; }
         const expectedOrigin = hosting.origin || `http://${request.headers.host}`;
-        if ((request.headers.origin && request.headers.origin !== expectedOrigin) ||
-            request.headers['sec-fetch-site'] === 'cross-site') {
+        if ((request.headers.origin && request.headers.origin !== expectedOrigin) || request.headers['sec-fetch-site'] === 'cross-site') {
           send(response, 403, { error: 'Origen no permitido.' }); return;
         }
         if (request.headers['content-type']?.split(';')[0].trim() !== 'application/json') {
           send(response, 415, { error: 'Se requiere application/json.' }); return;
         }
         const body = await readBody(request);
-        let state;
-        try {
-          if (!Number.isSafeInteger(body?.revision) || body.revision < 0) throw new Error('Revisión inválida.');
-          state = validateState(body.state);
-        } catch (error) { send(response, 400, { error: error.message }); return; }
-        if (body.sessionId !== sessionId) {
-          send(response, 409, { error: 'El servidor se reinició o cambió de base. Actualiza los datos antes de guardar.' });
-          return;
-        }
-        // Una sentencia atómica guarda todo o rechaza el estado desactualizado.
-        // ponytail: documento completo; dividir por entidad cuando su volumen lo requiera.
-        const { rows } = await pool.query(
-          `UPDATE pos_privado.estado SET datos = $1, revision = revision + 1, actualizado_en = now()
-           WHERE id = 1 AND revision = $2 RETURNING datos, revision`, [state, body.revision]
-        );
-        if (!rows.length) {
-          send(response, 409, { error: 'Otra sesión modificó los datos. Actualiza los datos y vuelve a intentar.' });
-          return;
-        }
-        send(response, 200, { state: rows[0].datos, revision: rows[0].revision, databaseLabel, sessionId });
-        return;
+        send(response, 200, await writeOperation(pool, request.method, pathname, body, request.headers['idempotency-key'], databaseLabel)); return;
       }
       const asset = publicFiles[pathname];
       if (!asset || !['GET', 'HEAD'].includes(request.method)) {
@@ -152,6 +127,8 @@ async function main() {
   pool.on('error', (error) => console.error('Error de PostgreSQL:', error.code || error.name));
   try {
     const databaseLabel = process.env.DATABASE_LABEL || 'PostgreSQL';
+    // Verify the selected schema and connection without granting the server DDL.
+    await readSnapshot(pool, databaseLabel);
     const server = await createApp(pool, { databaseLabel, hosting });
     const port = Number(process.env.PORT || 3000);
     if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw new Error('PORT debe estar entre 1 y 65535.');

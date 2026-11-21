@@ -3,5 +3,6 @@ node_modules/
 .env.*
 !.env.example
 !.env.supabase.example
+!.env.migrations.example
 certs/
 *.log

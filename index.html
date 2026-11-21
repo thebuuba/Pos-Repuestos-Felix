@@ -56,7 +56,6 @@
 <button onclick="abrirVentana('win-config')">Datos Empresa / ITBIS</button>
 <button onclick="exportarRespaldo()">Copia de seguridad (Descargar)</button>
 <button onclick="document.getElementById('input-respaldo').click()">Restaurar copia</button>
-<button onclick="reiniciarSistema()" class="text-danger">Reiniciar datos de fábrica</button>
 </div>
 </details>
 </div>
@@ -86,6 +85,10 @@
 <p>Necesitas abrir la dirección HTTPS del sistema. La instalación no permite guardar ventas sin conexión.</p>
 </aside>
 <div id="offline-notice" class="connection-notice" role="status" hidden="">Sin conexión. Las operaciones requieren conexión con el servidor. Conserva esta pantalla si tienes un carrito pendiente.</div>
+<aside id="pending-operation" class="connection-notice" role="alert" hidden>
+<p>Hay una operación sin confirmar. Conservamos la solicitud original; los formularios quedarán bloqueados hasta confirmar su resultado. Mantén esta pantalla abierta.</p>
+<button onclick="reintentarOperacion()">Reintentar operación pendiente</button>
+</aside>
 <div class="toolbar" role="group" aria-label="Accesos rápidos">
 
 
@@ -116,7 +119,7 @@
 </select>
 </div>
             <div class="field">
-<label for="fac-ncf">Comprobante (NCF)</label>
+<label for="fac-ncf">Tipo de comprobante solicitado</label>
 <select id="fac-ncf">
 <option value="B02">B02 - Consumo Final</option>
 <option value="B01">B01 - Crédito Fiscal</option>
@@ -131,6 +134,7 @@
 </select>
 </div>
         </div>
+        <p>Las ventas reciben un número interno. El sistema todavía no asigna NCF autorizados.</p>
         <div class="form-grid entry-panel">
             <div class="field field-wide">
 <label for="fac-buscar-prod">Código o nombre del producto</label>
@@ -185,6 +189,7 @@
 
     <div id="win-inventario" class="ventana" aria-labelledby="title-win-inventario">
         <h2 id="title-win-inventario">Catálogo de Artículos e Inventario</h2>
+        <p id="product-edit-status" role="status">Nuevo artículo</p>
         <div class="form-grid">
 <div class="field">
 <label for="prod-codigo">Código</label>
@@ -215,6 +220,7 @@
 <input type="number" id="prod-p3" placeholder="Precio 3" inputmode="decimal" step=".01" min="0">
 </div>
 <button class="btn-primario" onclick="guardarProducto()">Guardar Artículo</button>
+<button onclick="cancelarEdicionProducto()">Limpiar / Nuevo artículo</button>
 </div>
         <div class="table-scroll" tabindex="0" role="region" aria-label="Inventario de productos">
 <table>

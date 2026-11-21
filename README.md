@@ -36,15 +36,20 @@ El proyecto usa **pnpm 10.8.0**, fijado en `packageManager`, y `pnpm-lock.yaml` 
 
    ```powershell
    Copy-Item .env.example .env.local
+   Copy-Item .env.migrations.example .env.local.migrations
    ```
 
-3. Inicia:
+   En `.env.local.migrations` configura `MIGRATION_DATABASE_URL` con el usuario administrador local; en `.env.local`, la conexión de `pos_app`.
+
+3. Aplica las migraciones:
 
    ```powershell
-   pnpm start:local
+   pnpm db:migrate:local
    ```
 
-4. Abre **http://127.0.0.1:3000**. El servidor crea su esquema y tabla al iniciar. Una base nueva contiene los dos productos de ejemplo y los contactos del HTML original.
+4. La primera vez, abre `psql -h 127.0.0.1 -U postgres -d pos_repuestos_felix`, ejecuta `ALTER ROLE pos_app LOGIN;` y después `\password pos_app`. Escribe una contraseña exclusiva y completa esa misma contraseña, codificada para URL, en `.env.local`. La contraseña administrativa permanece en el archivo de migraciones.
+
+5. Ejecuta `pnpm start:local` y abre **http://127.0.0.1:3000**. Una base nueva contiene la configuración y Cliente Contado, sin mercancía ni ventas de ejemplo. El servidor comprueba la estructura al arrancar; las migraciones se ejecutan explícitamente con una cuenta administrativa.
 
 ## Usar Supabase
 
@@ -52,17 +57,21 @@ El CLI se configura de forma independiente del gestor de paquetes del proyecto. 
 
 ### Crear la estructura de la base
 
-La migración `supabase/migrations/20261121150000_inicializar_pos.sql` crea el esquema privado `pos_privado` y la tabla `estado`, compatibles con la API actual. En una base nueva registra la empresa, ITBIS del 18 % y Cliente Contado; productos, suplidores, ventas y compras comienzan vacíos. Una base que ya tenga datos conserva su estado.
+La migración `supabase/migrations/20261121190000_normalizar_pos.sql` convierte el formato anterior en tablas relacionadas de `public`: `configuracion`, `clientes`, `suplidores`, `productos`, `ventas`, `venta_detalles`, `compras`, `compra_detalles` y `movimientos_inventario`. Se pueden inspeccionar sus relaciones en **Database → Schema Visualizer → public**. La migración anterior permanece en el historial.
 
-Con el CLI vinculado al proyecto correcto:
+Con la conexión administrativa correcta en `MIGRATION_DATABASE_URL` (o `DATABASE_URL` para la inicialización):
 
 ```powershell
-supabase db push --linked --dry-run
-supabase db push --linked
-supabase migration list --linked
+pnpm db:migrate:supabase
 ```
 
-Ejecuta estos comandos de forma secuencial. Si el CLI solicita la contraseña de la base, usa la del proyecto correspondiente. La tabla tiene RLS activado y no concede acceso a `anon` ni `authenticated`; se utiliza a través del servidor Node.js con la conexión PostgreSQL. Los respaldos JSON mantienen el formato anterior. No hay tablas separadas por entidad en esta versión.
+El migrador serializa las ejecuciones, aplica cada archivo pendiente en una transacción y registra su versión en `supabase_migrations.schema_migrations`, compatible con el CLI. El vínculo del CLI y la conexión de PostgreSQL son configuraciones independientes: verifica el destino antes de migrar. Haz un respaldo antes de actualizar una base con datos.
+
+La conversión conserva productos, contactos, saldos y documentos. Archiva el JSON original y crea movimientos de apertura con el inventario al momento del cambio. Si encuentra referencias ambiguas o importes inconsistentes, aborta sin aplicar una conversión parcial. El archivo `schema.sql` describe la estructura actual.
+
+Copia `.env.migrations.example` a `.env.migrations` para Supabase, o a `.env.local.migrations` para el perfil local, y configura allí la conexión administrativa. Los comandos de migración cargan ese archivo separado; los comandos `start` solo cargan la conexión de aplicación. Estos archivos reales están excluidos de Git.
+
+Todas las tablas tienen RLS. El navegador utiliza la API Node.js; `anon` y `authenticated` no reciben acceso a los datos. La migración crea `pos_app` sin inicio de sesión y con permisos de datos, sin DDL. Un administrador debe asignarle una contraseña exclusiva para usarlo como usuario de `DATABASE_URL`; mantén la conexión administrativa en `MIGRATION_DATABASE_URL` solo en el entorno de migraciones. En el pooler de Supabase el usuario personalizado tiene formato `pos_app.REFERENCIA`, según la [documentación de conexiones](https://supabase.com/docs/guides/database/connecting-to-postgres).
 
 ### Configurar la conexión del servidor
 
@@ -71,18 +80,21 @@ Ejecuta estos comandos de forma secuencial. Si el CLI solicita la contraseña de
 
    ```powershell
    Copy-Item .env.supabase.example .env.supabase
+   Copy-Item .env.migrations.example .env.migrations
    ```
 
-3. Completa `DATABASE_URL` con la cadena real, incluida la contraseña de la **base de datos**. Una clave `anon`, `publishable` o `service_role` no sustituye esta contraseña. Codifica caracteres especiales de usuario/contraseña para URL, por ejemplo `@` como `%40` y `#` como `%23`.
+3. Completa `MIGRATION_DATABASE_URL` en `.env.migrations` con la conexión administrativa de la **base de datos**. En `.env.supabase` utiliza la conexión del rol `pos_app` para `DATABASE_URL`. Una clave `anon`, `publishable` o `service_role` no sustituye estas contraseñas. Codifica caracteres especiales para URL, por ejemplo `@` como `%40` y `#` como `%23`.
 4. Deja `DATABASE_SSL=true`. Se verifica el certificado del servidor. Si la conexión requiere la CA de Supabase, descárgala de la configuración SSL del proyecto, guárdala en `certs/` y configura `DATABASE_CA_FILE=./certs/prod-supabase.cer`. No se desactiva la validación del certificado.
 5. Evita parámetros adicionales en la URL: el servidor gestiona SSL y la CA mediante estas variables. Los parámetros `ssl` y `sslmode` se retiran para que no reemplacen esa configuración; los demás se rechazan para evitar que cambien el destino o su seguridad.
-6. Ejecuta:
+6. Aplica las migraciones con la cuenta administrativa:
 
    ```powershell
-   pnpm start:supabase
+   pnpm db:migrate:supabase
    ```
 
-Abre la misma dirección local. El indicador superior muestra qué destino está activo. La tabla se crea en el esquema privado `pos_privado`, fuera de `public`, y el navegador accede únicamente a la API Node.js.
+7. En una instalación nueva, habilita `pos_app` y asígnale su contraseña desde una conexión administrativa. Puedes abrir `psql` con el host/puerto del pooler y el usuario `postgres.REFERENCIA`, ejecutar `ALTER ROLE pos_app LOGIN;` y después `\password pos_app`. Completa la contraseña de aplicación en `.env.supabase` e inicia con `pnpm start:supabase`. Este paso se hace una vez; no rota la contraseña al reiniciar el servidor.
+
+Abre la misma dirección local. El indicador superior muestra qué destino está activo. Las tablas del negocio están en `public`; `pos_privado` contiene únicamente el control de revisiones, solicitudes idempotentes, respaldos automáticos y el archivo anterior.
 
 La configuración sigue la [guía de conexiones de Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres) y las [indicaciones SSL de node-postgres](https://node-postgres.com/features/ssl).
 
@@ -90,31 +102,33 @@ La configuración sigue la [guía de conexiones de Supabase](https://supabase.co
 
 Detén el servidor con `Ctrl+C` e inicia el otro comando. **Local y Supabase mantienen datos independientes; no hay sincronización ni cambio automático ante fallos.** Puedes usar ambas configuraciones, una por ejecución.
 
-Para copiar datos entre ellas: exporta desde **Configuración → Copia de seguridad**, cambia el destino del servidor y usa **Restaurar copia**. La restauración pide confirmación y reemplaza los datos de la base seleccionada. También acepta el JSON exportado desde el HTML original con Firebase. La migración no consulta ni modifica Firebase automáticamente.
+Para copiar datos entre ellas: exporta desde **Configuración → Copia de seguridad**, cambia el destino del servidor y usa **Restaurar copia**. El respaldo v2 incluye tablas, filas inactivas y movimientos. La restauración pide confirmación, conserva un respaldo automático y reemplaza los datos de la base seleccionada en una transacción. También acepta el JSON anterior del HTML con Firebase y lo convierte al modelo relacional. No consulta ni modifica Firebase.
 
 `pnpm start` permite usar un archivo `.env` en lugar de los dos perfiles anteriores. Las variables ya presentes en el entorno tienen prioridad sobre el archivo seleccionado; evita dejar `DATABASE_URL` de otro destino definida en la terminal.
 
 ## Guardado y alcance
 
-- Los datos se almacenan como un documento JSONB en `pos_privado.estado`. Se conserva el formato del sistema original; esta versión no crea tablas relacionales por entidad.
-- Cada guardado es atómico y comprueba la revisión. Si otra sesión modificó los datos, se rechaza la escritura y se actualizan los datos disponibles para que revises la operación. Los carritos y formularios pendientes se conservan.
-- Cada ejecución del servidor tiene un identificador propio. Una pestaña que quedó abierta al cambiar entre local y Supabase debe actualizar los datos antes de volver a guardar; no puede sobrescribir la otra base con su copia anterior.
+- Las entidades tienen claves foráneas, importes `NUMERIC` de dos decimales y restricciones de integridad. El historial conserva los nombres y precios del documento aunque cambie el catálogo. Dar de baja un artículo conserva su historial.
+- Ventas y compras se guardan mediante operaciones específicas. El servidor bloquea las filas necesarias, calcula los importes en centavos exactos y guarda documento, detalles y movimientos en una transacción. Dos cajas no pueden vender simultáneamente la última unidad.
+- La edición de productos/configuración comprueba su versión para evitar sobrescribir cambios de otra caja. Clientes y suplidores se seleccionan por ID.
+- Cada base tiene un identificador persistente que se renueva al restaurar un respaldo. Las pestañas antiguas deben actualizar sus datos. Reiniciar Node.js conserva ese identificador.
 - No se vacían formularios, descuentan existencias confirmadas ni imprime la factura hasta recibir la confirmación del servidor.
-- Si se pierde la conexión durante el guardado, el resultado puede ser incierto. Pulsa **Actualizar datos** y revisa facturas/compras antes de repetirlo. No se guarda automáticamente sin conexión.
+- Si se pierde la respuesta de un guardado, se conservan su cuerpo y su clave idempotente en la pantalla abierta. Los formularios se bloquean y aparece **Reintentar operación pendiente**. Ese botón repite la misma solicitud y recupera su resultado sin duplicarla. Mantén la pantalla abierta hasta confirmar; los borradores no persisten al cerrarla.
 - Las compras quedan registradas con suplidor y número. Se rechaza registrar de nuevo el mismo número para el mismo suplidor.
-- El respaldo admite hasta 10 MB. El documento completo se envía en cada guardado. Para más volumen o trabajo intensivo con varias cajas, conviene migrar a tablas por entidad y operaciones específicas en el servidor.
-- Por defecto el servidor escucha únicamente en `127.0.0.1`. El modo público requiere origen HTTPS explícito, usuario y contraseña de acceso; consulta la siguiente sección. No se han configurado credenciales reales ni publicado un servicio.
+- La restauración admite hasta 10 MB y rechaza una revisión obsoleta. No se permite reemplazar el estado completo mediante `PUT /api/state`.
+- Por defecto el servidor escucha únicamente en `127.0.0.1`. El modo público requiere origen HTTPS explícito, usuario y contraseña de acceso; consulta la siguiente sección. La publicación requiere configurar un alojamiento.
+- Las ventas nuevas reciben un número interno y no generan NCF autorizados. Los NCF históricos se conservan. Antes de utilizar comprobantes fiscales se necesita implementar la emisión y secuencias autorizadas correspondientes.
 - El resumen de caja y el listado de facturas mantienen las funciones que tenía el HTML. No se ha añadido cierre contable, anulación ni exportación fiscal 607.
 
 ## Preparar el acceso por internet
 
-El código está preparado para una sola instancia Node.js persistente o compatible con Docker y una base Supabase. **GitHub guarda el código; GitHub Pages no ejecuta esta API ni conecta el navegador directamente a PostgreSQL.** La publicación y los archivos `.env` reales quedan para cuando se configuren el alojamiento y sus credenciales.
+El código está preparado para Node.js persistente o Docker y una base Supabase. **GitHub guarda el código; GitHub Pages no ejecuta esta API ni conecta el navegador directamente a PostgreSQL.** Configura el alojamiento y sus secretos para publicar.
 
 En el panel de variables privadas del alojamiento configura:
 
 | Variable | Uso |
 | --- | --- |
-| `DATABASE_URL` | Conexión real de PostgreSQL/Supabase |
+| `DATABASE_URL` | Conexión de PostgreSQL/Supabase con el rol `pos_app` |
 | `DATABASE_SSL` | `true` para Supabase |
 | `DATABASE_LABEL` | `Supabase` o nombre del destino |
 | `DATABASE_CA_FILE` | Ruta al certificado CA montado como archivo secreto, si tu proyecto lo necesita |
@@ -124,7 +138,7 @@ En el panel de variables privadas del alojamiento configura:
 | `APP_USERNAME` | Usuario de acceso, por ejemplo `admin` |
 | `APP_PASSWORD` | Contraseña larga y única, de al menos 16 caracteres |
 
-Instalación del servicio: `pnpm install --prod --frozen-lockfile`. Inicio: `node server.js`. Usa pnpm 10.8.0 en el alojamiento. También se incluye un `Dockerfile` que prepara esta versión; los `.env` y certificados locales se excluyen del contexto de construcción. Monta los certificados como secretos en ejecución cuando sean necesarios.
+Instalación del servicio: `pnpm install --prod --frozen-lockfile`. Aplica migraciones desde un entorno administrativo antes del despliegue; no configures `MIGRATION_DATABASE_URL` en el proceso web. Inicio: `node server.js`. Usa pnpm 10.8.0 en el alojamiento. El `Dockerfile` prepara esta versión; los `.env` y certificados locales se excluyen del contexto de construcción. Monta los certificados como secretos en ejecución cuando sean necesarios.
 
 El proveedor debe terminar HTTPS, redirigir HTTP a HTTPS y **sobrescribir** `X-Forwarded-Proto` con el protocolo real. Mantén el puerto de Node privado, accesible solo desde ese proxy: no basta con enviar una cabecera para asegurar el transporte. El servidor rechaza nombres de host ajenos, tráfico sin indicación HTTPS en modo público y escrituras de otros orígenes. `GET /health` es un indicador público de que el proceso está activo y no expone datos del negocio.
 

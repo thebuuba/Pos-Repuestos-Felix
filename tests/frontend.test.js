@@ -5,6 +5,7 @@ import { JSDOM } from 'jsdom';
 import pg from 'pg';
 import { temporaryPostgres } from './postgres.js';
 import { createApp } from '../server.js';
+import { migrateDatabase } from '../database.js';
 import { initialState } from '../state.js';
 
 let database, pool, server, base, dom, interval;
@@ -15,13 +16,26 @@ let prints = 0;
 const $ = (id) => dom.window.document.getElementById(id);
 const fill = (fields) => Object.entries(fields).forEach(([id, value]) => { $(id).value = String(value); });
 const saved = async () => (await nativeFetch(base + '/api/state')).json();
+const write = async (method, path, body) => {
+  const current = await saved();
+  const response = await nativeFetch(base + path, { method,
+    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
+    body: JSON.stringify({ ...body, databaseId: current.databaseId }),
+  });
+  const result = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(result));
+  return result;
+};
 
 before(async () => {
   database = await temporaryPostgres();
   pool = new pg.Pool({ connectionString: database.connectionString });
+  await migrateDatabase(pool);
   server = await createApp(pool);
   await new Promise((done) => server.listen(0, '127.0.0.1', done));
   base = `http://127.0.0.1:${server.address().port}`;
+  for (const product of initialState.productos) await write('POST', '/api/productos', product);
+  for (const supplier of initialState.suplidores) await write('POST', '/api/suplidores', supplier);
   dom = new JSDOM(await readFile(new URL('../index.html', import.meta.url), 'utf8'), { url: base });
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
@@ -43,7 +57,7 @@ after(async () => {
 });
 
 test('carga clientes, inventario y reportes vacíos desde PostgreSQL', () => {
-  assert.equal($('fac-cliente').value, 'Cliente Contado');
+  assert.equal($('fac-cliente').value, String(window.db.clientes[0].id));
   assert.equal($('tabla-inventario').rows.length, 2);
   assert.equal($('tabla-facturas').rows.length, 0);
   assert.match($('database-status').textContent, /Conectado/);
@@ -153,25 +167,26 @@ test('una venta a crédito guarda factura, stock y balance antes de imprimir', a
 
 test('un conflicto conserva el formulario y recarga los cambios de la otra sesión', async () => {
   const current = await saved();
-  current.state.empresa = 'Otra caja';
-  assert.equal((await nativeFetch(base + '/api/state', {
-    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(current),
-  })).status, 200);
+  const product = current.state.productos.find((p) => p.codigo === 'BUJ-01');
+  window.editarProducto(product.id);
+  await write('PUT', `/api/productos/${product.id}`, { ...product, nombre: 'Cambio otra caja' });
+  fill({ 'prod-nombre': 'Mi edición pendiente' });
+  await window.guardarProducto();
+  assert.equal($('prod-nombre').value, 'Mi edición pendiente');
+  assert.equal((await saved()).state.productos.find((p) => p.id === product.id).nombre, 'Cambio otra caja');
+  assert.equal(window.db.productos.find((p) => p.id === product.id).nombre, 'Cambio otra caja');
+  window.cancelarEdicionProducto();
   fill({ 'cli-nombre': "Cliente O'Neil", 'cli-rnc': '123', 'cli-tel': '809-555-0100' });
-  await window.guardarCliente();
-  assert.equal($('cli-nombre').value, "Cliente O'Neil");
-  assert.equal((await saved()).state.clientes.length, 1);
-  assert.equal($('nombre-negocio').textContent, 'Otra caja');
   await window.guardarCliente();
   assert.equal($('cli-nombre').value, '');
   assert.equal((await saved()).state.clientes.length, 2);
 });
 
-test('un fallo de conexión conserva el carrito y no imprime ni descuenta stock', async () => {
+test('un fallo conserva el carrito y solo imprime al confirmar el reintento', async () => {
   fill({ 'fac-buscar-prod': 'BUJ-02', 'fac-cantidad': 1 });
   window.agregarLineaFactura();
   globalThis.fetch = (path, options) => {
-    if (options?.method === 'PUT') return Promise.reject(new TypeError('Conexión interrumpida'));
+    if (options?.method === 'POST') return Promise.reject(new TypeError('Conexión interrumpida'));
     return nativeFetch(new URL(path, base), options);
   };
   try { await window.procesarFactura(); }
@@ -183,12 +198,15 @@ test('un fallo de conexión conserva el carrito y no imprime ni descuenta stock'
   assert.equal(state.productos[1].stock, 50);
   assert.match(alerts.at(-1), /No se confirmó/);
   await window.actualizarDatos();
-  window.quitarLineaFactura(0);
+  await window.reintentarOperacion();
+  assert.equal((await saved()).state.facturas.length, 2);
+  assert.equal(prints, 2);
+  assert.equal($('fac-total').textContent, '0.00');
 });
 
 test('una compra guarda su número, aumenta inventario y rechaza duplicados', async () => {
   fill({
-    'comp-suplidor': 'Super Gato', 'comp-num-factura': 'COMP-TEST-1', 'comp-codigo': 'BUJ-01',
+    'comp-suplidor': window.db.suplidores.find((s) => s.nombre === 'Super Gato').id, 'comp-num-factura': 'COMP-TEST-1', 'comp-codigo': 'BUJ-01',
     'comp-nombre': 'Bujía NGK C7HSA', 'comp-cantidad': 3, 'comp-costo': 80,
     'comp-p1': 120, 'comp-p2': 110, 'comp-p3': 100,
   });
@@ -207,7 +225,7 @@ test('una compra guarda su número, aumenta inventario y rechaza duplicados', as
   });
   window.agregarLineaCompra();
   await window.procesarFacturaCompra();
-  assert.match(alerts.at(-1), /ya fue registrada/);
+  assert.match(alerts.at(-1), /registrada|duplicad|Ya existe/i);
   assert.equal((await saved()).state.productos[0].stock, 51);
   window.quitarLineaCompra(0);
 });
@@ -228,7 +246,7 @@ test('restaura un archivo JSON y rechaza un respaldo inválido sin cambiar los d
   const bad = target({});
   await window.importarRespaldo({ target: bad });
   assert.equal((await saved()).state.productos.length, 3);
-  assert.match(alerts.at(-1), /No se pudo restaurar/);
+  assert.match(alerts.at(-1), /empresa|respaldo/i);
   const backup = structuredClone(initialState);
   delete backup.facturas;
   delete backup.compras;

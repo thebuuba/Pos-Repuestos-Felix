@@ -8,6 +8,9 @@
     "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   },
   "scripts": {
+    "db:migrate": "node --env-file-if-exists=.env --env-file-if-exists=.env.migrations scripts/migrate.js",
+    "db:migrate:local": "node --env-file=.env.local --env-file-if-exists=.env.local.migrations scripts/migrate.js",
+    "db:migrate:supabase": "node --env-file=.env.supabase --env-file-if-exists=.env.migrations scripts/migrate.js",
     "start": "node --env-file-if-exists=.env server.js",
     "start:local": "node --env-file=.env.local server.js",
     "start:supabase": "node --env-file=.env.supabase server.js",
