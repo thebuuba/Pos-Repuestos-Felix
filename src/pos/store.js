@@ -119,8 +119,13 @@ async function snapshot(client, databaseLabel) {
     },
   };
 }
+async function rollbackFailure(client) {
+  try { await client.query('ROLLBACK'); }
+  catch (error) { return error; }
+}
 export async function readSnapshot(pool, databaseLabel, backup = false, matchesVersion) {
   const client = await pool.connect();
+  let discardReason;
   try {
     if (!backup && matchesVersion) {
       const version = await snapshotVersion(client, databaseLabel);
@@ -131,8 +136,8 @@ export async function readSnapshot(pool, databaseLabel, backup = false, matchesV
       await client.query('SELECT pg_advisory_xact_lock_shared($1)', [maintenanceLock]);
       const result = backup ? await exportBackup(client) : await snapshot(client, databaseLabel);
       await client.query('COMMIT'); return result;
-    } catch (error) { await client.query('ROLLBACK'); throw error; }
-  } finally { client.release(); }
+    } catch (error) { discardReason = await rollbackFailure(client); throw error; }
+  } finally { client.release(discardReason); }
 }
 async function movement(client, productId, quantity, stock, type, detailId = null, reason = '') {
   if (!quantity) return;
@@ -305,6 +310,7 @@ export async function writeOperation(pool, method, path, body, key, databaseLabe
   const client = await pool.connect();
   const type = method + ' ' + path;
   const fingerprint = createHash('sha256').update(canonical(body)).digest('hex');
+  let discardReason;
   try {
     await client.query('BEGIN');
     await client.query(`SELECT ${path === '/api/restore' ? 'pg_advisory_xact_lock' : 'pg_advisory_xact_lock_shared'}($1)`, [maintenanceLock]);
@@ -329,10 +335,10 @@ export async function writeOperation(pool, method, path, body, key, databaseLabe
     const response = { ...await snapshot(client, databaseLabel), result };
     await client.query('COMMIT'); return response;
   } catch (error) {
-    await client.query('ROLLBACK');
+    discardReason = await rollbackFailure(client);
     if (!error.status && ['23502', '23503', '23514', '22003', '22023', '22P02', '22007', '22008', 'P0001'].includes(error.code)) fail('Los datos no cumplen las reglas de integridad. Revisa el formulario o respaldo.');
     if (error.code === '23505') fail('Ya existe un registro con ese código o número de factura.', 409);
     if (['40P01', '40001'].includes(error.code)) fail('Otra caja está usando estos datos. Reintenta la misma operación.', 409);
     throw error;
-  } finally { client.release(); }
+  } finally { client.release(discardReason); }
 }
