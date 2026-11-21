@@ -47,13 +47,15 @@ const tables = {
   configuracion: ['id', 'empresa', 'tasa_itbis', 'version', 'actualizado_en'],
   clientes: ['id', 'nombre', 'rnc', 'tel', 'saldo_apertura', 'activo', 'version', 'creado_en', 'actualizado_en'],
   suplidores: ['id', 'nombre', 'rnc', 'tel', 'activo', 'version', 'creado_en', 'actualizado_en'],
-  productos: ['id', 'codigo', 'nombre', 'costo', 'precio1', 'precio2', 'precio3', 'stock', 'activo', 'version', 'creado_en', 'actualizado_en'],
+  productos: ['id', 'codigo', 'nombre', 'costo', 'precio1', 'precio2', 'precio3', 'stock', 'activo', 'version', 'creado_en', 'actualizado_en', 'marca', 'categoria', 'ubicacion', 'stock_minimo', 'gravado'],
   ventas: ['id', 'cliente_id', 'cliente_nombre', 'cliente_rnc', 'fecha', 'creado_en', 'tipo_comprobante', 'ncf', 'condicion', 'base', 'itbis', 'total'],
   venta_detalles: ['id', 'venta_id', 'producto_id', 'codigo', 'nombre', 'cantidad', 'nivel_precio', 'precio', 'base', 'itbis', 'total'],
   compras: ['id', 'suplidor_id', 'suplidor_nombre', 'numero', 'fecha', 'creado_en', 'total'],
   compra_detalles: ['id', 'compra_id', 'producto_id', 'codigo', 'nombre', 'cantidad', 'costo', 'precio1', 'precio2', 'precio3', 'total'],
   movimientos_inventario: ['id', 'producto_id', 'venta_detalle_id', 'compra_detalle_id', 'tipo', 'cantidad', 'existencia_posterior', 'motivo', 'creado_en'],
 };
+const catalogDefaults = { marca: '', categoria: '', ubicacion: '', stock_minimo: 0, gravado: true };
+const v2Tables = { ...tables, productos: tables.productos.filter(column => !(column in catalogDefaults)) };
 const moneyColumns = new Set(['costo', 'precio', 'precio1', 'precio2', 'precio3', 'base', 'itbis', 'total']);
 function validateBackupRow(table, row, columns) {
   if (!row || Object.keys(row).sort().join() !== [...columns].sort().join()) fail(`Fila inválida en ${table}.`);
@@ -68,14 +70,15 @@ function validateBackupRow(table, row, columns) {
       cents(String(value).replace(/^-/, ''), key);
     } else if (key === 'tasa_itbis') {
       if (!['string', 'number'].includes(typeof value) || !/^(?:0(?:\.\d{1,6})?|1(?:\.0{1,6})?)$/.test(String(value))) fail('Tasa ITBIS inválida.');
-    } else if (['stock', 'cantidad', 'existencia_posterior'].includes(key)) {
+    } else if (['stock', 'cantidad', 'existencia_posterior', 'stock_minimo'].includes(key)) {
       if (!Number.isInteger(value) || value < -2147483648 || value > 2147483647) fail(`Cantidad inválida en ${table}.`);
-    } else if (key === 'activo') { if (typeof value !== 'boolean') fail(`Estado inválido en ${table}.`); }
+      if (key === 'stock_minimo' && value < 0) fail('Existencia mínima inválida.');
+    } else if (['activo', 'gravado'].includes(key)) { if (typeof value !== 'boolean') fail(`Estado inválido en ${table}.`); }
     else if (key === 'fecha') {
       if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(value + 'T00:00:00Z')) || new Date(value + 'T00:00:00Z').toISOString().slice(0, 10) !== value) fail('Fecha documental inválida.');
     } else if (key.endsWith('_en')) {
       if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) || !Number.isFinite(Date.parse(value))) fail('Fecha de registro inválida.');
-    } else if (!(key === 'ncf' && value === null)) text(value, key, !['rnc', 'tel', 'cliente_rnc', 'motivo'].includes(key));
+    } else if (!(key === 'ncf' && value === null)) text(value, key, !['rnc', 'tel', 'cliente_rnc', 'motivo', 'marca', 'categoria', 'ubicacion'].includes(key));
   }
 }
 
@@ -86,7 +89,7 @@ async function rows(client, table) {
 async function exportBackup(client) {
   const data = {};
   for (const table of Object.keys(tables)) data[table] = await rows(client, table);
-  return { version: 2, format: 'repuestos-felix-relacional', exportedAt: new Date().toISOString(), tables: data };
+  return { version: 3, format: 'repuestos-felix-relacional', exportedAt: new Date().toISOString(), tables: data };
 }
 async function snapshot(client, databaseLabel) {
   const system = (await client.query('SELECT database_id,revision FROM pos_privado.sistema WHERE id=1')).rows[0];
@@ -103,7 +106,7 @@ async function snapshot(client, databaseLabel) {
     databaseId: system.database_id, revision: number(system.revision), databaseLabel,
     state: {
       empresa: config.empresa, itbisRate: Number(config.tasa_itbis), configuracionVersion: number(config.version),
-      productos: data.productos.filter(p => p.activo).map(p => ({ ...p, id: number(p.id), version: number(p.version), costo: Number(p.costo), precio1: Number(p.precio1), precio2: Number(p.precio2), precio3: Number(p.precio3) })),
+      productos: data.productos.filter(p => p.activo).map(p => ({ ...p, id: number(p.id), version: number(p.version), stockMinimo: p.stock_minimo, costo: Number(p.costo), precio1: Number(p.precio1), precio2: Number(p.precio2), precio3: Number(p.precio3) })),
       clientes: data.clientes.filter(c => c.activo).map(c => ({ id: number(c.id), version: number(c.version), nombre: c.nombre, rnc: c.rnc, tel: c.tel, deuda: Number(balances.find(b => b.id === c.id).deuda) })),
       suplidores: data.suplidores.filter(s => s.activo).map(s => ({ id: number(s.id), version: number(s.version), nombre: s.nombre, rnc: s.rnc, tel: s.tel })),
       facturas: data.ventas.map(v => ({ id: number(v.id), clienteId: number(v.cliente_id), cliente: v.cliente_nombre, clienteRnc: v.cliente_rnc, ncf: v.ncf, tipoComprobante: v.tipo_comprobante, fecha: displayDate(v.fecha), fechaISO: date(v.fecha), condicion: v.condicion, base: Number(v.base), itbis: Number(v.itbis), total: Number(v.total), items: saleItems(v) })),
@@ -146,10 +149,17 @@ async function productOperation(client, method, productId, body) {
     await client.query('UPDATE productos SET activo=false,version=version+1,actualizado_en=now() WHERE id=$1', [productId]);
     return { id: productId };
   }
+  const attribute = (key, fallback) => body[key] === undefined ? previous?.[key] ?? fallback : body[key];
+  const attributeText = (key, label = key) => body[key] === undefined ? previous?.[key] ?? '' : text(body[key], label, false);
+  const metadata = ['marca', 'categoria'].map(key => attributeText(key));
+  metadata.push(integer(body.stockMinimo === undefined ? previous?.stock_minimo ?? 0 : body.stockMinimo, 'la existencia mínima', 0));
+  const taxable = attribute('gravado', true);
+  if (typeof taxable !== 'boolean') fail('La gravabilidad debe ser booleana.');
+  metadata.push(taxable, attributeText('ubicacion', 'la ubicación'));
   // Code locks precede row locks, matching purchases and protecting new codes.
   const result = productId
-    ? await client.query(`UPDATE productos SET codigo=$2,nombre=$3,costo=$4,precio1=$5,precio2=$6,precio3=$7,stock=$8,version=version+1,actualizado_en=now() WHERE id=$1 RETURNING id`, [productId, code, name, ...amounts, stock])
-    : await client.query(`INSERT INTO productos(codigo,nombre,costo,precio1,precio2,precio3,stock) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`, [code, name, ...amounts, stock]);
+    ? await client.query(`UPDATE productos SET codigo=$2,nombre=$3,costo=$4,precio1=$5,precio2=$6,precio3=$7,stock=$8,marca=$9,categoria=$10,stock_minimo=$11,gravado=$12,ubicacion=$13,version=version+1,actualizado_en=now() WHERE id=$1 RETURNING id`, [productId, code, name, ...amounts, stock, ...metadata])
+    : await client.query(`INSERT INTO productos(codigo,nombre,costo,precio1,precio2,precio3,stock,marca,categoria,stock_minimo,gravado,ubicacion) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`, [code, name, ...amounts, stock, ...metadata]);
   const savedId = number(result.rows[0].id);
   await movement(client, savedId, stock - (previous?.stock || 0), stock, previous ? 'ajuste' : 'apertura', null, previous ? 'Ajuste desde catálogo' : 'Existencia inicial');
   return { id: savedId };
@@ -175,7 +185,7 @@ async function sale(client, body) {
   const lines = body.items.map(item => {
     const p = products.find(p => number(p.id) === item.productoId);
     const price = cents(p[item.nivelPrecio]); const total = price * BigInt(item.cantidad); money(total);
-    const divisor = 1000000n + rate; const base = (total * 1000000n + divisor / 2n) / divisor;
+    const divisor = 1000000n + (p.gravado ? rate : 0n); const base = (total * 1000000n + divisor / 2n) / divisor;
     return { item, p, price, total, base, tax: total - base };
   });
   const totals = lines.reduce((sum, line) => ({ base: sum.base + line.base, tax: sum.tax + line.tax, total: sum.total + line.total }), { base: 0n, tax: 0n, total: 0n });
@@ -222,23 +232,27 @@ async function restore(client, body) {
   if (number(current.revision) !== body.revision) fail('La base cambió. Exporta o actualiza antes de restaurar.', 409);
   const backup = body.backup;
   if (!backup || typeof backup !== 'object' || Array.isArray(backup)) fail('Respaldo inválido.');
-  let legacy;
-  if (backup.version !== 2) { try { legacy = validateState(backup); } catch (error) { fail(error.message); } }
+  let legacy, restoredTables;
+  if (![2, 3].includes(backup.version)) { try { legacy = validateState(backup); } catch (error) { fail(error.message); } }
   else {
     if (backup.format !== 'repuestos-felix-relacional' || !backup.tables || Object.keys(backup.tables).sort().join() !== Object.keys(tables).sort().join()) fail('Formato de respaldo inválido.');
-    for (const [table, columns] of Object.entries(tables)) {
+    const expectedTables = backup.version === 2 ? v2Tables : tables;
+    for (const [table, columns] of Object.entries(expectedTables)) {
       const entries = backup.tables[table];
       if (!Array.isArray(entries) || entries.length > 100000) fail(`Revisa la tabla ${table}.`);
       for (const row of entries) validateBackupRow(table, row, columns);
     }
     if (backup.tables.configuracion.length !== 1 || Number(backup.tables.configuracion[0].id) !== 1) fail('Configuración de respaldo inválida.');
+    restoredTables = backup.version === 2
+      ? { ...backup.tables, productos: backup.tables.productos.map(row => ({ ...row, ...catalogDefaults })) }
+      : backup.tables;
   }
   await client.query('INSERT INTO pos_privado.respaldos(motivo,datos) VALUES($1,$2)', ['Antes de restaurar', await exportBackup(client)]);
   for (const table of Object.keys(tables).reverse()) await client.query(`DELETE FROM public.${table}`);
   if (legacy) await client.query('SELECT pos_privado.importar_estado_legacy($1::jsonb)', [legacy]);
   else {
     for (const [table, columns] of Object.entries(tables)) {
-      for (const row of backup.tables[table]) {
+      for (const row of restoredTables[table]) {
         await client.query(`INSERT INTO public.${table}(${columns.join(',')}) VALUES(${columns.map((_, index) => '$' + (index + 1)).join(',')})`, columns.map(key => row[key]));
       }
     }

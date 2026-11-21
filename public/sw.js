@@ -1,5 +1,5 @@
 // Cambiar la versión cuando se publique un nuevo conjunto de archivos estáticos.
-const CACHE = 'felix-pos-shell-v4';
+const CACHE = 'felix-pos-shell-v5';
 const FILES = [
   '/', '/index.html', '/styles.css', '/app.js', '/pwa.js', '/manifest.webmanifest',
   '/assets/brand/repuestos-felix.jpg',

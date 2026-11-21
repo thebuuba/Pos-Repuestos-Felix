@@ -259,3 +259,21 @@ test('restaura un archivo JSON y rechaza un respaldo inválido sin cambiar los d
   assert.deepEqual(state.compras, []);
   assert.equal(good.value, '');
 });
+
+test('un artículo exento muestra el mismo ITBIS y total antes y después de confirmar', async () => {
+  await write('POST', '/api/productos', { codigo: 'EXENTO', nombre: 'Artículo exento', stock: 2, costo: 10,
+    precio1: 118, precio2: 110, precio3: 100, gravado: false });
+  await window.actualizarDatos();
+  while ($('tabla-detalle-factura').rows.length) window.quitarLineaFactura(0);
+  fill({ 'fac-buscar-prod': 'EXENTO', 'fac-cantidad': 1, 'fac-nivel-precio': 'precio1',
+    'fac-cliente': window.db.clientes[0].id, 'fac-ncf': 'B02', 'fac-condicion': 'Contado' });
+  window.agregarLineaFactura();
+  assert.equal($('fac-itbis').textContent, '0.00');
+  assert.equal($('fac-subtotal').textContent, '118.00');
+  assert.equal($('fac-total').textContent, '118.00');
+  await window.procesarFactura();
+  const invoice = (await saved()).state.facturas.at(-1);
+  assert.equal(invoice.itbis, 0);
+  assert.equal(invoice.base, 118);
+  assert.equal(invoice.total, 118);
+});

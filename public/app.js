@@ -298,7 +298,7 @@ window.agregarLineaFactura = function () {
     if (cartDatabaseId !== databaseId) throw new Error('La base cambió. Vacía y reconstruye la venta.');
     carrito.push({
       productoId: p.id, nivelPrecio, codigo: p.codigo, nombre: p.nombre, cant: quantity, precio: price,
-      itbis: subtotal - subtotal / (1 + window.db.itbisRate), subtotal,
+      itbis: p.gravado === false ? 0 : subtotal - subtotal / (1 + window.db.itbisRate), subtotal,
     });
     $('fac-buscar-prod').value = ''; $('fac-cantidad').value = 1;
     renderizarCarrito();

@@ -135,7 +135,7 @@ La configuración sigue la [guía de conexiones de Supabase](https://supabase.co
 
 Detén el servidor con `Ctrl+C` e inicia el otro comando. **Local y Supabase mantienen datos independientes; no hay sincronización ni cambio automático ante fallos.** Puedes usar ambas configuraciones, una por ejecución.
 
-Para copiar datos entre ellas: exporta desde **Configuración → Copia de seguridad**, cambia el destino del servidor y usa **Restaurar copia**. El respaldo v2 incluye tablas, filas inactivas y movimientos. La restauración pide confirmación, conserva un respaldo automático y reemplaza los datos de la base seleccionada en una transacción. También acepta el JSON anterior del HTML con Firebase y lo convierte al modelo relacional. No consulta ni modifica Firebase.
+Para copiar datos entre ellas: exporta desde **Configuración → Copia de seguridad**, cambia el destino del servidor y usa **Restaurar copia**. El respaldo v3 incluye tablas, filas inactivas, movimientos y los atributos de catálogo de Polymet. La restauración pide confirmación, conserva un respaldo automático y reemplaza los datos de la base seleccionada en una transacción. También importa respaldos relacionales v2 (los atributos nuevos reciben valores neutros) y el JSON anterior del HTML con Firebase. No consulta ni modifica Firebase.
 
 `pnpm start` permite usar un archivo `.env` en lugar de los dos perfiles anteriores. Las variables ya presentes en el entorno tienen prioridad sobre el archivo seleccionado; evita dejar `DATABASE_URL` de otro destino definida en la terminal.
 
