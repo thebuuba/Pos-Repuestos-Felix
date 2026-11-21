@@ -126,8 +126,8 @@ export async function readSnapshot(pool, databaseLabel, backup = false, matchesV
       const version = await snapshotVersion(client, databaseLabel);
       if (matchesVersion(version)) return { notModified: version };
     }
-    await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     try {
+      await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
       await client.query('SELECT pg_advisory_xact_lock_shared($1)', [maintenanceLock]);
       const result = backup ? await exportBackup(client) : await snapshot(client, databaseLabel);
       await client.query('COMMIT'); return result;

@@ -98,6 +98,44 @@ test('GET /api/state conserva el snapshot y valida el ETag con una sola consulta
   }
 });
 
+test('un BEGIN ejecutado antes del timeout no deja lecturas condicionales en una revisión obsoleta', async (t) => {
+  const initial = await getState();
+  const etag = initial.headers.get('etag');
+  const previous = await initial.json();
+  const reader = new pg.Pool({ connectionString: database.connectionString, options: '-c role=pos_app', max: 1 });
+  t.after(() => reader.end());
+  const timeout = new Error('Query read timeout');
+  const timedOutPool = {
+    async connect() {
+      const client = await reader.connect();
+      return {
+        async query(sql, ...args) {
+          const result = await client.query(sql, ...args);
+          if (sql.startsWith('BEGIN')) throw timeout;
+          return result;
+        },
+        release: (...args) => client.release(...args),
+      };
+    },
+  };
+  await assert.rejects(readSnapshot(timedOutPool, label), error => error === timeout);
+
+  const conditionalRead = () => handleRequest(new Request(origin + '/api/state', { headers: { 'If-None-Match': etag } }), {
+    pool: reader, databaseLabel: label,
+  });
+  assert.equal((await conditionalRead()).status, 304);
+  const saved = await write('/api/clientes', 'POST', { databaseId: previous.databaseId, nombre: 'Cliente tras timeout' });
+  assert.equal(saved.status, 200, await saved.clone().text());
+  const confirmed = await saved.json();
+
+  const latest = await conditionalRead();
+  assert.equal(latest.status, 200);
+  assert.notEqual(latest.headers.get('etag'), etag);
+  const snapshot = await latest.json();
+  assert.equal(snapshot.revision, confirmed.revision);
+  assert.equal(snapshot.state.clientes.find(c => c.id === confirmed.result.id)?.nombre, 'Cliente tras timeout');
+});
+
 test('una edición de producto invalida el ETag sin aplicar caché a la escritura', async () => {
   const current = await (await getState()).json();
   const productData = { codigo: 'ETAG', nombre: 'Repuesto de prueba', stock: 1, costo: 10, precio1: 20, precio2: 20, precio3: 20 };
