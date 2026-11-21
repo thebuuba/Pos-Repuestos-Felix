@@ -125,26 +125,30 @@ function ProductFormSheet({
     );
   const moneyError = "Usa un importe válido con hasta dos decimales";
   const quantityError = "Usa un entero entre 0 y 2147483647";
+  const textError = (value) =>
+    value.length > 2000 ? "Usa hasta 2000 caracteres" : undefined;
   const errors = {
     code: !form.code.trim()
       ? "Requerido"
-      : codeTaken
-        ? "Ese código ya existe"
-        : undefined,
-    name: !form.name.trim() ? "Requerido" : undefined,
+      : (textError(form.code.trim().toUpperCase()) ??
+        (codeTaken ? "Ese código ya existe" : undefined)),
+    name: !form.name.trim() ? "Requerido" : textError(form.name.trim()),
+    brand: textError(form.brand.trim()),
+    category: textError(form.category),
+    location: textError(form.location.trim().toUpperCase()),
     cost:
-      form.cost && !validMoney(form.cost)
-        ? moneyError
-        : cost <= 0
-          ? "Indica el costo"
+      form.cost === ""
+        ? "Indica el costo"
+        : !validMoney(form.cost)
+          ? moneyError
           : undefined,
     stock: validQuantity(form.stock) ? undefined : quantityError,
     minStock: validQuantity(form.minStock) ? undefined : quantityError,
     p1:
-      form.prices.p1 && !validMoney(form.prices.p1)
-        ? moneyError
-        : Number(form.prices.p1) <= 0
-          ? "Indica el precio"
+      form.prices.p1 === ""
+        ? "Indica el precio"
+        : !validMoney(form.prices.p1)
+          ? moneyError
           : undefined,
     p2: form.prices.p2 && !validMoney(form.prices.p2) ? moneyError : undefined,
     p3: form.prices.p3 && !validMoney(form.prices.p3) ? moneyError : undefined,
@@ -174,9 +178,9 @@ function ProductFormSheet({
         ...(draft.version === undefined ? {} : { version: draft.version }),
         code: form.code.trim().toUpperCase(),
         name: form.name.trim(),
-        brand: form.brand.trim() || "—",
+        brand: form.brand.trim(),
         category: form.category,
-        location: form.location.trim().toUpperCase() || "—",
+        location: form.location.trim().toUpperCase(),
         cost,
         stock: Number(form.stock),
         minStock: Number(form.minStock),
@@ -237,7 +241,11 @@ function ProductFormSheet({
                 autoFocus={true}
               />
             </Field>
-            <Field label="Marca" htmlFor={fieldId("brand")}>
+            <Field
+              label="Marca"
+              htmlFor={fieldId("brand")}
+              error={submitted ? errors.brand : undefined}
+            >
               <Input
                 id={fieldId("brand")}
                 disabled={locked}
@@ -263,7 +271,11 @@ function ProductFormSheet({
                 className={inputClass}
               />
             </Field>
-            <Field label="Categoría" htmlFor={fieldId("category")}>
+            <Field
+              label="Categoría"
+              htmlFor={fieldId("category")}
+              error={submitted ? errors.category : undefined}
+            >
               <Select2
                 value={form.category}
                 onValueChange={(v) => set("category", v)}
@@ -285,6 +297,7 @@ function ProductFormSheet({
               label="Ubicación"
               htmlFor={fieldId("location")}
               hint="Pasillo / tramo"
+              error={submitted ? errors.location : undefined}
             >
               <Input
                 id={fieldId("location")}

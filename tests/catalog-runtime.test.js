@@ -112,6 +112,43 @@ test('rendered Polymet inventory stores all attributes and survives navigation a
   await reopened.getByRole('button', { name: 'Cancelar', exact: true }).click();
 });
 
+for (const cost of [10, 0]) test('metadata-only edit preserves empty attributes and amounts at cost ' + cost, async () => {
+  const code = 'HISTORICO-' + cost;
+  const created = await write('productos', { codigo: code, nombre: code, costo: cost, precio1: cost, precio2: 0, precio3: 0, stock: 0 });
+  assert.equal(created.status, 200);
+  const { result } = await created.json();
+  await openInventory();
+  const row = page.getByRole('row').filter({ hasText: code });
+  await row.getByRole('button', { name: 'Editar', exact: true }).click();
+  const sheet = page.getByRole('dialog');
+  await sheet.getByLabel('Descripción', { exact: true }).fill('Descripción revisada');
+  await sheet.getByRole('button', { name: 'Guardar cambios' }).click();
+  await sheet.waitFor({ state: 'hidden', timeout: 5_000 });
+  await page.reload();
+  await row.getByText('Descripción revisada', { exact: true }).waitFor();
+  const stored = (await pool.query('SELECT nombre, marca, categoria, ubicacion, costo, precio1, precio2, precio3 FROM productos WHERE id=$1', [result.id])).rows[0];
+  assert.deepEqual(stored, { nombre: 'Descripción revisada', marca: '', categoria: '', ubicacion: '',
+    costo: cost.toFixed(2), precio1: cost.toFixed(2), precio2: '0.00', precio3: '0.00' });
+});
+
+test('creating with blank optional attributes and zero amounts renders an empty ratio and progress', async () => {
+  await openInventory();
+  const sheet = await newProduct('UI-CEROS', 'Sin mínimo ni precios');
+  for (const label of ['Costo base RD$', 'Precio 1 · Detalle', 'Existencia', 'Mínimo']) {
+    await sheet.getByLabel(label, { exact: true }).fill('0');
+  }
+  await sheet.getByRole('button', { name: 'Guardar artículo' }).click();
+  await sheet.waitFor({ state: 'hidden', timeout: 5_000 });
+  await page.reload();
+  const row = page.getByRole('row').filter({ hasText: 'UI-CEROS' });
+  assert.equal(await row.getByRole('cell').nth(8).innerText(), '—');
+  assert.equal(await row.locator('div.h-full.rounded-full').evaluate(el => el.style.width), '0%');
+  const lowStockItem = page.getByRole('listitem').filter({ hasText: 'Sin mínimo ni precios' });
+  assert.equal(await lowStockItem.locator('div.h-full.rounded-full').evaluate(el => el.style.width), '0%');
+  const p = await confirmedProduct('UI-CEROS');
+  assert.deepEqual([p.marca, p.ubicacion, p.costo, p.precio1, p.precio2, p.precio3], ['', '', 0, 0, 0, 0]);
+});
+
 test('a real concurrent edit rejects the stale version and retains the rendered draft', { timeout: 60_000 }, async () => {
   const original = await confirmedProduct('UI-CATALOGO');
   await page.getByRole('row').filter({ hasText: 'UI-CATALOGO' }).getByRole('button', { name: 'Editar', exact: true }).click();

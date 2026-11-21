@@ -29,7 +29,7 @@ function LowStockList({ products }) {
       ) : (
         <ul className="mt-3 divide-y divide-border">
           {products.map((p) => {
-            const pct = Math.min(100, Math.round((p.stock / p.minStock) * 100));
+            const pct = p.minStock > 0 ? Math.max(4, Math.min(100, Math.round((p.stock / p.minStock) * 100))) : 0;
             const out = p.stock === 0;
             return (
               <li className="flex items-center gap-3 py-3" key={p.id}>
@@ -66,7 +66,7 @@ function LowStockList({ products }) {
                         out ? "bg-primary" : "bg-amber-500",
                       )}
                       style={{
-                        width: `${Math.max(pct, 4)}%`,
+                        width: `${pct}%`,
                       }}
                     />
                   </div>

@@ -18,13 +18,19 @@ Las pruebas renderizadas usan el frontend compilado, Edge aislado, el adaptador 
 
 La solicitud se registra en IndexedDB antes de enviar y se conserva ante respuestas inciertas. Se comprobaron pérdida del 200 después de COMMIT, reinicio de la página, autenticación vencida, respuesta ilegible, generación reemplazada y recuperación desde otra pestaña. El reintento mantiene el cuerpo y UUID originales, incluso cuando otra pestaña ya recuperó la operación y renombró el artículo. Una solicitud ajena no se sustituye. Los rechazos acreditados de catálogo permiten corregir el borrador sin conservar un bloqueo indefinido.
 
-Las cantidades inválidas no se truncan; los importes conservan hasta dos decimales y los ceros explícitos de precios opcionales. Un formulario sin fórmulas configuradas permite precios manuales, sin inventar recargos. Las pruebas de teclado comprueban el foco después de rechazar, cancelar y eliminar la última fila.
+La acreditación de rechazo incluye la operación, ruta, método y generación. Solo se emite después de una ejecución nueva rechazada y un rollback confirmado, antes de iniciar COMMIT. El cliente exige una lectura nueva de la misma generación. Un error de autenticación, replay, contención ambigua o lectura no demuestra ese rechazo. Se probaron asimismo respuestas 200 con importes, cantidades o identificadores imposibles y la limpieza de conexiones tras tiempos de espera.
+
+Las cantidades inválidas no se truncan; los importes conservan hasta dos decimales y los ceros explícitos de precios opcionales. Los textos que exceden el límite normalizado se conservan en el formulario para corregirlos y no generan una solicitud. Un formulario sin fórmulas configuradas permite precios manuales, sin inventar recargos. Las pruebas de teclado comprueban el foco después de rechazar, cancelar y eliminar la última fila.
+
+Las cadenas vacías de marca, categoría y ubicación de un histórico permanecen vacías al editar su descripción. Los ceros explícitos de costo y P1 son válidos, como en la API; un campo requerido vacío sigue siendo inválido. Esto corrige la restricción del prototipo que obligaba a inventar un importe positivo. Las proporciones sin denominador se representan sin `NaN` ni valores infinitos.
+
+La validación condicional reconoce etiquetas con el mismo valor opaco aunque cambie el prefijo de debilidad. Es la equivalencia definida para `If-None-Match` en [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110.html#section-13.1.2); Cloudflare documenta la posible transformación de etiquetas al cambiar la compresión en [su referencia de ETag](https://developers.cloudflare.com/cache/reference/etag-headers/). Una etiqueta ausente, malformada o de otra versión no confirma la copia local.
 
 `tests/operational-build.test.js` inspecciona el grafo real de esbuild: la entrada operativa no depende de `pos-store.jsx`, `pos-data.js`, `seed-data.js` ni del avatar de demostración. También comprueba la fuente local y su licencia. La presencia de la referencia en el repositorio no la convierte en un fallback de datos.
 
 ## Reproducir
 
-La suite completa pasó con **112 pruebas**, sin fallos ni omisiones, sobre el código de `7bd66d6` y las pruebas de integración de esta entrega. Las compilaciones de referencia, entrada operativa y Worker también finalizaron correctamente. Dos mensajes de error de la suite pertenecen a casos existentes que retiran deliberadamente la configuración ficticia del Worker; no representan fallos de las pruebas.
+La suite completa pasó con **124 pruebas**, sin fallos ni omisiones, incluyendo las correcciones y regresiones de la revisión final. Las compilaciones de referencia, entrada operativa y Worker también finalizaron correctamente. Dos mensajes de error de la suite pertenecen a casos existentes que retiran deliberadamente la configuración ficticia del Worker; no representan fallos de las pruebas.
 
 ```powershell
 pnpm exec node --test --test-concurrency=2 tests/*.test.js

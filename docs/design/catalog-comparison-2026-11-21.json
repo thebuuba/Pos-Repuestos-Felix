@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-11-21T22:59:34.953Z",
+  "checkedAt": "2026-11-21T23:20:12.307Z",
   "version": "99fdb61658b9417c680d007618ae1c23bf135b1e",
   "scope": "Inventario main; same prototype products persisted through the real API on disposable PostgreSQL",
   "screenshotStyle": "Hide the sticky header only while capturing main, to prevent it painting over the top of the target during screenshot scrolling; visibility does not change layout",

@@ -4,7 +4,13 @@ import { validateState } from './legacy-state.js';
 const maintenanceLock = 74198232;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const maxCents = 99999999999999n;
-export function fail(message, status = 400) { const error = new Error(message); error.status = status; throw error; }
+class OperationError extends Error {
+  constructor(message, status, cause) {
+    super(message, { cause });
+    this.status = status;
+  }
+}
+export function fail(message, status = 400) { throw new OperationError(message, status); }
 function text(value, label, required = true) {
   if (typeof value !== 'string' || value.length > 2000 || (required && !value.trim())) fail(`Revisa ${label}.`);
   return value.trim();
@@ -128,7 +134,9 @@ export async function readSnapshot(pool, databaseLabel, backup = false, matchesV
   let discardReason;
   try {
     if (!backup && matchesVersion) {
-      const version = await snapshotVersion(client, databaseLabel);
+      let version;
+      try { version = await snapshotVersion(client, databaseLabel); }
+      catch (error) { discardReason = error; throw error; }
       if (matchesVersion(version)) return { notModified: version };
     }
     try {
@@ -307,9 +315,10 @@ async function execute(client, method, path, body) {
 }
 export async function writeOperation(pool, method, path, body, key, databaseLabel) {
   if (!body || typeof body !== 'object' || Array.isArray(body) || !uuid.test(body.databaseId) || !uuid.test(key || '')) fail('Se requiere databaseId e Idempotency-Key UUID válidos.');
-  const client = await pool.connect();
   const type = method + ' ' + path;
   const fingerprint = createHash('sha256').update(canonical(body)).digest('hex');
+  const client = await pool.connect();
+  let executingNewOperation = false;
   let discardReason;
   try {
     await client.query('BEGIN');
@@ -327,18 +336,28 @@ export async function writeOperation(pool, method, path, body, key, databaseLabe
       result = previous.resultado.result;
     } else {
       if (body.databaseId !== system.database_id) fail('La base cambió. Actualiza los datos antes de guardar.', 409);
+      // Only this call can reject a new operation after the guarded key miss.
+      executingNewOperation = true;
       result = await execute(client, method, path, body);
+      executingNewOperation = false;
       await client.query('UPDATE pos_privado.sistema SET revision=revision+1 WHERE id=1');
       const identity = (await client.query('SELECT database_id FROM pos_privado.sistema WHERE id=1')).rows[0].database_id;
       await client.query('INSERT INTO pos_privado.solicitudes(clave,tipo,huella,resultado) VALUES($1,$2,$3,$4)', [key, type, fingerprint, { result, databaseId: identity }]);
     }
     const response = { ...await snapshot(client, databaseLabel), result };
     await client.query('COMMIT'); return response;
-  } catch (error) {
+  } catch (cause) {
     discardReason = await rollbackFailure(client);
-    if (!error.status && ['23502', '23503', '23514', '22003', '22023', '22P02', '22007', '22008', 'P0001'].includes(error.code)) fail('Los datos no cumplen las reglas de integridad. Revisa el formulario o respaldo.');
-    if (error.code === '23505') fail('Ya existe un registro con ese código o número de factura.', 409);
-    if (['40P01', '40001'].includes(error.code)) fail('Otra caja está usando estos datos. Reintenta la misma operación.', 409);
+    if (['40P01', '40001'].includes(cause.code)) throw new OperationError('Otra caja está usando estos datos. Reintenta la misma operación.', 409, cause);
+    let error = cause;
+    if (!cause.status && ['23502', '23503', '23514', '22003', '22023', '22P02', '22007', '22008', 'P0001'].includes(cause.code)) {
+      error = new OperationError('Los datos no cumplen las reglas de integridad. Revisa el formulario o respaldo.', 400, cause);
+    } else if (cause.code === '23505') {
+      error = new OperationError('Ya existe un registro con ese código o número de factura.', 409, cause);
+    }
+    if (!discardReason && executingNewOperation && error instanceof OperationError && error.status >= 400 && error.status < 500) {
+      error.rejection = { operationId: key, databaseId: body.databaseId, method, path };
+    }
     throw error;
   } finally { client.release(discardReason); }
 }

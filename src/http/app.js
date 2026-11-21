@@ -126,6 +126,9 @@ export async function handleRequest(request, { pool, hosting = hostingConfig({})
     });
   } catch (error) {
     if (!error.status) console.error(JSON.stringify({ event: 'http_request_error', code: error.code || error.name }));
-    return json(error.status || 503, { error: error.status ? error.message : 'No se confirmó el guardado. Revisa la conexión y actualiza los datos antes de reintentar.' });
+    return json(error.status || 503, {
+      error: error.status ? error.message : 'No se confirmó el guardado. Revisa la conexión y actualiza los datos antes de reintentar.',
+      rejection: error.rejection,
+    });
   }
 }

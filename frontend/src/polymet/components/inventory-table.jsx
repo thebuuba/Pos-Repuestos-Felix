@@ -146,8 +146,8 @@ function InventoryTable({ products, onEdit, onDelete }) {
               {rows.map((p) => {
                 const state = stockState(p);
                 const ui = STATE_UI[state];
-                const margin = ((p.prices.p1 - p.cost) / p.prices.p1) * 100;
-                const fill = Math.min(100, (p.stock / (p.minStock * 3)) * 100);
+                const margin = p.prices.p1 > 0 ? ((p.prices.p1 - p.cost) / p.prices.p1) * 100 : null;
+                const fill = p.minStock > 0 ? Math.max(3, Math.min(100, (p.stock / (p.minStock * 3)) * 100)) : 0;
                 return (
                   <tr
                     onDoubleClick={() => onEdit?.(p)}
@@ -194,7 +194,7 @@ function InventoryTable({ products, onEdit, onDelete }) {
                             <div
                               className={cn("h-full rounded-full", ui.dot)}
                               style={{
-                                width: `${Math.max(fill, 3)}%`,
+                                width: `${fill}%`,
                               }}
                             />
                           </div>
@@ -214,8 +214,7 @@ function InventoryTable({ products, onEdit, onDelete }) {
                       {formatMoney(p.prices.p3)}
                     </td>
                     <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">
-                      {margin.toFixed(1)}
-                      {"%"}
+                      {margin === null ? "—" : `${margin.toFixed(1)}%`}
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex justify-end gap-1">

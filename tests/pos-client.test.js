@@ -70,6 +70,29 @@ function createProduct(page, code) {
     payload: { codigo, nombre: codigo, costo: 1, precio1: 2, precio2: 0, precio3: 0, stock: 4 },
   }), code);
 }
+for (const initialWeak of [false, true]) test(`conditional refresh accepts the same opaque ETag when its weak marker ${initialWeak ? 'is removed' : 'is added'}`, async t => {
+  const context = await browser.newContext();
+  t.after(() => context.close());
+  await context.route(origin + '/api/state', async route => {
+    const condition = route.request().headers()['if-none-match'];
+    if (!condition) {
+      const response = await route.fetch();
+      const headers = response.headers();
+      if (initialWeak) headers.etag = 'W/' + headers.etag;
+      return route.fulfill({ response, headers });
+    }
+    const tag = initialWeak ? condition.replace(/^W\//, '') : 'W/' + condition;
+    return route.fulfill({ status: 304, headers: { ETag: tag, 'Cache-Control': 'no-store' } });
+  });
+  const page = await open(context);
+  const unchanged = await page.evaluate(async () => {
+    const previous = client.getState().snapshot;
+    await client.reload();
+    return client.getState().snapshot === previous && client.getState().connection === 'connected';
+  });
+  assert.equal(unchanged, true);
+});
+
 test('a committed packet survives restart and subsequent 401, and replays with one inventory movement', async t => {
   const page = await tab(t);
   const packets = [];
@@ -210,6 +233,108 @@ test('a second tab releases a retried packet when the service confirms the same 
   assert.deepEqual(rows.rows.map(row => row.codigo), ['OTRO-DESPUES-DEL-RECHAZO', 'SKU-OCUPADO']);
 });
 
+test('a lost validation response can release the exact restarted packet after a verified rejection', async t => {
+  const page = await tab(t);
+  const requests = [];
+  const replies = [];
+  const initial = await page.evaluate(() => client.getState().snapshot);
+  await page.route('**/api/productos', async route => {
+    const request = route.request();
+    requests.push({ operationId: request.headers()['idempotency-key'], method: request.method(), path: new URL(request.url()).pathname, body: request.postData() });
+    const response = await route.fetch();
+    replies.push({ status: response.status(), body: await response.json() });
+    return replies.length === 1 ? route.abort() : route.fulfill({ response });
+  });
+  await assert.rejects(page.evaluate(() => client.writeOperation({ method: 'POST', path: '/api/productos', databaseId: client.getState().snapshot.databaseId,
+    payload: { codigo: 'VALIDACION', nombre: 'x'.repeat(2001), costo: 0, precio1: 0, precio2: 0, precio3: 0, stock: 0 } })));
+  await page.reload();
+  await initialize(page);
+  const proof = await page.evaluate(async () => {
+    try { await client.retryPending(); } catch (error) { return { definitive: !!error.definitive, message: error.message }; }
+  });
+  assert.deepEqual(requests, [requests[0], requests[0]]);
+  const { body, ...request } = requests[0];
+  for (const reply of replies) {
+    assert.equal(reply.status, 400);
+    assert.deepEqual(reply.body.rejection, { ...request, databaseId: initial.databaseId });
+  }
+  assert.deepEqual(proof, { definitive: true, message: replies[0].body.error });
+  const after = await page.evaluate(() => client.getState());
+  assert.equal(after.pending, null);
+  assert.deepEqual(after.snapshot, initial);
+  assert.equal((await pool.query("SELECT id FROM productos WHERE codigo='VALIDACION'")).rowCount, 0);
+  await createProduct(page, 'VALIDACION');
+  assert.equal(replies[2].status, 200);
+  assert.equal(Object.hasOwn(replies[2].body, 'rejection'), false);
+  assert.notEqual(requests[0].operationId, requests[2].operationId);
+});
+
+test('unverified business rejections preserve the original packet across repeated attempts', async t => {
+  const page = await tab(t);
+  const first = await page.evaluate(() => client.getState().snapshot);
+  const invalid = [null, {}, { operationId: randomUUID() }, { databaseId: randomUUID() }, { method: 'DELETE' }, { path: '/api/productos/7' }];
+  let count = 0;
+  let mode = 'normal';
+  const nextGeneration = randomUUID();
+  await page.route('**/api/state', route => {
+    if (mode === 'unreadable') return route.fulfill({ status: 503 });
+    if (mode === 'wrongTag') return route.fulfill({ status: 304, headers: { ETag: '"otra-generacion"' } });
+    return route.fulfill({ headers: { ETag: '"catalogo"' }, json: { ...first, databaseId: mode === 'restore' ? nextGeneration : first.databaseId } });
+  });
+  await page.route('**/api/productos', route => {
+    const request = route.request();
+    const proof = { operationId: request.headers()['idempotency-key'], databaseId: first.databaseId, method: 'POST', path: '/api/productos' };
+    const n = count++;
+    const rejection = n < 2 ? invalid[n] : { ...proof, ...invalid[n] };
+    return route.fulfill({ status: n % 2 ? 400 : 409, json: { error: 'El producto cambió. Actualiza los datos antes de editar.', rejection } });
+  });
+  await assert.rejects(createProduct(page, 'PRUEBA-SIN-ACREDITAR'));
+  const pending = await page.evaluate(() => client.getState().pending);
+  assert.ok(pending);
+  for (let i = 1; i < invalid.length + 3; i++) {
+    if (i === invalid.length) mode = 'unreadable';
+    if (i === invalid.length + 1) mode = 'wrongTag';
+    if (i === invalid.length + 2) mode = 'restore';
+    assert.equal(await page.evaluate(async () => {
+      try { await client.retryPending(); } catch (error) { return error.uncertain === true && !error.definitive; }
+    }), true);
+    assert.deepEqual(await page.evaluate(() => client.getState().pending), pending);
+  }
+  assert.equal(await page.evaluate(() => client.getState().snapshot.databaseId), nextGeneration);
+});
+
+test('GET and write acknowledgements reject impossible products without changing the snapshot or journal', async t => {
+  const page = await tab(t);
+  const initial = await page.evaluate(() => client.getState().snapshot);
+  const product = { id: 71, version: 1, codigo: 'DOMINIO', nombre: 'Artículo', marca: '', categoria: '', ubicacion: '',
+    stock: 0, stockMinimo: 0, costo: 0, precio1: 999999999999.99, precio2: 0, precio3: 0, gravado: false, activo: true };
+  const ack = { ...initial, revision: initial.revision + 1, state: { ...initial.state, productos: [product] }, result: { id: product.id } };
+  await page.route('**/api/state', route => route.fulfill({ json: ack }));
+  await page.route('**/api/productos', route => route.fulfill({ json: ack }));
+  const variants = [{ stock: 1.5 }, { stockMinimo: -1 }, { stock: 2147483648 }, { costo: -5.001 }, { precio1: 1.005 }, { precio2: 1e12 },
+    { precio3: '0.20' }, { id: 0 }, { version: -1 }, { nombre: ' ' }, { codigo: '' }, { marca: 'x'.repeat(2001) },
+    { categoria: 'x'.repeat(2001) }, { ubicacion: 'x'.repeat(2001) }, { gravado: 'false' }, { activo: 1 },
+    { stock_minimo: -1 }, { stock_minimo: 1 }];
+  let pending;
+  for (const products of [...variants.map(fields => [{ ...product, ...fields }]), [product, { ...product, codigo: 'OTRO' }],
+    [product, { ...product, id: 72 }], [product, { ...product, id: 72, codigo: 'dominio' }]]) {
+    ack.state.productos = products;
+    await assert.rejects(page.evaluate(() => client.reload()), /catálogo no válidos/);
+    const write = pending ? page.evaluate(() => client.retryPending()) : createProduct(page, 'DOMINIO');
+    await assert.rejects(write, /catálogo no válidos/);
+    const current = await page.evaluate(() => client.getState());
+    assert.deepEqual(current.snapshot, initial);
+    assert.ok(current.pending);
+    pending ??= current.pending;
+    assert.deepEqual(current.pending, pending);
+  }
+  ack.state.productos = [product];
+  await page.evaluate(() => client.retryPending());
+  const confirmed = await page.evaluate(() => client.getState());
+  assert.equal(confirmed.pending, null);
+  assert.deepEqual(confirmed.snapshot.state.productos, [product]);
+});
+
 test('aborting IndexedDB after a successful sending put prevents the write request', async t => {
   const page = await tab(t);
   let requests = 0;
@@ -307,7 +432,7 @@ test('an unreadable first 409 preserves the packet and checks the generation aft
     if (++reads === 1) {
       started.resolve();
       await release.promise;
-      return route.fulfill({ status: 304 });
+      return route.fulfill({ status: 304, headers: { ETag: route.request().headers()['if-none-match'] } });
     }
     return route.fulfill({ json: { ...snapshot, databaseId: newGeneration } });
   });

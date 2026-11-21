@@ -25,7 +25,24 @@ const product = {
   stock: 8,
   stockMinimo: 4,
   gravado: true,
+  activo: true,
 };
+
+function rejected(route, status, error) {
+  const request = route.request();
+  return route.fulfill({
+    status,
+    json: {
+      error,
+      rejection: {
+        operationId: request.headers()["idempotency-key"],
+        databaseId: request.postDataJSON().databaseId,
+        method: request.method(),
+        path: new URL(request.url()).pathname,
+      },
+    },
+  });
+}
 
 before(async () => {
   directory = await mkdtemp(path.join(tmpdir(), "felix-catalog-forms-"));
@@ -90,6 +107,39 @@ const noToast = (page, message) =>
     .then((count) =>
       assert.equal(count, 0, "an unconfirmed request must not show success"),
     );
+
+test("oversized catalog text stays editable and never creates a network operation", async (t) => {
+  const { page } = await openInventory(t);
+  let writes = 0;
+  await page.route("**/api/productos", async (route) => {
+    writes++;
+    await route.fulfill({
+      status: 400,
+      json: { error: "Revisa el texto del artículo." },
+    });
+  });
+  const sheet = await newDraft(page);
+  const tooLong = "X".repeat(2001);
+  for (const [label, original] of [
+    ["Código", "PRUEBA"],
+    ["Descripción", "Artículo de prueba"],
+    ["Marca", ""],
+    ["Ubicación", ""],
+  ]) {
+    const input = sheet.getByLabel(label, { exact: true });
+    await input.fill(tooLong);
+    await sheet
+      .getByRole("button", { name: "Guardar artículo", exact: true })
+      .click();
+    await sheet
+      .getByText("Usa hasta 2000 caracteres", { exact: true })
+      .waitFor({ timeout: 1500 });
+    assert.equal(await input.inputValue(), tooLong);
+    assert.equal(await input.isEditable(), true);
+    assert.equal(writes, 0);
+    await input.fill(original);
+  }
+});
 
 test(
   "a deferred save blocks duplicate clicks and reports success only after the response",
@@ -178,10 +228,7 @@ test(
   async (t) => {
     const { page } = await openInventory(t);
     await page.route("**/api/productos", (route) =>
-      route.fulfill({
-        status: 422,
-        json: { error: "El servicio rechazó el artículo." },
-      }),
+      rejected(route, 400, "El servicio rechazó el artículo."),
     );
     const sheet = await newDraft(page);
     await sheet
@@ -217,6 +264,8 @@ test(
       exact: true,
     });
     for (const [field, value, message] of [
+      [0, "", /Indica el costo/],
+      [3, "", /Indica el precio/],
       [0, "1e100", /hasta dos decimales/],
       [1, "1.5", /entero/],
       [2, "2147483648", /entero/],
@@ -331,7 +380,7 @@ test(
         case 4:
           state.revision = 2;
           state.state.productos = [product];
-          return route.fulfill({ status: 409, json: { error: duplicate } });
+          return rejected(route, 409, duplicate);
         default:
           state.revision = 3;
           state.state.productos.push({
@@ -472,7 +521,7 @@ test(
       if (packets.length === 1) return route.abort("failed");
       state.revision = 2;
       state.state.productos = [{ ...product, version: 3 }];
-      return route.fulfill({ status: 409, json: { error: versionConflict } });
+      return rejected(route, 409, versionConflict);
     });
     await page
       .getByRole("row")
@@ -549,12 +598,11 @@ test(
     await page.route("**/api/productos/7", async (route) => {
       packets.push(route.request().postDataJSON());
       await gate.promise;
-      await route.fulfill({
-        status: 409,
-        json: {
-          error: "El producto cambió. Actualiza los datos antes de editar.",
-        },
-      });
+      await rejected(
+        route,
+        409,
+        "El producto cambió. Actualiza los datos antes de editar.",
+      );
     });
     const rowAction = page.getByRole("button", {
       name: "Eliminar",

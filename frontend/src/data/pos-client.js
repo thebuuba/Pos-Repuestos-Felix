@@ -7,14 +7,13 @@ const productFields = new Set([
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const changedDatabase = 'La base cambió. Revisa la solicitud y los datos antes de continuar.';
 const unconfirmed = 'No se confirmó la operación. Reintenta la solicitud pendiente.';
-// Product validation runs after the lookup by idempotency key. A committed
-// replay bypasses both checks and returns its original result.
-const rejectedCatalogConflicts = new Set([
-  'El producto cambió. Actualiza los datos antes de editar.',
-  'Ya existe un registro con ese código o número de factura.',
-]);
-// Transaction contention can also interrupt the lookup of a committed replay.
-const contention = 'Otra caja está usando estos datos. Reintenta la misma operación.';
+
+function sameVersionTag(first, second) {
+  // Conditional GET uses the opaque tag, even if an intermediary changes W/.
+  const opaque = value => typeof value === 'string' ? /^(?:W\/)?("[\x21\x23-\x7e\x80-\xff]*")$/.exec(value)?.[1] : undefined;
+  const tag = opaque(first);
+  return tag !== undefined && tag === opaque(second);
+}
 
 function checkTarget(method, path) {
   if (method === 'POST' && path === '/api/productos') return;
@@ -22,23 +21,37 @@ function checkTarget(method, path) {
   throw new Error('La operación de catálogo no es válida.');
 }
 
+function validProduct(p) {
+  return p && Number.isSafeInteger(p.id) && p.id > 0 && Number.isSafeInteger(p.version) && p.version > 0 &&
+    ['codigo', 'nombre', 'marca', 'categoria', 'ubicacion'].every(key => typeof p[key] === 'string' && p[key].length <= 2000) &&
+    p.codigo.trim() && p.nombre.trim() &&
+    ['stock', 'stockMinimo'].every(key => Number.isInteger(p[key]) && p[key] >= 0 && p[key] <= 2147483647) &&
+    (!Object.hasOwn(p, 'stock_minimo') || p.stock_minimo === p.stockMinimo) &&
+    ['costo', 'precio1', 'precio2', 'precio3'].every(key => typeof p[key] === 'number' && /^\d{1,12}(?:\.\d{1,2})?$/.test(String(p[key]))) &&
+    typeof p.gravado === 'boolean' && p.activo === true;
+}
+
 function checkSnapshot(snapshot) {
-  if (!uuid.test(snapshot?.databaseId) || !Number.isSafeInteger(snapshot.revision) ||
+  const products = snapshot?.state?.productos;
+  if (typeof snapshot?.databaseId !== 'string' || !uuid.test(snapshot.databaseId) || !Number.isSafeInteger(snapshot.revision) ||
       snapshot.revision < 0 || typeof snapshot.databaseLabel !== 'string' ||
-      !Array.isArray(snapshot.state?.productos) ||
-      !snapshot.state.productos.every(product => product && Number.isSafeInteger(product.id) &&
-        Number.isSafeInteger(product.version) &&
-        ['codigo','nombre','marca','categoria','ubicacion'].every(key => typeof product[key] === 'string') &&
-        ['costo','precio1','precio2','precio3','stock','stockMinimo'].every(key => Number.isFinite(product[key])) &&
-        typeof product.gravado === 'boolean')) {
+      !Array.isArray(products) || !products.every(validProduct) ||
+      new Set(products.map(p => p.id)).size !== products.length ||
+      // PostgreSQL's case folding for non-ASCII SKU characters depends on its collation.
+      new Set(products.map(p => p.codigo.replace(/[A-Z]/g, letter => letter.toLowerCase()))).size !== products.length) {
     throw new Error('El servicio devolvió datos de catálogo no válidos.');
   }
   return snapshot;
 }
 
-async function serviceMessage(response) {
+async function serviceError(response) {
   const body = await response.json().catch(() => null);
-  return typeof body?.error === 'string' && body.error.trim() ? body.error : null;
+  return typeof body?.error === 'string' && body.error.trim() ? body : null;
+}
+
+function matchesRejection(proof, packet) {
+  return proof?.operationId === packet.id && proof.databaseId === packet.databaseId &&
+    proof.method === packet.method && proof.path === packet.path;
 }
 
 export function createPosClient() {
@@ -96,7 +109,7 @@ export function createPosClient() {
     }
   }
 
-  function reload({ fresh = false } = {}) {
+  function readSnapshot({ fresh = false } = {}) {
     if (reading && !fresh) return reading;
     const sequence = ++issued;
     const job = working(async () => {
@@ -111,15 +124,17 @@ export function createPosClient() {
         });
         if (response.status === 304) {
           if (!previous || !previousTag) throw new Error('No hay una copia confirmada del catálogo.');
+          if (!sameVersionTag(response.headers.get('ETag'), previousTag)) throw new Error('El servicio no confirmó la versión del catálogo.');
           if (previous === state.snapshot && previousTag === etag) {
             latestConfirmed = Math.max(latestConfirmed, sequence);
             set({ connection: 'connected', lastSync: new Date().toISOString() });
           }
-        } else {
-          if (response.status !== 200) throw new Error(await serviceMessage(response) || 'El servicio no confirmó la lectura del catálogo.');
-          apply(checkSnapshot(await response.json()), response.headers.get('ETag'), sequence);
+          return previous;
         }
-        return state.snapshot;
+        if (response.status !== 200) throw new Error((await serviceError(response))?.error || 'El servicio no confirmó la lectura del catálogo.');
+        const observed = checkSnapshot(await response.json());
+        apply(observed, response.headers.get('ETag'), sequence);
+        return observed;
       } catch (error) {
         if (sequence === issued) set({ connection: 'unavailable' });
         if (error instanceof TypeError || error.name === 'TimeoutError') throw new Error('No se pudo conectar con el servicio.');
@@ -128,6 +143,11 @@ export function createPosClient() {
     }).finally(() => { if (reading === job) reading = null; });
     reading = job;
     return job;
+  }
+
+  async function reload(options) {
+    await readSnapshot(options);
+    return state.snapshot;
   }
 
   function checkGeneration(databaseId) {
@@ -152,7 +172,6 @@ export function createPosClient() {
     // records that the previous attempt could have committed.
     return navigator.locks.request('repuestos-felix-envio-' + packet.id, { ifAvailable: true }, async lock => {
       if (!lock) throw uncertainError(new Error('Otra pestaña está enviando esta solicitud.'), packet);
-      let firstAttempt = false;
       const sending = await updatePending(current => {
         checkGeneration(packet.databaseId);
         if (!current && exactRetry) return packet;
@@ -160,7 +179,6 @@ export function createPosClient() {
             current.method !== packet.method || current.path !== packet.path || current.body !== packet.body) {
           throw uncertainError(new Error('La solicitud pendiente cambió. Revisa las operaciones antes de reintentar.'), packet);
         }
-        firstAttempt = !exactRetry && current.status === 'prepared';
         return { ...current, status: 'sending' };
       });
       const request = ++issued;
@@ -174,18 +192,20 @@ export function createPosClient() {
           body: sending.body,
         });
         if (received.status !== 200) {
-          const message = await serviceMessage(received);
-          definitive = firstAttempt && !!message && received.status >= 400 &&
-            received.status < 500 && received.status !== 408;
-          if (received.status === 409) {
-            // A conditional read started before the rejection cannot confirm
-            // which database generation produced the conflict.
-            const refreshed = await reload({ fresh: true }).catch(() => null);
-            const rejected = rejectedCatalogConflicts.has(message) || (firstAttempt && message === contention);
-            definitive = rejected && refreshed?.databaseId === sending.databaseId;
+          const body = await serviceError(received);
+          const proven = [400, 409].includes(received.status) && matchesRejection(body?.rejection, sending);
+          // Even an unproven conflict may announce a restored generation.
+          if (proven || received.status === 409) {
+            const observed = await readSnapshot({ fresh: true }).catch(() => null);
+            if (proven && observed?.databaseId === sending.databaseId) {
+              await updatePending(current => {
+                checkGeneration(sending.databaseId);
+                return current?.id === sending.id ? null : current;
+              });
+              definitive = true;
+            }
           }
-          definitive = definitive && state.snapshot?.databaseId === sending.databaseId;
-          throw new Error(message || unconfirmed);
+          throw new Error(body?.error || unconfirmed);
         }
         const snapshot = checkSnapshot(await received.json());
         const target = snapshot.result?.id;
@@ -201,7 +221,6 @@ export function createPosClient() {
           set({ connection: 'unavailable' });
         }
         if (definitive) {
-          await updatePending(current => current?.id === sending.id ? null : current);
           cause.definitive = true;
           throw cause;
         }
