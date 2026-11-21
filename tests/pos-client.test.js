@@ -1,14 +1,19 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 import { chromium } from 'playwright-core';
 import pg from 'pg';
 import { migrateDatabase } from '../src/db/migrations.js';
 import { createApp } from '../src/server.js';
 import { temporaryPostgres } from './postgres.js';
+import { buildOperational } from '../scripts/build-operational.mjs';
 
-let database, pool, server, origin, browser, script;
+let database, pool, server, origin, browser, script, assets;
 
 before(async () => {
   const bundle = await build({
@@ -20,7 +25,9 @@ before(async () => {
   const admin = new pg.Pool({ connectionString: database.connectionString });
   try { await migrateDatabase(admin); } finally { await admin.end(); }
   pool = new pg.Pool({ connectionString: database.connectionString, options: '-c role=pos_app' });
-  server = await createApp(pool);
+  assets = await mkdtemp(path.join(tmpdir(), 'felix-pos-client-'));
+  await buildOperational(assets);
+  server = await createApp(pool, { assetsDirectory: pathToFileURL(assets + path.sep) });
   await new Promise(done => server.listen(0, '127.0.0.1', done));
   origin = 'http://127.0.0.1:' + server.address().port;
   browser = await chromium.launch({ channel: 'msedge', headless: true });
@@ -31,6 +38,11 @@ after(async () => {
   if (server) await new Promise(done => server.close(done));
   await pool?.end();
   await database?.stop();
+  if (assets) {
+    assert.equal(path.dirname(path.resolve(assets)), path.resolve(tmpdir()));
+    assert.ok(path.basename(assets).startsWith('felix-pos-client-'));
+    await rm(assets, { recursive: true, force: true });
+  }
 });
 
 async function open(context) {
@@ -84,6 +96,61 @@ test('a committed packet survives restart and subsequent 401, and replays with o
   const rows = await pool.query("SELECT id FROM productos WHERE codigo='DURABLE'");
   assert.equal(rows.rowCount, 1);
   assert.equal((await pool.query('SELECT id FROM movimientos_inventario WHERE producto_id=$1', [rows.rows[0].id])).rowCount, 1);
+});
+
+test('an open form replays its own packet after another tab recovers and renames the product', { timeout: 40_000 }, async t => {
+  const other = await tab(t);
+  const page = await other.context().newPage();
+  const packets = [];
+  let failOther = true;
+  await page.context().route('**/api/productos', async route => {
+    const request = route.request();
+    if (request.postDataJSON().codigo === 'OTRO-PENDIENTE' && failOther) {
+      failOther = false;
+      return route.abort();
+    }
+    if (request.postDataJSON().codigo !== 'BORRADOR-FIJO') return route.continue();
+    packets.push({ body: request.postData(), id: request.headers()['idempotency-key'] });
+    if (packets.length === 1) {
+      assert.equal((await route.fetch()).status(), 200);
+      return route.abort();
+    }
+    return route.continue();
+  });
+  await page.goto(origin + '/inventario');
+  await page.getByRole('button', { name: 'Nuevo artículo' }).click();
+  const form = page.getByRole('dialog');
+  await form.getByLabel('Código', { exact: true }).fill('BORRADOR-FIJO');
+  await form.getByLabel('Descripción', { exact: true }).fill('Producto confirmado en dos pestañas');
+  await form.getByLabel('Costo base RD$', { exact: true }).fill('2');
+  await form.getByLabel('Precio 1 · Detalle', { exact: true }).fill('3');
+  await form.getByLabel('Existencia', { exact: true }).fill('4');
+  await form.getByRole('button', { name: 'Guardar artículo' }).click();
+  const retry = form.getByRole('button', { name: 'Reintentar guardado' });
+  await retry.waitFor();
+  const id = await other.evaluate(async () => {
+    const saved = await client.retryPending();
+    const p = saved.state.productos.find(product => product.id === saved.result.id);
+    await client.writeOperation({ method: 'PUT', path: '/api/productos/' + p.id, databaseId: saved.databaseId,
+      payload: { codigo: 'CODIGO-CAMBIADO', nombre: p.nombre, costo: p.costo, precio1: p.precio1, precio2: p.precio2, precio3: p.precio3, stock: p.stock, version: p.version },
+    });
+    return p.id;
+  });
+  assert.deepEqual(packets, [packets[0], packets[0]]);
+  await assert.rejects(createProduct(other, 'OTRO-PENDIENTE'));
+  const foreignPacket = await other.evaluate(() => client.getState().pending);
+  await retry.click();
+  await form.getByRole('alert').filter({ hasText: /pendiente/i }).waitFor();
+  await other.evaluate(() => client.reload());
+  assert.deepEqual(await other.evaluate(() => client.getState().pending), foreignPacket);
+  assert.equal(packets.length, 2);
+  await other.evaluate(() => client.retryPending());
+  await retry.click();
+  await form.waitFor({ state: 'hidden' });
+  assert.deepEqual(packets, [packets[0], packets[0], packets[0]]);
+  const rows = await pool.query("SELECT codigo FROM productos WHERE codigo IN ('BORRADOR-FIJO', 'CODIGO-CAMBIADO')");
+  assert.deepEqual(rows.rows, [{ codigo: 'CODIGO-CAMBIADO' }]);
+  assert.equal((await pool.query('SELECT id FROM movimientos_inventario WHERE producto_id=$1', [id])).rowCount, 1);
 });
 
 test('aborting IndexedDB after a successful sending put prevents the write request', async t => {

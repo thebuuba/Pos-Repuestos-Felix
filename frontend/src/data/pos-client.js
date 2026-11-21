@@ -134,18 +134,32 @@ export function createPosClient() {
     if (databaseId !== state.snapshot.databaseId) throw new Error(changedDatabase);
   }
 
-  async function send(packet) {
+  function uncertainError(cause, packet) {
+    // The dialog may outlive the journal slot if another tab confirms it.
+    const original = Object.freeze({ ...packet, status: 'sending' });
+    const error = new Error(cause instanceof TypeError || cause instanceof SyntaxError ? unconfirmed : cause.message);
+    error.uncertain = true;
+    error.operationId = original.id;
+    error.retry = () => working(() => send(original, true));
+    return error;
+  }
+
+  async function send(packet, exactRetry = false) {
     checkTarget(packet.method, packet.path);
     checkGeneration(packet.databaseId);
     // A crashed tab releases its lock. Its durable "sending" marker still
     // records that the previous attempt could have committed.
     return navigator.locks.request('repuestos-felix-envio-' + packet.id, { ifAvailable: true }, async lock => {
-      if (!lock) throw new Error('Otra pestaña está enviando esta solicitud.');
-      let firstAttempt;
+      if (!lock) throw uncertainError(new Error('Otra pestaña está enviando esta solicitud.'), packet);
+      let firstAttempt = false;
       const sending = await updatePending(current => {
-        if (current?.id !== packet.id) throw new Error('La solicitud pendiente cambió. Actualiza los datos.');
-        checkGeneration(current.databaseId);
-        firstAttempt = current.status === 'prepared';
+        checkGeneration(packet.databaseId);
+        if (!current && exactRetry) return packet;
+        if (current?.id !== packet.id || current.databaseId !== packet.databaseId ||
+            current.method !== packet.method || current.path !== packet.path || current.body !== packet.body) {
+          throw uncertainError(new Error('La solicitud pendiente cambió. Revisa las operaciones antes de reintentar.'), packet);
+        }
+        firstAttempt = !exactRetry && current.status === 'prepared';
         return { ...current, status: 'sending' };
       });
       const request = ++issued;
@@ -188,9 +202,7 @@ export function createPosClient() {
           await updatePending(current => current?.id === sending.id ? null : current);
           throw cause;
         }
-        const error = new Error(cause instanceof TypeError || cause instanceof SyntaxError ? unconfirmed : cause.message);
-        error.uncertain = true;
-        throw error;
+        throw uncertainError(cause, sending);
       }
     });
   }

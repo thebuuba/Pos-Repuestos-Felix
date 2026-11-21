@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { PosStoreContext } from './pos-context.jsx';
 
 function productFromSnapshot(p, databaseId) {
@@ -13,8 +13,21 @@ function productFromSnapshot(p, databaseId) {
 const formulas = [];
 const settings = {};
 
+function productOperation(p, remove) {
+  if (remove) return { method: 'DELETE', path: '/api/productos/' + p.id, payload: { version: p.version }, databaseId: p.databaseId };
+  const editing = Number.isSafeInteger(p.id);
+  const payload = {
+    codigo: p.code, nombre: p.name, marca: p.brand, categoria: p.category, ubicacion: p.location,
+    stockMinimo: p.minStock, gravado: p.taxable, costo: p.cost, stock: p.stock,
+    precio1: p.prices.p1, precio2: p.prices.p2, precio3: p.prices.p3,
+    ...(editing ? { version: p.version } : {}),
+  };
+  return { method: editing ? 'PUT' : 'POST', path: editing ? '/api/productos/' + p.id : '/api/productos', payload, databaseId: p.databaseId };
+}
+
 export function OperationalStoreProvider({ client, children }) {
   const state = useSyncExternalStore(client.subscribe, client.getState);
+  const [dialogRetries] = useState(() => ({ save: new WeakMap(), remove: new WeakMap() }));
   useEffect(() => {
     const reload = () => { client.reload().catch(() => {}); };
     const refreshVisible = () => { if (!document.hidden) reload(); };
@@ -39,22 +52,21 @@ export function OperationalStoreProvider({ client, children }) {
     reload: client.reload, retryPending: client.retryPending,
   };
 
-  async function saveProduct(p) {
-    const editing = Number.isSafeInteger(p.id);
-    const payload = {
-      codigo: p.code, nombre: p.name, marca: p.brand, categoria: p.category, ubicacion: p.location,
-      stockMinimo: p.minStock, gravado: p.taxable, costo: p.cost, stock: p.stock,
-      precio1: p.prices.p1, precio2: p.prices.p2, precio3: p.prices.p3,
-      ...(editing ? { version: p.version } : {}),
-    };
-    return client.writeOperation({ method: editing ? 'PUT' : 'POST', path: editing ? '/api/productos/' + p.id : '/api/productos', payload, databaseId: p.databaseId });
+  async function writeProduct(p, remove = false) {
+    const retries = remove ? dialogRetries.remove : dialogRetries.save;
+    const retry = retries.get(p);
+    try {
+      const result = await (retry ? retry() : client.writeOperation(productOperation(p, remove)));
+      retries.delete(p);
+      return result;
+    } catch (error) {
+      if (error.retry) retries.set(p, error.retry);
+      throw error;
+    }
   }
 
-  async function deleteProduct(p) {
-    return client.writeOperation({ method: 'DELETE', path: '/api/productos/' + p.id, payload: { version: p.version }, databaseId: p.databaseId });
-  }
-
-  return <PosStoreContext.Provider value={{ runtime, products, formulas, settings, saveProduct, deleteProduct }}>
+  return <PosStoreContext.Provider value={{ runtime, products, formulas, settings,
+    saveProduct: p => writeProduct(p), deleteProduct: p => writeProduct(p, true) }}>
     {children}
   </PosStoreContext.Provider>;
 }
