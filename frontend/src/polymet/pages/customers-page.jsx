@@ -1,5 +1,5 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
-import { usePosStore } from "../data/pos-store.jsx";
+import { usePosStore } from "../../data/pos-context.jsx";
 import { balanceOf } from "../lib/accounts.js";
 import { PageHeader } from "../components/page-header.jsx";
 import { Button } from "../../components/ui/button.jsx";
@@ -17,7 +17,7 @@ import { Pencil } from "lucide-react";
 import { toast as ue } from "sonner";
 import { Trash2 } from "lucide-react";
 import { PartyFormSheet } from "../components/party-form-sheet.jsx";
-import { newId } from "../data/pos-store.jsx";
+import { newId } from "../../data/new-id.js";
 import { Sheet } from "../../components/ui/sheet.jsx";
 import { SheetContent } from "../../components/ui/sheet.jsx";
 import { SheetHeader } from "../../components/ui/sheet.jsx";

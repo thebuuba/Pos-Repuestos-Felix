@@ -16,6 +16,7 @@
     "start:supabase": "node --env-file=.env.supabase src/server.js",
     "dev:worker": "wrangler dev --local-protocol https",
     "build:worker": "wrangler deploy --dry-run --outdir dist/worker",
+    "build:operational": "node scripts/build-operational.mjs",
     "build:design": "node scripts/build-design.mjs",
     "preview:design": "node scripts/serve-design.mjs",
     "test:design": "node --test tests/design-preview.test.js",

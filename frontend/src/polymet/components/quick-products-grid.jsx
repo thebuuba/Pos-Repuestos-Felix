@@ -1,5 +1,5 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
-import { CATEGORIES } from "../data/pos-data.js";
+import { CATEGORIES } from "../../data/catalog-options.js";
 import { cn } from "../../lib/utils.js";
 import { Plus } from "lucide-react";
 import { formatMoney } from "../lib/format.js";

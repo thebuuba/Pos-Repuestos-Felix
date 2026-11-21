@@ -6,7 +6,7 @@ import { SelectTrigger2 } from "../../components/ui/select.jsx";
 import { SelectValue2 } from "../../components/ui/select.jsx";
 import { SelectContent2 } from "../../components/ui/select.jsx";
 import { SelectItem2 } from "../../components/ui/select.jsx";
-import { CATEGORIES } from "../data/pos-data.js";
+import { CATEGORIES } from "../../data/catalog-options.js";
 import { cn } from "../../lib/utils.js";
 import { PackageSearch } from "lucide-react";
 import { formatMoney } from "../lib/format.js";

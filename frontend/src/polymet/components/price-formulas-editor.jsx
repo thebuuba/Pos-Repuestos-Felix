@@ -1,7 +1,7 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
 import { formatMoney } from "../lib/format.js";
 import { Button } from "../../components/ui/button.jsx";
-import { newId } from "../data/pos-store.jsx";
+import { newId } from "../../data/new-id.js";
 import { Plus } from "lucide-react";
 import { pricesFromFormula } from "../lib/pricing.js";
 import { Input } from "../../components/ui/input.jsx";

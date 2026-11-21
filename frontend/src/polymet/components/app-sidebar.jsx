@@ -1,7 +1,6 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
-import demoCashierAvatar from "../../../assets/demo-cashier.png";
 import { useLocation } from "react-router-dom";
-import { usePosStore } from "../data/pos-store.jsx";
+import { usePosStore } from "../../data/pos-context.jsx";
 import { balanceOf } from "../lib/accounts.js";
 import { cn } from "../../lib/utils.js";
 import { Link } from "react-router-dom";
@@ -22,11 +21,11 @@ function isActive(item, pathname) {
 }
 function AppSidebar({ onNavigate, className }) {
   const { pathname } = useLocation();
-  const { receivables, payables, products, cashSession, cashSummary } =
+  const { receivables, payables, products, cashSession, cashSummary, cashierAvatar } =
     usePosStore();
   const badges = {
-    "/cuentas-por-cobrar": receivables.filter((r) => balanceOf(r) > 0).length,
-    "/cuentas-por-pagar": payables.filter((p) => balanceOf(p) > 0).length,
+    "/cuentas-por-cobrar": receivables?.filter((r) => balanceOf(r) > 0).length,
+    "/cuentas-por-pagar": payables?.filter((p) => balanceOf(p) > 0).length,
     "/inventario": products.filter((p) => p.stock <= p.minStock).length,
   };
   return (
@@ -101,12 +100,12 @@ function AppSidebar({ onNavigate, className }) {
           </div>
         ))}
       </nav>
-      <div className="shrink-0 p-3">
+      {cashSession && <div className="shrink-0 p-3">
         <div className="relative overflow-hidden rounded-2xl bg-foreground p-4 text-background">
           <div className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-primary/40 blur-2xl" />
           <div className="relative flex items-center gap-3">
             <Avatar2 className="h-9 w-9 ring-2 ring-background/20">
-              <AvatarImage2 src={demoCashierAvatar} />
+              <AvatarImage2 src={cashierAvatar} />
               <AvatarFallback2>{"FR"}</AvatarFallback2>
             </Avatar2>
             <div className="min-w-0 leading-tight">
@@ -147,7 +146,7 @@ function AppSidebar({ onNavigate, className }) {
             </Link>
           </Button>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

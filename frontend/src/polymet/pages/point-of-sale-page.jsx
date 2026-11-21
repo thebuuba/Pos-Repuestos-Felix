@@ -1,5 +1,5 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
-import { usePosStore } from "../data/pos-store.jsx";
+import { usePosStore } from "../../data/pos-context.jsx";
 import { toLines } from "../lib/cart.js";
 import { computeTotals } from "../lib/cart.js";
 import { toast as ue } from "sonner";

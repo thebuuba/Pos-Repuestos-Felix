@@ -1,5 +1,5 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
-import { usePosStore } from "../data/pos-store.jsx";
+import { usePosStore } from "../../data/pos-context.jsx";
 import { isSameDay } from "../lib/accounts.js";
 import { balanceOf } from "../lib/accounts.js";
 import { formatTime } from "../lib/accounts.js";

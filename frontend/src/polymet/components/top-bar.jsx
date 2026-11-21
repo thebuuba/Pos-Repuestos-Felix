@@ -15,19 +15,26 @@ import { Moon } from "lucide-react";
 import { Bell } from "lucide-react";
 import { useEffect } from "react";
 import { useState } from "react";
+import { usePosStore } from "../../data/pos-context.jsx";
 var dateFormatter = new Intl.DateTimeFormat("es-DO", {
+  timeZone: "America/Santo_Domingo",
   weekday: "long",
   day: "numeric",
   month: "short",
 });
 var timeFormatter = new Intl.DateTimeFormat("es-DO", {
+  timeZone: "America/Santo_Domingo",
   hour: "numeric",
   minute: "2-digit",
 });
 function TopBar({ onOpenMenu }) {
+  const { runtime } = usePosStore();
   const [now, setNow] = useState(() => new Date());
   const [dark, setDark] = useState(false);
-  const [syncing, setSyncing] = useState(false);
+  const [demoSyncing, setSyncing] = useState(false);
+  const syncing = runtime ? runtime.busy : demoSyncing;
+  const connected = !runtime || runtime.connection === "connected";
+  const serviceStatus = connected ? "Conectado" : runtime.connection === "checking" ? "Verificando…" : "Sin conexión al servicio";
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 30000);
     return () => window.clearInterval(id);
@@ -36,6 +43,10 @@ function TopBar({ onOpenMenu }) {
     document.documentElement.classList.toggle("dark", dark);
   }, [dark]);
   const handleSync = () => {
+    if (runtime) {
+      runtime.reload().catch(() => {});
+      return;
+    }
     setSyncing(true);
     window.setTimeout(() => setSyncing(false), 1200);
   };
@@ -54,6 +65,7 @@ function TopBar({ onOpenMenu }) {
         <div className="relative hidden w-full max-w-sm md:block">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
+            disabled={!!runtime}
             placeholder="Buscar producto, cliente o factura…"
             className="h-10 rounded-xl border-transparent bg-muted pl-9 pr-14 shadow-none focus-visible:bg-card"
           />
@@ -63,12 +75,12 @@ function TopBar({ onOpenMenu }) {
         </div>
         <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
           <div className="hidden items-center gap-3 pr-2 xl:flex">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+            <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium", connected ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-muted text-muted-foreground")}>
               <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                {connected && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />}
+                <span className={cn("relative inline-flex h-2 w-2 rounded-full", connected ? "bg-emerald-500" : "bg-muted-foreground")} />
               </span>
-              {"Conectado"}
+              {serviceStatus}
             </span>
             <div className="text-right leading-tight">
               <p className="text-sm font-semibold tabular-nums text-foreground">
@@ -81,7 +93,9 @@ function TopBar({ onOpenMenu }) {
           </div>
           <Button
             variant="outline"
-            className="hidden h-10 rounded-xl bg-card sm:inline-flex"
+            className={cn("h-10 rounded-xl bg-card", !runtime && "hidden sm:inline-flex")}
+            aria-label="Actualizar datos"
+            disabled={!!runtime && syncing}
             onClick={handleSync}
           >
             <RefreshCw className={cn(syncing && "animate-spin")} />
@@ -96,6 +110,7 @@ function TopBar({ onOpenMenu }) {
                 size="icon"
                 className="hidden h-10 w-10 rounded-xl bg-card sm:inline-flex"
                 aria-label="Instalar app"
+                disabled={!!runtime}
               >
                 <Download />
               </Button>
@@ -123,9 +138,10 @@ function TopBar({ onOpenMenu }) {
             size="icon"
             className="relative h-10 w-10 rounded-xl bg-card"
             aria-label="Notificaciones"
+            disabled={!!runtime}
           >
             <Bell />
-            <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-primary ring-2 ring-card" />
+            {(!runtime || runtime.pending || runtime.error) && <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-primary ring-2 ring-card" />}
           </Button>
         </div>
       </header>

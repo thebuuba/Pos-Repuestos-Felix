@@ -3,7 +3,7 @@ import { ArrowDownLeft } from "lucide-react";
 import { HandCoins } from "lucide-react";
 import { ArrowUpRight } from "lucide-react";
 import { Receipt } from "lucide-react";
-import { usePosStore } from "../data/pos-store.jsx";
+import { usePosStore } from "../../data/pos-context.jsx";
 import { PageHeader } from "../components/page-header.jsx";
 import { formatTime } from "../lib/accounts.js";
 import { Button } from "../../components/ui/button.jsx";

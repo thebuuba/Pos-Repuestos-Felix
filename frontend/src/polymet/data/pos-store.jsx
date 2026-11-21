@@ -14,14 +14,12 @@ import { SEED_SETTINGS } from "./seed-data.js";
 import { round2 } from "../lib/format.js";
 import { balanceOf } from "../lib/accounts.js";
 import { addDays } from "./seed-data.js";
-import { createContext } from "react";
+import { PosStoreContext } from "../../data/pos-context.jsx";
+import { newId as uid } from "../../data/new-id.js";
+import cashierAvatar from "../../../assets/demo-cashier.png";
 import { useCallback } from "react";
-import { useContext } from "react";
 import { useMemo } from "react";
 import { useState } from "react";
-var PosStoreContext = createContext(null);
-var uid = (prefix) =>
-  `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 var pad = (n, size = 6) => String(n).padStart(size, "0");
 function PosStoreProvider({ children }) {
   const [products, setProducts] = useState(PRODUCTS);
@@ -115,7 +113,8 @@ function PosStoreProvider({ children }) {
         : [product, ...prev],
     );
   }, []);
-  const deleteProduct = useCallback((id) => {
+  const deleteProduct = useCallback((product) => {
+    const id = product?.id ?? product;
     setProducts((prev) => prev.filter((p) => p.id !== id));
   }, []);
   const saveCustomer = useCallback((customer) => {
@@ -452,6 +451,7 @@ function PosStoreProvider({ children }) {
     ]);
   }, []);
   const value = {
+    cashierAvatar,
     products,
     customers,
     suppliers,
@@ -491,13 +491,5 @@ function PosStoreProvider({ children }) {
     </PosStoreContext.Provider>
   );
 }
-function usePosStore() {
-  const ctx = useContext(PosStoreContext);
-  if (!ctx)
-    throw new Error("usePosStore debe usarse dentro de <PosStoreProvider>");
-  return ctx;
-}
-function newId(prefix) {
-  return uid(prefix);
-}
-export { usePosStore, newId, PosStoreProvider };
+export { PosStoreProvider };
+export { usePosStore } from "../../data/pos-context.jsx";

@@ -1,13 +1,5 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
-var CATEGORIES = [
-  "Motor",
-  "Frenos",
-  "Transmisión",
-  "Eléctrico",
-  "Lubricantes",
-  "Llantas",
-  "Accesorios",
-];
+import { CATEGORIES } from "../../data/catalog-options.js";
 var PRODUCTS = [
   {
     id: "p-001",

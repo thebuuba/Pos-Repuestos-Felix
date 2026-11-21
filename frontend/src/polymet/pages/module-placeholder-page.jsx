@@ -6,7 +6,7 @@ import { PageHeader } from "../components/page-header.jsx";
 import { Button } from "../../components/ui/button.jsx";
 import { Link } from "react-router-dom";
 import { ShoppingCart } from "lucide-react";
-function ModulePlaceholderPage() {
+function ModulePlaceholderPage({ operational = false }) {
   const { pathname } = useLocation();
   const item = findNavItem(pathname);
   const Icon = item?.icon ?? Construction;
@@ -25,21 +25,21 @@ function ModulePlaceholderPage() {
         </h2>
         <p className="mt-1.5 max-w-md text-sm text-muted-foreground">
           {
-            "Mientras tanto, puedes seguir facturando desde el punto de venta o revisar el panel general."
+            operational ? "El catálogo de inventario está disponible." : "Mientras tanto, puedes seguir facturando desde el punto de venta o revisar el panel general."
           }
         </p>
         <div className="mt-6 flex gap-2">
-          <Button
+          {!operational && <Button
             asChild={true}
             variant="outline"
             className="h-10 rounded-full bg-card px-5"
           >
             <Link to="/">{"Ir al panel"}</Link>
-          </Button>
+          </Button>}
           <Button asChild={true} className="h-10 rounded-full px-5">
-            <Link to="/ventas">
-              <ShoppingCart />
-              {"Punto de venta"}
+            <Link to={operational ? "/inventario" : "/ventas"}>
+              {!operational && <ShoppingCart />}
+              {operational ? "Ir a Inventario" : "Punto de venta"}
             </Link>
           </Button>
         </div>

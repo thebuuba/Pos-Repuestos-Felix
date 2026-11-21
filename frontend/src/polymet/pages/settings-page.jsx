@@ -1,5 +1,5 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
-import { usePosStore } from "../data/pos-store.jsx";
+import { usePosStore } from "../../data/pos-context.jsx";
 import { toast as ue } from "sonner";
 import { PageHeader } from "../components/page-header.jsx";
 import { Tabs2 } from "../../components/ui/tabs.jsx";

@@ -15,7 +15,7 @@ import { Button } from "../../components/ui/button.jsx";
 import { Plus } from "lucide-react";
 import { CircleCheck } from "lucide-react";
 import { formatMoney } from "../lib/format.js";
-import { CATEGORIES } from "../data/pos-data.js";
+import { CATEGORIES } from "../../data/catalog-options.js";
 import { EmptyState } from "./section-card.jsx";
 import { PackageOpen } from "lucide-react";
 import { PRICE_KEYS } from "../lib/pricing.js";

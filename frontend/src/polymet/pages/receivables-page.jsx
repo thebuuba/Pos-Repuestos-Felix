@@ -1,5 +1,5 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
-import { usePosStore } from "../data/pos-store.jsx";
+import { usePosStore } from "../../data/pos-context.jsx";
 import { useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/page-header.jsx";
 import { AccountsView } from "../components/accounts-view.jsx";
