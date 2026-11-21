@@ -81,6 +81,8 @@ test('a committed packet survives restart and subsequent 401, and replays with o
       return route.abort();
     }
     if (packets.length === 2) return route.fulfill({ status: 401, json: { error: 'Inicia sesión' } });
+    if (packets.length === 3) return route.fulfill({ status: 403, json: { error: 'Origen no permitido.' } });
+    if (packets.length === 4) return route.fulfill({ status: 409, json: { error: 'Otra caja está usando estos datos. Reintenta la misma operación.' } });
     return route.continue();
   });
   await assert.rejects(createProduct(page, 'DURABLE'));
@@ -90,8 +92,11 @@ test('a committed packet survives restart and subsequent 401, and replays with o
   assert.equal(await page.evaluate(() => client.getState().pending.id), packets[0].id);
   await assert.rejects(page.evaluate(() => client.retryPending()), /Inicia sesión/);
   assert.equal(await page.evaluate(() => client.getState().pending.id), packets[0].id);
+  await assert.rejects(page.evaluate(() => client.retryPending()), /Origen no permitido/);
+  await assert.rejects(page.evaluate(() => client.retryPending()), /Otra caja/);
+  assert.equal(await page.evaluate(() => client.getState().pending.id), packets[0].id);
   await page.evaluate(() => client.retryPending());
-  assert.deepEqual(packets, [packets[0], packets[0], packets[0]]);
+  assert.deepEqual(packets, Array(5).fill(packets[0]));
   assert.equal(await page.evaluate(() => client.getState().pending), null);
   const rows = await pool.query("SELECT id FROM productos WHERE codigo='DURABLE'");
   assert.equal(rows.rowCount, 1);
@@ -151,6 +156,58 @@ test('an open form replays its own packet after another tab recovers and renames
   const rows = await pool.query("SELECT codigo FROM productos WHERE codigo IN ('BORRADOR-FIJO', 'CODIGO-CAMBIADO')");
   assert.deepEqual(rows.rows, [{ codigo: 'CODIGO-CAMBIADO' }]);
   assert.equal((await pool.query('SELECT id FROM movimientos_inventario WHERE producto_id=$1', [id])).rowCount, 1);
+});
+
+test('a second tab releases a retried packet when the service confirms the same catalog rejection', { timeout: 30_000 }, async t => {
+  const first = await tab(t);
+  const second = await open(first.context());
+  await createProduct(first, 'SKU-OCUPADO');
+  const arriving = Promise.withResolvers();
+  const proceed = Promise.withResolvers();
+  const keys = [];
+  await first.context().route('**/api/productos', async route => {
+    if (route.request().postDataJSON().codigo === 'SKU-OCUPADO') {
+      keys.push(route.request().headers()['idempotency-key']);
+      if (keys.length === 1) {
+        arriving.resolve();
+        await proceed.promise;
+      }
+    }
+    await route.continue();
+  });
+  async function tryDuplicate(page) {
+    return page.evaluate(async () => {
+      try {
+        await client.writeOperation({
+          method: 'POST', path: '/api/productos', databaseId: client.getState().snapshot.databaseId,
+          payload: { codigo: 'SKU-OCUPADO', nombre: 'Borrador', stock: 2, costo: 1, precio1: 2, precio2: 1, precio3: 1 },
+        });
+      } catch (error) {
+        window.replay = error.retry;
+        return { uncertain: error.uncertain, message: error.message };
+      }
+    });
+  }
+  const sending = tryDuplicate(first);
+  await arriving.promise;
+  try {
+    assert.equal((await tryDuplicate(second)).uncertain, true);
+  } finally { proceed.resolve(); }
+  assert.match((await sending).message, /Ya existe/);
+  const rejection = await second.evaluate(async () => {
+    try { await window.replay(); }
+    catch (error) {
+      return { definitive: error.definitive, uncertain: !!error.uncertain, pending: client.getState().pending, message: error.message };
+    }
+  });
+  assert.match(rejection.message, /Ya existe/);
+  assert.equal(rejection.uncertain, false);
+  assert.equal(rejection.definitive, true);
+  assert.equal(rejection.pending, null);
+  assert.deepEqual(keys, [keys[0], keys[0]]);
+  await createProduct(second, 'OTRO-DESPUES-DEL-RECHAZO');
+  const rows = await pool.query("SELECT codigo FROM productos WHERE codigo IN ('SKU-OCUPADO','OTRO-DESPUES-DEL-RECHAZO') ORDER BY codigo");
+  assert.deepEqual(rows.rows.map(row => row.codigo), ['OTRO-DESPUES-DEL-RECHAZO', 'SKU-OCUPADO']);
 });
 
 test('aborting IndexedDB after a successful sending put prevents the write request', async t => {

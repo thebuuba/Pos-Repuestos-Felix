@@ -60,7 +60,8 @@ export function OperationalStoreProvider({ client, children }) {
       retries.delete(p);
       return result;
     } catch (error) {
-      if (error.retry) retries.set(p, error.retry);
+      if (error.definitive) retries.delete(p);
+      else if (error.retry) retries.set(p, error.retry);
       throw error;
     }
   }

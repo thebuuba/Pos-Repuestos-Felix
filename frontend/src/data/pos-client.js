@@ -7,13 +7,14 @@ const productFields = new Set([
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const changedDatabase = 'La base cambió. Revisa la solicitud y los datos antes de continuar.';
 const unconfirmed = 'No se confirmó la operación. Reintenta la solicitud pendiente.';
-// These are the catalog conflicts for which the service rolls back a first
-// attempt. An unknown conflict needs its original packet for reconciliation.
+// Product validation runs after the lookup by idempotency key. A committed
+// replay bypasses both checks and returns its original result.
 const rejectedCatalogConflicts = new Set([
   'El producto cambió. Actualiza los datos antes de editar.',
   'Ya existe un registro con ese código o número de factura.',
-  'Otra caja está usando estos datos. Reintenta la misma operación.',
 ]);
+// Transaction contention can also interrupt the lookup of a committed replay.
+const contention = 'Otra caja está usando estos datos. Reintenta la misma operación.';
 
 function checkTarget(method, path) {
   if (method === 'POST' && path === '/api/productos') return;
@@ -180,7 +181,8 @@ export function createPosClient() {
             // A conditional read started before the rejection cannot confirm
             // which database generation produced the conflict.
             const refreshed = await reload({ fresh: true }).catch(() => null);
-            definitive = definitive && rejectedCatalogConflicts.has(message) && refreshed?.databaseId === sending.databaseId;
+            const rejected = rejectedCatalogConflicts.has(message) || (firstAttempt && message === contention);
+            definitive = rejected && refreshed?.databaseId === sending.databaseId;
           }
           definitive = definitive && state.snapshot?.databaseId === sending.databaseId;
           throw new Error(message || unconfirmed);
@@ -200,6 +202,7 @@ export function createPosClient() {
         }
         if (definitive) {
           await updatePending(current => current?.id === sending.id ? null : current);
+          cause.definitive = true;
           throw cause;
         }
         throw uncertainError(cause, sending);
