@@ -1,0 +1,96 @@
+{
+  "checkedAt": "2026-11-21T22:59:34.953Z",
+  "version": "99fdb61658b9417c680d007618ae1c23bf135b1e",
+  "scope": "Inventario main; same prototype products persisted through the real API on disposable PostgreSQL",
+  "screenshotStyle": "Hide the sticky header only while capturing main, to prevent it painting over the top of the target during screenshot scrolling; visibility does not change layout",
+  "exclusions": [
+    "Sidebar/operator, service status and accounts use real availability rather than prototype fixtures",
+    "Product formula dialog has no saved formulas yet; not covered by this comparison"
+  ],
+  "results": [
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "textMatches": true,
+      "geometryMatches": true,
+      "pngBytesMatch": true,
+      "sha256": {
+        "reference": "8a881a26b52819caf91ad4d0ab18e4faf3931937735f8c23ea67df9ff14c8802",
+        "local": "8a881a26b52819caf91ad4d0ab18e4faf3931937735f8c23ea67df9ff14c8802"
+      }
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "geometryMatches": true,
+      "pngBytesMatch": true,
+      "sha256": {
+        "reference": "e46df9f97e7ce2f15fcd6be8e1e80cffd26ee378e8b9b4774384712b2c5fc7a9",
+        "local": "e46df9f97e7ce2f15fcd6be8e1e80cffd26ee378e8b9b4774384712b2c5fc7a9"
+      }
+    },
+    {
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "light",
+      "textMatches": true,
+      "geometryMatches": true,
+      "pngBytesMatch": true,
+      "sha256": {
+        "reference": "2356611d700dd0f3507b8c6e47661e7546d316f273b985c5afbdb65ed4cb213c",
+        "local": "2356611d700dd0f3507b8c6e47661e7546d316f273b985c5afbdb65ed4cb213c"
+      }
+    },
+    {
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "geometryMatches": true,
+      "pngBytesMatch": true,
+      "sha256": {
+        "reference": "19e4a7f256083e98b3e049b890a46befbf0257b9c53b127f7d7d1e2df84b6501",
+        "local": "19e4a7f256083e98b3e049b890a46befbf0257b9c53b127f7d7d1e2df84b6501"
+      }
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "textMatches": true,
+      "geometryMatches": true,
+      "pngBytesMatch": true,
+      "sha256": {
+        "reference": "501f0c015b63980d869045ef573a03ec429ecc1f1587ca7c558cc70c7721d115",
+        "local": "501f0c015b63980d869045ef573a03ec429ecc1f1587ca7c558cc70c7721d115"
+      }
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "textMatches": true,
+      "geometryMatches": true,
+      "pngBytesMatch": true,
+      "sha256": {
+        "reference": "932e0b2a91bb789c42921b233fe3e9c771cdf2bf36d4a740de518ec5fdddbf7b",
+        "local": "932e0b2a91bb789c42921b233fe3e9c771cdf2bf36d4a740de518ec5fdddbf7b"
+      }
+    }
+  ]
+}
