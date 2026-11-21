@@ -1,0 +1,21 @@
+{
+  "name": "pos-repuestos-felix",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.js",
+    "start:local": "node --env-file=.env.local server.js",
+    "start:supabase": "node --env-file=.env.supabase server.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "dependencies": {
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "jsdom": "^31.0.1"
+  }
+}
