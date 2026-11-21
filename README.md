@@ -50,6 +50,22 @@ El proyecto usa **pnpm 10.8.0**, fijado en `packageManager`, y `pnpm-lock.yaml` 
 
 El CLI se configura de forma independiente del gestor de paquetes del proyecto. Para cambiar su cuenta usa `supabase logout` y después `supabase login --name "Repuestos Felix"`; completa el acceso en el navegador con la cuenta correcta. Comprueba los proyectos disponibles con `supabase projects list` y vincula el proyecto elegido con `supabase link --project-ref ID_DEL_PROYECTO`. La carpeta `supabase/.temp` es local y está excluida de Git. El vínculo del CLI no configura automáticamente `DATABASE_URL` del servidor.
 
+### Crear la estructura de la base
+
+La migración `supabase/migrations/20261121150000_inicializar_pos.sql` crea el esquema privado `pos_privado` y la tabla `estado`, compatibles con la API actual. En una base nueva registra la empresa, ITBIS del 18 % y Cliente Contado; productos, suplidores, ventas y compras comienzan vacíos. Una base que ya tenga datos conserva su estado.
+
+Con el CLI vinculado al proyecto correcto:
+
+```powershell
+supabase db push --linked --dry-run
+supabase db push --linked
+supabase migration list --linked
+```
+
+Ejecuta estos comandos de forma secuencial. Si el CLI solicita la contraseña de la base, usa la del proyecto correspondiente. La tabla tiene RLS activado y no concede acceso a `anon` ni `authenticated`; se utiliza a través del servidor Node.js con la conexión PostgreSQL. Los respaldos JSON mantienen el formato anterior. No hay tablas separadas por entidad en esta versión.
+
+### Configurar la conexión del servidor
+
 1. En tu proyecto Supabase abre **Connect** y copia la conexión PostgreSQL. Para este servidor persistente usa **Session pooler**, compatible con redes IPv4, o conexión directa si tu red permite el acceso a su dirección IPv6.
 2. Prepara el archivo:
 

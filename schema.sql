@@ -9,3 +9,5 @@ CREATE TABLE IF NOT EXISTS pos_privado.estado (
     actualizado_en timestamptz NOT NULL DEFAULT now()
 );
 REVOKE ALL ON TABLE pos_privado.estado FROM PUBLIC;
+-- Sin políticas públicas: solo el servidor con el rol propietario accede a las filas.
+ALTER TABLE pos_privado.estado ENABLE ROW LEVEL SECURITY;
