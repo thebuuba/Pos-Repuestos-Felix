@@ -1,39 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { validateState } from './legacy-state.js';
+import { OperationError, fail, text, id, integer, cents, money } from './operation-fields.js';
+import { contactOperation, settingsOperation } from './contact-operations.js';
+import { backupLayout, exportBackup, rows, tables } from './relational-backup.js';
+export { fail } from './operation-fields.js';
 
 const maintenanceLock = 74198232;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const maxCents = 99999999999999n;
-class OperationError extends Error {
-  constructor(message, status, cause) {
-    super(message, { cause });
-    this.status = status;
-  }
-}
-export function fail(message, status = 400) { throw new OperationError(message, status); }
-function text(value, label, required = true) {
-  if (typeof value !== 'string' || value.length > 2000 || (required && !value.trim())) fail(`Revisa ${label}.`);
-  return value.trim();
-}
-function integer(value, label, min = 1) {
-  if (!Number.isSafeInteger(value) || value < min || value > 2147483647) fail(`Revisa ${label}.`);
-  return value;
-}
-function id(value, label = 'el identificador') {
-  if (!Number.isSafeInteger(value) || value < 1) fail(`Revisa ${label}.`);
-  return value;
-}
-function cents(value, label = 'el importe') {
-  if (!['number', 'string'].includes(typeof value) || !/^\d{1,12}(?:\.\d{1,2})?$/.test(String(value))) fail(`Revisa ${label}: usa hasta dos decimales.`);
-  const [whole, fraction = ''] = String(value).split('.');
-  const result = BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0'));
-  if (result > maxCents) fail(`El importe de ${label} es demasiado alto.`);
-  return result;
-}
-function money(value) {
-  if (value < 0n || value > maxCents) fail('El importe excede el límite permitido.');
-  return `${value / 100n}.${String(value % 100n).padStart(2, '0')}`;
-}
 function prices(body) { return ['costo', 'precio1', 'precio2', 'precio3'].map(key => money(cents(body[key], key))); }
 function canonical(value) {
   if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']';
@@ -48,55 +21,6 @@ const number = value => {
 const date = value => String(value).slice(0, 10);
 const displayDate = value => { const [year, month, day] = date(value).split('-'); return `${Number(day)}/${Number(month)}/${year}`; };
 
-// Fixed column lists are shared by export/import; no names come from uploaded SQL.
-const tables = {
-  configuracion: ['id', 'empresa', 'tasa_itbis', 'version', 'actualizado_en'],
-  clientes: ['id', 'nombre', 'rnc', 'tel', 'saldo_apertura', 'activo', 'version', 'creado_en', 'actualizado_en'],
-  suplidores: ['id', 'nombre', 'rnc', 'tel', 'activo', 'version', 'creado_en', 'actualizado_en'],
-  productos: ['id', 'codigo', 'nombre', 'costo', 'precio1', 'precio2', 'precio3', 'stock', 'activo', 'version', 'creado_en', 'actualizado_en', 'marca', 'categoria', 'ubicacion', 'stock_minimo', 'gravado'],
-  ventas: ['id', 'cliente_id', 'cliente_nombre', 'cliente_rnc', 'fecha', 'creado_en', 'tipo_comprobante', 'ncf', 'condicion', 'base', 'itbis', 'total'],
-  venta_detalles: ['id', 'venta_id', 'producto_id', 'codigo', 'nombre', 'cantidad', 'nivel_precio', 'precio', 'base', 'itbis', 'total'],
-  compras: ['id', 'suplidor_id', 'suplidor_nombre', 'numero', 'fecha', 'creado_en', 'total'],
-  compra_detalles: ['id', 'compra_id', 'producto_id', 'codigo', 'nombre', 'cantidad', 'costo', 'precio1', 'precio2', 'precio3', 'total'],
-  movimientos_inventario: ['id', 'producto_id', 'venta_detalle_id', 'compra_detalle_id', 'tipo', 'cantidad', 'existencia_posterior', 'motivo', 'creado_en'],
-};
-const catalogDefaults = { marca: '', categoria: '', ubicacion: '', stock_minimo: 0, gravado: true };
-const v2Tables = { ...tables, productos: tables.productos.filter(column => !(column in catalogDefaults)) };
-const moneyColumns = new Set(['costo', 'precio', 'precio1', 'precio2', 'precio3', 'base', 'itbis', 'total']);
-function validateBackupRow(table, row, columns) {
-  if (!row || Object.keys(row).sort().join() !== [...columns].sort().join()) fail(`Fila inválida en ${table}.`);
-  for (const key of columns) {
-    const value = row[key];
-    if (key === 'id' || key === 'version' || key.endsWith('_id')) {
-      if (value === null && ['venta_detalle_id', 'compra_detalle_id'].includes(key)) continue;
-      if (!/^[1-9]\d*$/.test(String(value)) || !Number.isSafeInteger(Number(value))) fail(`Identificador inválido en ${table}.`);
-    } else if (moneyColumns.has(key)) cents(value, key);
-    else if (key === 'saldo_apertura') {
-      if (!['string', 'number'].includes(typeof value)) fail('Saldo de apertura inválido.');
-      cents(String(value).replace(/^-/, ''), key);
-    } else if (key === 'tasa_itbis') {
-      if (!['string', 'number'].includes(typeof value) || !/^(?:0(?:\.\d{1,6})?|1(?:\.0{1,6})?)$/.test(String(value))) fail('Tasa ITBIS inválida.');
-    } else if (['stock', 'cantidad', 'existencia_posterior', 'stock_minimo'].includes(key)) {
-      if (!Number.isInteger(value) || value < -2147483648 || value > 2147483647) fail(`Cantidad inválida en ${table}.`);
-      if (key === 'stock_minimo' && value < 0) fail('Existencia mínima inválida.');
-    } else if (['activo', 'gravado'].includes(key)) { if (typeof value !== 'boolean') fail(`Estado inválido en ${table}.`); }
-    else if (key === 'fecha') {
-      if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(value + 'T00:00:00Z')) || new Date(value + 'T00:00:00Z').toISOString().slice(0, 10) !== value) fail('Fecha documental inválida.');
-    } else if (key.endsWith('_en')) {
-      if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) || !Number.isFinite(Date.parse(value))) fail('Fecha de registro inválida.');
-    } else if (!(key === 'ncf' && value === null)) text(value, key, !['rnc', 'tel', 'cliente_rnc', 'motivo', 'marca', 'categoria', 'ubicacion'].includes(key));
-  }
-}
-
-async function rows(client, table) {
-  const columns = tables[table].map(key => key === 'fecha' ? 'fecha::text AS fecha' : key).join(',');
-  return (await client.query(`SELECT ${columns} FROM public.${table} ORDER BY id`)).rows;
-}
-async function exportBackup(client) {
-  const data = {};
-  for (const table of Object.keys(tables)) data[table] = await rows(client, table);
-  return { version: 3, format: 'repuestos-felix-relacional', exportedAt: new Date().toISOString(), tables: data };
-}
 async function snapshotVersion(client, databaseLabel) {
   const system = (await client.query('SELECT database_id,revision FROM pos_privado.sistema WHERE id=1')).rows[0];
   if (!system) fail('Ejecuta las migraciones de la base antes de iniciar.', 503);
@@ -116,9 +40,18 @@ async function snapshot(client, databaseLabel) {
     ...version,
     state: {
       empresa: config.empresa, itbisRate: Number(config.tasa_itbis), configuracionVersion: number(config.version),
+      configuracion: { version: number(config.version), empresa: config.empresa, rnc: config.rnc, tel: config.tel,
+        correo: config.correo, direccion: config.direccion, itbisPorcentaje: Number((Number(config.tasa_itbis) * 100).toFixed(4)),
+        redondeo: config.redondeo, nivelPrecioPredeterminado: config.nivel_precio_predeterminado, formatoImpresion: config.formato_impresion,
+        pieTicket: config.pie_ticket, permitirStockNegativo: config.permitir_stock_negativo },
+      formulas: data.formulas_precios.filter(f => f.activo).map(f => ({ id: number(f.id), version: number(f.version), nombre: f.nombre,
+        factorCosto: Number(f.factor_costo), recargo1: Number(f.recargo1), recargo2: Number(f.recargo2), recargo3: Number(f.recargo3) })),
       productos: data.productos.filter(p => p.activo).map(p => ({ ...p, id: number(p.id), version: number(p.version), stockMinimo: p.stock_minimo, costo: Number(p.costo), precio1: Number(p.precio1), precio2: Number(p.precio2), precio3: Number(p.precio3) })),
-      clientes: data.clientes.filter(c => c.activo).map(c => ({ id: number(c.id), version: number(c.version), nombre: c.nombre, rnc: c.rnc, tel: c.tel, deuda: Number(balances.find(b => b.id === c.id).deuda) })),
-      suplidores: data.suplidores.filter(s => s.activo).map(s => ({ id: number(s.id), version: number(s.version), nombre: s.nombre, rnc: s.rnc, tel: s.tel })),
+      clientes: data.clientes.filter(c => c.activo).map(c => ({ id: number(c.id), version: number(c.version), nombre: c.nombre, rnc: c.rnc, tel: c.tel,
+        correo: c.correo, direccion: c.direccion, limiteCredito: c.limite_credito === null ? null : Number(c.limite_credito),
+        esContado: c.es_contado, deuda: Number(balances.find(b => b.id === c.id).deuda) })),
+      suplidores: data.suplidores.filter(s => s.activo).map(s => ({ id: number(s.id), version: number(s.version), nombre: s.nombre, rnc: s.rnc, tel: s.tel,
+        correo: s.correo, contacto: s.contacto, diasCredito: s.dias_credito, formulaId: s.formula_id === null ? null : number(s.formula_id) })),
       facturas: data.ventas.map(v => ({ id: number(v.id), clienteId: number(v.cliente_id), cliente: v.cliente_nombre, clienteRnc: v.cliente_rnc, ncf: v.ncf, tipoComprobante: v.tipo_comprobante, fecha: displayDate(v.fecha), fechaISO: date(v.fecha), condicion: v.condicion, base: Number(v.base), itbis: Number(v.itbis), total: Number(v.total), items: saleItems(v) })),
       compras: data.compras.map(c => ({ id: number(c.id), suplidorId: number(c.suplidor_id), suplidor: c.suplidor_nombre, numero: c.numero, fecha: displayDate(c.fecha), fechaISO: date(c.fecha), total: Number(c.total), items: purchaseItems(c) })),
       movimientos: data.movimientos_inventario.map(m => ({ ...m, id: number(m.id), productoId: number(m.producto_id) })),
@@ -254,27 +187,15 @@ async function restore(client, body) {
   if (number(current.revision) !== body.revision) fail('La base cambió. Exporta o actualiza antes de restaurar.', 409);
   const backup = body.backup;
   if (!backup || typeof backup !== 'object' || Array.isArray(backup)) fail('Respaldo inválido.');
-  let legacy, restoredTables;
-  if (![2, 3].includes(backup.version)) { try { legacy = validateState(backup); } catch (error) { fail(error.message); } }
-  else {
-    if (backup.format !== 'repuestos-felix-relacional' || !backup.tables || Object.keys(backup.tables).sort().join() !== Object.keys(tables).sort().join()) fail('Formato de respaldo inválido.');
-    const expectedTables = backup.version === 2 ? v2Tables : tables;
-    for (const [table, columns] of Object.entries(expectedTables)) {
-      const entries = backup.tables[table];
-      if (!Array.isArray(entries) || entries.length > 100000) fail(`Revisa la tabla ${table}.`);
-      for (const row of entries) validateBackupRow(table, row, columns);
-    }
-    if (backup.tables.configuracion.length !== 1 || Number(backup.tables.configuracion[0].id) !== 1) fail('Configuración de respaldo inválida.');
-    restoredTables = backup.version === 2
-      ? { ...backup.tables, productos: backup.tables.productos.map(row => ({ ...row, ...catalogDefaults })) }
-      : backup.tables;
-  }
+  let legacy, layout;
+  if (Object.hasOwn(backup, 'version') || Object.hasOwn(backup, 'tables') || Object.hasOwn(backup, 'format')) layout = backupLayout(backup);
+  else { try { legacy = validateState(backup); } catch (error) { fail(error.message); } }
   await client.query('INSERT INTO pos_privado.respaldos(motivo,datos) VALUES($1,$2)', ['Antes de restaurar', await exportBackup(client)]);
   for (const table of Object.keys(tables).reverse()) await client.query(`DELETE FROM public.${table}`);
   if (legacy) await client.query('SELECT pos_privado.importar_estado_legacy($1::jsonb)', [legacy]);
   else {
-    for (const [table, columns] of Object.entries(tables)) {
-      for (const row of restoredTables[table]) {
+    for (const [table, columns] of Object.entries(layout)) {
+      for (const row of backup.tables[table]) {
         await client.query(`INSERT INTO public.${table}(${columns.join(',')}) VALUES(${columns.map((_, index) => '$' + (index + 1)).join(',')})`, columns.map(key => row[key]));
       }
     }
@@ -289,6 +210,7 @@ async function restore(client, body) {
     for (const table of Object.keys(tables).filter(table => table !== 'configuracion')) await client.query(`SELECT setval(pg_get_serial_sequence('public.${table}','id'),COALESCE((SELECT max(id) FROM public.${table}),1),(SELECT count(*)>0 FROM public.${table}))`);
   }
   const databaseId = randomUUID();
+  if (legacy || backup.version < 4) await client.query('SELECT pos_privado.marcar_contado_historico()');
   await client.query('UPDATE pos_privado.sistema SET database_id=$1 WHERE id=1', [databaseId]);
   return { id: databaseId };
 }
@@ -296,18 +218,10 @@ async function restore(client, body) {
 async function execute(client, method, path, body) {
   const productMatch = path.match(/^\/api\/productos\/(\d+)$/);
   if ((path === '/api/productos' && method === 'POST') || (productMatch && ['PUT', 'DELETE'].includes(method))) return productOperation(client, method, productMatch ? id(Number(productMatch[1])) : null, body);
-  if (method === 'POST' && ['/api/clientes', '/api/suplidores'].includes(path)) {
-    const table = path.endsWith('clientes') ? 'clientes' : 'suplidores';
-    const row = (await client.query(`INSERT INTO ${table}(nombre,rnc,tel) VALUES($1,$2,$3) RETURNING id`, [text(body.nombre, 'el nombre'), text(body.rnc ?? '', 'el RNC', false), text(body.tel ?? '', 'el teléfono', false)])).rows[0];
-    return { id: number(row.id) };
-  }
-  if (method === 'PUT' && path === '/api/configuracion') {
-    const company = text(body.empresa, 'la empresa'); const percent = Number(body.itbisPorcentaje);
-    if (!['string', 'number'].includes(typeof body.itbisPorcentaje) || !/^\d{1,3}(?:\.\d{1,4})?$/.test(String(body.itbisPorcentaje)) || percent > 100) fail('ITBIS debe estar entre 0 y 100%.');
-    const result = await client.query('UPDATE configuracion SET empresa=$1,tasa_itbis=$2,version=version+1,actualizado_en=now() WHERE id=1 AND version=$3 RETURNING id', [company, (percent / 100).toFixed(6), id(body.version, 'la versión')]);
-    if (!result.rowCount) fail('La configuración cambió. Actualiza antes de guardar.', 409);
-    return { id: 1 };
-  }
+  const contactMatch = path.match(/^\/api\/(clientes|suplidores|formulas)(?:\/(\d+))?$/);
+  if (contactMatch && (contactMatch[2] ? ['PUT', 'DELETE'].includes(method) : method === 'POST'))
+    return contactOperation(client, contactMatch[1], method, contactMatch[2] ? id(Number(contactMatch[2])) : null, body);
+  if (method === 'PUT' && path === '/api/configuracion') return settingsOperation(client, body);
   if (method === 'POST' && path === '/api/ventas') return sale(client, body);
   if (method === 'POST' && path === '/api/compras') return purchase(client, body);
   if (method === 'POST' && path === '/api/restore') return restore(client, body);

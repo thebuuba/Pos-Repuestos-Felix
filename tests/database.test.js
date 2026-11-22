@@ -48,7 +48,14 @@ test('schema.sql crea toda la estructura en una base sin esquema previo', async 
     await client.query('BEGIN');
     await client.query('DROP SCHEMA pos_privado CASCADE');
     await client.query(schema);
-    assert.equal((await client.query("SELECT count(*) FROM pg_tables WHERE schemaname='public'")).rows[0].count,'9');
+    assert.equal((await client.query("SELECT count(*) FROM pg_tables WHERE schemaname='public'")).rows[0].count,'10');
+    assert.equal((await client.query("SELECT relrowsecurity FROM pg_class WHERE oid='public.formulas_precios'::regclass")).rows[0].relrowsecurity, true);
+    for (const role of ['anon','authenticated','service_role']) {
+      const { rows } = await client.query(`SELECT has_table_privilege($1,'public.formulas_precios','SELECT') AS tabla,
+        has_sequence_privilege($1,'public.formulas_precios_id_seq','USAGE') AS secuencia,
+        has_function_privilege($1,'pos_privado.marcar_contado_historico()','EXECUTE') AS funcion`, [role]);
+      assert.deepEqual(rows[0], { tabla: false, secuencia: false, funcion: false });
+    }
     await client.query("INSERT INTO pos_privado.estado(id,datos) VALUES(1,'{}')").then(
       () => assert.fail('El archivo histórico debe ser inmutable'),
       error => assert.equal(error.code,'55000'),

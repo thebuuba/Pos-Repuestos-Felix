@@ -75,10 +75,10 @@ test('tax exempt catalog prices retain the same gross amount and produce zero IT
   assert.equal(invoice.items[0].itbis, 0);
 });
 
-test('v3 backups preserve metadata and prior v2 backups import with explicit neutral defaults', async () => {
+test('v4 backups preserve metadata and prior v2 backups import with explicit neutral defaults', async () => {
   const original = await state();
   const backup = await (await fetch(origin + '/api/backup')).json();
-  assert.equal(backup.version, 3);
+  assert.equal(backup.version, 4);
   const row = backup.tables.productos.find(p => Number(p.id) === productId);
   assert.equal(row.stock_minimo, 7);
   assert.equal(row.gravado, false);
@@ -91,6 +91,11 @@ test('v3 backups preserve metadata and prior v2 backups import with explicit neu
   assert.equal(restored.status, 200, await restored.clone().text());
   assert.deepEqual((await restored.json()).state, original.state);
   const v2 = structuredClone(backup); v2.version = 2;
+  delete v2.tables.formulas_precios;
+  for (const [table, fields] of Object.entries({
+    configuracion: ['rnc', 'tel', 'correo', 'direccion', 'redondeo', 'nivel_precio_predeterminado', 'formato_impresion', 'pie_ticket', 'permitir_stock_negativo'],
+    clientes: ['correo', 'direccion', 'limite_credito', 'es_contado'], suplidores: ['correo', 'contacto', 'dias_credito', 'formula_id'],
+  })) for (const row of v2.tables[table]) for (const key of fields) delete row[key];
   for (const row of v2.tables.productos) for (const key of ['marca', 'categoria', 'ubicacion', 'stock_minimo', 'gravado']) delete row[key];
   assert.equal((await write('restore', { revision: (await state()).revision, backup: v2 })).status, 200);
   const imported = await product();
@@ -120,7 +125,8 @@ test('additive catalog migration preserves populated prior schema and historical
     const oldProduct = (await admin.query('SELECT * FROM productos')).rows[0];
     const oldDocuments = (await admin.query('SELECT row_to_json(v) AS document FROM ventas v ORDER BY id')).rows;
     const oldMovements = (await admin.query('SELECT row_to_json(m) AS document FROM movimientos_inventario m ORDER BY id')).rows;
-    assert.deepEqual(await migrateDatabase(admin), ['20261121220000']);
+    assert.deepEqual(await migrateDatabase(admin), ['20261121220000', '20261122000000']);
+    assert.equal((await admin.query('SELECT es_contado FROM clientes')).rows[0].es_contado, false);
     const migrated = (await admin.query('SELECT * FROM productos')).rows[0];
     assert.deepEqual(Object.fromEntries(Object.keys(oldProduct).map(key => [key, migrated[key]])), oldProduct);
     assert.equal(migrated.gravado, true);
