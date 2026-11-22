@@ -88,7 +88,7 @@ test('ambas entradas sirven solo Polymet y conservan códigos literales tras res
     assert.equal(child.started, true, child.stderr);
     for (const path of ['/', '/inventario']) {
       const html = await (await fetch(child.origin + path)).text();
-      assert.match(html, /<div id="root"><\/div>/);
+      assert.match(html, /<div id="root"><main class="pos-startup"/);
       assert.match(html, /type="module" src="\/assets\/pwa\/app-[a-f0-9]{16}\.js"/);
     }
     assert.equal((await fetch(child.origin + '/app.js')).status, 200);

@@ -92,7 +92,7 @@ test('no publica credenciales, SQL ni archivos del servidor', async () => {
 
 test('el servidor por defecto entrega el inventario compilado de Polymet', async () => {
   const html = await (await fetch(base + '/inventario')).text();
-  assert.match(html, /<div id="root"><\/div>/);
+  assert.match(html, /<div id="root"><main class="pos-startup"/);
   assert.match(html, /type="module" src="\/assets\/pwa\/app-[a-f0-9]{16}\.js"/);
   for (const path of ['/manifest.webmanifest', '/sw.js']) assert.equal((await fetch(base + path)).status, 200, path);
   assert.equal((await fetch(base + '/pwa.js')).status, 404, 'La entrada heredada no se publica');

@@ -107,7 +107,7 @@ async function route(request, { pool, hosting, databaseLabel = 'PostgreSQL', rea
       const body = await readBody(request, 8192);
       const change = pathname === '/cuenta/clave';
       if (change && (!account || typeof body?.newPassword !== 'string')) return json(400, { error: 'Indica una nueva contraseña para tu cuenta de Supabase.' });
-      const valid = account ? await account.signIn(body?.username, body?.password, body?.remember === true, change ? body.newPassword : undefined) :
+      const valid = account ? await account.signIn(body?.username, body?.password, body?.remember !== false, change ? body.newPassword : undefined) :
         validCredentials(body?.username, body?.password, hosting);
       if (!valid) return json(401, { error: 'El usuario o la contraseña no son correctos.' });
       let next;
@@ -179,7 +179,7 @@ async function route(request, { pool, hosting, databaseLabel = 'PostgreSQL', rea
       }
       return json(200, await writeOperation(pool, request.method, pathname, body, request.headers.get('idempotency-key'), databaseLabel, actor));
     }
-    const immutableAsset = /^\/assets\/pwa\/(app-[a-f0-9]{16}\.js|styles-[a-f0-9]{16}\.css)$/.exec(pathname);
+    const immutableAsset = /^\/assets\/pwa\/(app-[a-f0-9]{16}\.js|styles-[a-f0-9]{16}\.css|chunk-[A-Z0-9]{8}\.js)$/.exec(pathname);
     const asset = isPage ? pageAsset : publicFiles[pathname] || (immutableAsset && [pathname.slice(1), pathname.endsWith('.js') ? 'text/javascript' : 'text/css']);
     if (!asset || !['GET', 'HEAD'].includes(request.method)) return json(404, { error: 'No encontrado.' });
     const content = await readAsset(asset[0]);

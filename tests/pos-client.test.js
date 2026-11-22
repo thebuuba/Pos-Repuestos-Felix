@@ -458,6 +458,47 @@ for (const method of ['PUT', 'DELETE']) {
   });
 }
 
+test('dos ventas iguales de pestañas distintas no comparten la confirmación de una sola factura', async t => {
+  const first = await tab(t);
+  const created = await createProduct(first, 'VENTAS-IGUALES');
+  const product = created.state.productos.find(row => row.id === created.result.id);
+  const second = await open(first.context());
+  const operation = {
+    method: 'POST', path: '/api/ventas', databaseId: created.databaseId,
+    payload: {
+      cajaId: created.state.caja.session.id, metodoPago: 'efectivo',
+      clienteId: created.state.clientes[0].id, condicion: 'Contado', tipoComprobante: 'B02',
+      items: [{ productoId: product.id, versionProducto: product.version, cantidad: '1.00', nivelPrecio: 'precio1' }],
+    },
+  };
+  const packets = [];
+  await first.context().route('**/api/ventas', async route => {
+    packets.push(route.request().headers()['idempotency-key']);
+    const response = await route.fetch();
+    assert.equal(response.status(), 200);
+    if (packets.length === 1) return route.abort(); // La primera venta existe, pero perdió su respuesta.
+    return route.fulfill({ response });
+  });
+  await assert.rejects(first.evaluate(op => client.writeOperation(op), operation), /No se confirmó/);
+  const attempt = await second.evaluate(async op => {
+    try { await client.writeOperation(op); return { confirmed: true }; }
+    catch (error) { return { confirmed: false, message: error.message, retry: !!error.retry }; }
+  }, operation);
+  assert.equal(attempt.confirmed, false, 'Una nueva venta no puede apropiarse de una factura pendiente idéntica');
+  assert.match(attempt.message, /solicitud pendiente/);
+  assert.equal(attempt.retry, false, 'No se debe ofrecer reintentar la venta ajena como si fuera esta');
+  assert.equal(packets.length, 1);
+  const recovered = await second.evaluate(() => client.retryPending());
+  assert.equal(recovered.confirmation.replayed, true, 'La recuperación explícita sí conserva la operación original');
+  const updated = recovered.state.productos.find(row => row.id === product.id);
+  operation.payload.items[0].versionProducto = updated.version;
+  const next = await second.evaluate(op => client.writeOperation(op), operation);
+  assert.notEqual(next.result.id, recovered.result.id);
+  assert.deepEqual(packets.slice(0, 2), [packets[0], packets[0]]);
+  assert.notEqual(packets[2], packets[0]);
+  assert.equal(next.state.productos.find(row => row.id === product.id).stock, 2);
+});
+
 for (const resource of ['ventas', 'compras']) for (const mismatch of ['missing', 'quantity']) {
   test(`${resource} conserva la solicitud si una confirmación de replay omite o cambia el documento (${mismatch})`, async t => {
     const page = await tab(t);

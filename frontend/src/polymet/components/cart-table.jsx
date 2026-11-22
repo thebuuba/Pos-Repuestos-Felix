@@ -14,10 +14,10 @@ var LEVEL_LABEL = {
 };
 function CartTable({ lines, onQuantityChange, onRemove, onClear }) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-border bg-card">
-      <div className="flex items-center justify-between px-5 py-4">
+    <section className="sale-cart overflow-hidden rounded-2xl border border-border bg-card">
+      <div className="sale-cart-heading flex items-center justify-between px-5 py-4">
         <div className="flex items-center gap-2.5">
-          <h2 className="text-base font-semibold">{"Detalle de la factura"}</h2>
+          <h2 className="text-base font-semibold"><span className="sale-desktop-only">Detalle de la factura</span><span className="sale-mobile-only">Productos</span></h2>
           <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
             {lines.length} {lines.length === 1 ? "artículo" : "artículos"}
           </span>
@@ -35,7 +35,7 @@ function CartTable({ lines, onQuantityChange, onRemove, onClear }) {
         )}
       </div>
       {lines.length === 0 ? (
-        <div className="flex flex-col items-center justify-center border-t border-border px-6 py-14 text-center">
+        <div className="sale-cart-empty flex flex-col items-center justify-center border-t border-border px-6 py-14 text-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
             <PackageOpen className="h-6 w-6 text-muted-foreground" />
           </div>
@@ -77,7 +77,7 @@ function CartTable({ lines, onQuantityChange, onRemove, onClear }) {
                     className="border-b border-border last:border-0 hover:bg-muted/30"
                     key={line.key}
                   >
-                    <td className="px-5 py-3">
+                    <td className="sale-cart-product px-5 py-3">
                       <p className="font-medium text-foreground">
                         {line.product.name}
                       </p>
@@ -96,7 +96,7 @@ function CartTable({ lines, onQuantityChange, onRemove, onClear }) {
                         )}
                       </div>
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="sale-cart-quantity px-3 py-3">
                       <div className="mx-auto flex h-8 w-[104px] items-center rounded-lg border border-border">
                         <button
                           type="button"
@@ -130,16 +130,16 @@ function CartTable({ lines, onQuantityChange, onRemove, onClear }) {
                         </button>
                       </div>
                     </td>
-                    <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">
+                    <td className="sale-cart-price px-3 py-3 text-right tabular-nums text-muted-foreground" data-label="Precio">
                       {formatUnitMoney(line.unitPrice)}
                     </td>
-                    <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">
+                    <td className="sale-cart-tax px-3 py-3 text-right tabular-nums text-muted-foreground" data-label="ITBIS">
                       {formatMoney(line.itbis)}
                     </td>
-                    <td className="px-3 py-3 text-right font-semibold tabular-nums">
+                    <td className="sale-cart-subtotal px-3 py-3 text-right font-semibold tabular-nums" data-label="Subtotal">
                       {formatMoney(line.subtotal)}
                     </td>
-                    <td className="px-3 py-3 text-right">
+                    <td className="sale-cart-remove px-3 py-3 text-right">
                       <Button
                         variant="ghost"
                         size="icon"

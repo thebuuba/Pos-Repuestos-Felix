@@ -13,6 +13,10 @@ export function PwaProvider({ enabled, children }) {
   const [waiting, setWaiting] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => {
+    document.documentElement.classList.toggle('pwa-standalone', !!available && installed);
+    return () => document.documentElement.classList.remove('pwa-standalone');
+  }, [available, installed]);
+  useEffect(() => {
     if (!available) return;
     let disposed = false, registration;
     const display = window.matchMedia('(display-mode: standalone)');
@@ -72,7 +76,7 @@ export function PwaProvider({ enabled, children }) {
         {prompt && <Button onClick={install}>Instalar ahora</Button>}
         <div className="space-y-3 text-sm">
           <p><strong>Android · Chrome:</strong> abre el menú del navegador y elige «Añadir a pantalla de inicio» o «Instalar aplicación».</p>
-          <p><strong>iPhone o iPad · Safari:</strong> toca Compartir, «Añadir a pantalla de inicio» y «Añadir». Activa «Abrir como app web» si aparece.</p>
+          <p><strong>iPhone o iPad · Safari:</strong> toca Compartir y «Añadir a pantalla de inicio». Comprueba el icono rojo y el nombre «Félix POS», activa «Abrir como app web» si aparece y toca «Añadir». Después abre Félix POS desde su icono en la pantalla de inicio.</p>
           <p><strong>Windows · Edge o Chrome:</strong> usa el icono de instalación de la barra de direcciones o la opción de instalar en el menú del navegador.</p>
           <p className="text-muted-foreground">En la web y la PWA, las ventas, compras, caja y demás cambios requieren conexión y confirmación del servidor. Sin conexión puedes abrir la interfaz; los datos y las operaciones no se guardan para trabajar sin internet.</p>
         </div>
@@ -84,7 +88,7 @@ export function PwaProvider({ enabled, children }) {
 export function PwaNotice({ runtime }) {
   const pwa = usePwa();
   if (!pwa?.waiting && !pwa?.error) return null;
-  return <div role="status" className="mb-4 space-y-2 rounded-xl border border-border bg-card p-4 text-sm">
+  return <div role="status" className={`${pwa.error ? '' : 'pwa-update-notice '}mb-4 space-y-2 rounded-xl border border-border bg-card p-4 text-sm`}>
     {pwa.waiting && <>
       <p className="font-semibold">Actualización disponible</p>
       <p>{runtime?.pending || runtime?.busy

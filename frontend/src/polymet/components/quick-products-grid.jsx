@@ -12,6 +12,7 @@ function QuickProductsGrid({
   priceLevel,
   onAdd,
   cartQuantities = {},
+  pageSize = 48,
 }) {
   const [category, setCategory] = useState(ALL);
   const [page, setPage] = useState(0);
@@ -22,11 +23,11 @@ function QuickProductsGrid({
         : products.filter((p) => p.category === category),
     [products, category],
   );
-  const lastPage = Math.max(0, Math.ceil(filtered.length / 48) - 1);
+  const lastPage = Math.max(0, Math.ceil(filtered.length / pageSize) - 1);
   const currentPage = Math.min(page, lastPage);
   return (
-    <div>
-      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+    <div className="sale-catalog">
+      {categories.length > 0 && <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
         {[ALL, ...categories.filter(c => c !== ALL)].map((c) => (
           <button
             type="button"
@@ -42,9 +43,9 @@ function QuickProductsGrid({
             {c}
           </button>
         ))}
-      </div>
-      <div className="mt-3 grid max-h-[248px] grid-cols-2 gap-2.5 overflow-y-auto pr-1 sm:grid-cols-3 xl:grid-cols-4">
-        {filtered.slice(currentPage * 48, (currentPage + 1) * 48).map((p) => {
+      </div>}
+      <div className="sale-catalog-products mt-3 grid max-h-[248px] grid-cols-2 gap-2.5 overflow-y-auto pr-1 sm:grid-cols-3 xl:grid-cols-4">
+        {filtered.slice(currentPage * pageSize, (currentPage + 1) * pageSize).map((p) => {
           const out = p.stock === 0;
           const low = !out && p.stock <= p.minStock;
           const inCart = cartQuantities[p.id];
@@ -107,7 +108,7 @@ function QuickProductsGrid({
           );
         })}
       </div>
-      {lastPage > 0 && <div className="mt-2 flex items-center justify-end gap-3 text-xs text-muted-foreground">
+      {lastPage > 0 && <div className="sale-catalog-pagination mt-2 flex items-center justify-end gap-3 text-xs text-muted-foreground">
         <button type="button" disabled={!currentPage} onClick={() => setPage(currentPage - 1)}>Anterior</button>
         <span>{currentPage + 1} / {lastPage + 1}</span>
         <button type="button" disabled={currentPage === lastPage} onClick={() => setPage(currentPage + 1)}>Siguiente</button>

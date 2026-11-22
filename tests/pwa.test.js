@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 
-async function worker() {
+async function worker(optional = []) {
   const handlers = new Map();
   const stores = new Map();
   const origin = 'https://pos.example';
@@ -11,25 +11,27 @@ async function worker() {
   const caches = {
     keys: async () => [...stores.keys()],
     delete: async (name) => stores.delete(name),
+    match: async (request, { cacheName }) => stores.get(cacheName)?.get(key(request))?.clone(),
     open: async (name) => {
       if (!stores.has(name)) stores.set(name, new Map());
       const store = stores.get(name);
       return {
         addAll: async (urls) => { for (const url of urls) store.set(key(url), new Response(`shell:${key(url)}`)); },
         match: async (request) => store.get(key(request))?.clone(),
+        put: async (request, response) => { store.set(key(request), response); },
       };
     },
   };
   const context = {
     self: { location: { origin }, clients: { claim: async () => {} }, addEventListener: (name, callback) => handlers.set(name, callback) },
-    caches, URL, Response, Request: class extends Request { constructor(url, options) { super(new URL(url, origin), options); } },
+    caches, URL, Response, Request: class extends Request { constructor(url, options) { super(typeof url === 'string' ? new URL(url, origin) : url, options); } },
     fetch: async () => { throw new TypeError('Sin conexión'); },
   };
-  vm.runInNewContext(await readFile(new URL('../public/sw.js', import.meta.url), 'utf8'), context);
+  vm.runInNewContext((await readFile(new URL('../public/sw.js', import.meta.url), 'utf8')).replace('const OPTIONAL = [];', `const OPTIONAL = ${JSON.stringify(optional)};`), context);
   let installed;
   handlers.get('install')({ waitUntil: (promise) => { installed = promise; } });
   await installed;
-  return { handlers, caches, stores, origin };
+  return { handlers, caches, stores, origin, context };
 }
 
 test('la interfaz instalada se puede abrir sin conexión', async () => {
@@ -41,6 +43,34 @@ test('la interfaz instalada se puede abrir sin conexión', async () => {
   });
   assert.ok(result, 'La ruta de ventas debe abrir la interfaz pública sin conexión');
   assert.equal(await (await result).text(), 'shell:/pwa-shell.html');
+});
+
+test('la PWA abre la interfaz pública guardada sin esperar otra navegación de red', async () => {
+  const { handlers, origin, context } = await worker();
+  let calls = 0;
+  context.fetch = async () => { calls++; return new Response('documento de red'); };
+  let result;
+  handlers.get('fetch')({ request: { method: 'GET', mode: 'navigate', url: `${origin}/inventario` }, respondWith: value => { result = value; } });
+  assert.equal(await (await result).text(), 'shell:/pwa-shell.html');
+  assert.equal(calls, 0);
+});
+
+test('los módulos se guardan al usarse, sin credenciales ni descargar todos al instalar', async () => {
+  const modulePath = '/assets/pwa/chunk-TEST1234.js';
+  const { handlers, origin, context, stores } = await worker([modulePath]);
+  assert.equal([...stores.values()][0].has(modulePath), false);
+  let fetches = 0, response, saved;
+  context.fetch = async request => {
+    fetches++;
+    assert.equal(request.credentials, 'omit');
+    return new Response('módulo público');
+  };
+  for (let use = 0; use < 2; use++) {
+    handlers.get('fetch')({ request: new Request(origin + modulePath), respondWith: value => { response = value; }, waitUntil: value => { saved = value; } });
+    assert.equal(await (await response).text(), 'módulo público');
+    await saved;
+  }
+  assert.equal(fetches, 1);
 });
 
 test('la fuente local está disponible sin conexión', async () => {
@@ -86,4 +116,16 @@ test('actualizar la PWA elimina solo sus propias cachés antiguas', async () => 
   await activated;
   assert.equal(stores.has('felix-pos-shell-antiguo'), false);
   assert.equal(stores.has('otra-aplicacion'), true);
+});
+
+test('una petición tardía del worker anterior no recrea su caché retirada', async () => {
+  const { handlers, stores, origin } = await worker();
+  stores.clear(); // La nueva versión ya retiró la caché de este worker.
+  let response;
+  handlers.get('fetch')({
+    request: { method: 'GET', mode: 'navigate', url: `${origin}/ventas` },
+    respondWith: value => { response = value; },
+  });
+  assert.equal((await response).type, 'error');
+  assert.equal(stores.size, 0);
 });

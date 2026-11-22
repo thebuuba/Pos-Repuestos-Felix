@@ -37,7 +37,8 @@ test('cuenta individual, permiso administrativo, renovación y salida en el POS'
   assert.equal(login.status, 200);
   const cookie = login.headers.get('set-cookie');
   assert.match(cookie, /HttpOnly/);
-  assert.match(cookie, /Max-Age=2592000/);
+  assert.match(cookie, /Max-Age=31536000/);
+  assert.match(cookie, /SameSite=Lax/);
   const first = cookie.split(';')[0];
   const packed = Buffer.from(first.slice(first.indexOf('=') + 1), 'base64url');
   assert.equal(packed.includes(Buffer.from('"refresh"')), false);
@@ -74,4 +75,50 @@ test('un proyecto Supabase incompleto nunca acepta el acceso compartido', () => 
     assert.throws(() => hostingConfig({ ...previous, PUBLIC_ORIGIN: origin }), /Supabase/);
     assert.throws(() => hostingConfig({ DATABASE_URL: url }), /Supabase/);
   }
+});
+
+test('la sesión persistente renueva su plazo al usarse y conserva el cierre por revocación', async t => {
+  const start = Date.UTC(2026, 0, 1);
+  t.mock.timers.enable({ apis: ['Date'], now: start });
+  const user = { id: 'persistente', email: 'felix@usuarios.repuestosfelix.invalid', app_metadata: { acceso_pos: true } };
+  const hosting = hostingConfig(env);
+  let accessRejected = false, unavailable = false, refreshes = 0;
+  hosting.auth.fetch = async url => {
+    if (unavailable) return new Response(null, { status: 503 });
+    if (url.includes('grant_type=')) {
+      if (url.includes('refresh_token')) refreshes++;
+      return Response.json({ user, access_token: 'access', refresh_token: 'refresh', expires_in: 3600 });
+    }
+    return accessRejected ? new Response(null, { status: 401 }) : Response.json(user);
+  };
+  const call = (path, cookie = '', body) => handleRequest(new Request(origin + path, {
+    method: body ? 'POST' : 'GET', headers: { Origin: origin, 'X-Forwarded-Proto': 'https', 'Content-Type': 'application/json', Cookie: cookie },
+    body: body && JSON.stringify(body),
+  }), { hosting, readAsset: () => 'asset' });
+  const login = await call('/login', '', { username: 'felix', password: 'sintética' });
+  assert.match(login.headers.get('set-cookie'), /Max-Age=31536000/, 'Recordar es el comportamiento predeterminado');
+  let cookie = login.headers.get('set-cookie').split(';')[0];
+  // A server-rejected access token can still have a valid refresh token.
+  accessRejected = true;
+  const recovered = await call('/inventario', cookie);
+  assert.equal(recovered.status, 200);
+  assert.equal(refreshes, 1);
+  cookie = recovered.headers.get('set-cookie').split(';')[0];
+  accessRejected = false;
+  for (const day of [29, 60, 350, 400]) {
+    t.mock.timers.setTime(start + day * 86400000);
+    const response = await call('/inventario', cookie);
+    assert.equal(response.status, 200, `Día ${day}: no exige iniciar sesión otra vez`);
+    assert.match(response.headers.get('set-cookie'), /Max-Age=31536000/);
+    cookie = response.headers.get('set-cookie').split(';')[0];
+  }
+  unavailable = true;
+  const outage = await call('/inventario', cookie);
+  assert.equal(outage.status, 503);
+  assert.equal(outage.headers.get('set-cookie'), null, 'Un fallo de red no borra la sesión');
+  unavailable = false;
+  user.app_metadata.acceso_pos = false;
+  const revoked = await call('/api/account', cookie);
+  assert.equal(revoked.status, 401);
+  assert.match(revoked.headers.get('set-cookie'), /Max-Age=0/);
 });

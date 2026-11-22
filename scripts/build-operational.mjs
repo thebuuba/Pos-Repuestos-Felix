@@ -7,10 +7,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 export async function buildOperational(outdir = 'dist/operational') {
   const destination = path.resolve(outdir);
   await mkdir(destination, { recursive: true });
-  await build({
+  const result = await build({
     absWorkingDir: fileURLToPath(new URL('../', import.meta.url)),
     entryPoints: { app: 'frontend/operational.jsx' }, outdir: destination,
-    bundle: true, format: 'esm', target: 'es2022', jsx: 'automatic', minify: true,
+    bundle: true, format: 'esm', target: 'es2022', jsx: 'automatic', minify: true, splitting: true, metafile: true,
+    chunkNames: 'assets/pwa/chunk-[hash]',
     assetNames: 'assets/fonts/[name]', publicPath: '/', loader: { '.woff2': 'file', '.png': 'file' },
     define: { 'process.env.NODE_ENV': '"production"' }, logLevel: 'silent',
   });
@@ -18,13 +19,29 @@ export async function buildOperational(outdir = 'dist/operational') {
   await mkdir(path.join(destination, 'assets/brand'), { recursive: true });
   await copyFile(new URL('../public/assets/brand/repuestos-felix.jpg', import.meta.url), path.join(destination, 'assets/brand/repuestos-felix.jpg'));
   await copyFile(fileURLToPath(import.meta.resolve('@fontsource-variable/inter/LICENSE')), path.join(destination, 'assets/Inter-OFL.txt'));
-  await Promise.all(['login.html', 'login.js'].map(file => copyFile(new URL('../frontend/' + file, import.meta.url), path.join(destination, file))));
+  const theme = `<script>${await readFile(new URL('../frontend/theme.js', import.meta.url), 'utf8')}</script>`;
+  const login = await readFile(new URL('../frontend/login.html', import.meta.url), 'utf8');
+  await writeFile(path.join(destination, 'login.html'), login.replace('<!--APP_THEME-->', theme));
+  await copyFile(new URL('../frontend/login.js', import.meta.url), path.join(destination, 'login.js'));
   await mkdir(path.join(destination, 'assets/pwa'), { recursive: true });
   const fingerprint = bytes => createHash('sha256').update(bytes).digest('hex').slice(0, 16);
   const app = await readFile(path.join(destination, 'app.js'));
   const styles = await readFile(path.join(destination, 'styles.css'));
   const appPath = `/assets/pwa/app-${fingerprint(app)}.js`;
   const stylesPath = `/assets/pwa/styles-${fingerprint(styles)}.css`;
+  const outputPath = file => '/' + path.relative(destination, path.resolve(file)).split(path.sep).join('/');
+  const initial = new Set();
+  function includeStatic(file) {
+    if (initial.has(file)) return;
+    initial.add(file);
+    for (const imported of result.metafile.outputs[file]?.imports || []) {
+      if (imported.kind === 'import-statement' && !imported.external) includeStatic(imported.path);
+    }
+  }
+  includeStatic(Object.keys(result.metafile.outputs).find(file => file.endsWith('/app.js')));
+  const initialChunks = [...initial].map(outputPath).filter(file => file.startsWith('/assets/pwa/chunk-'));
+  const chunks = Object.keys(result.metafile.outputs).map(outputPath).filter(file => /^\/assets\/pwa\/chunk-[A-Z0-9]{8}\.js$/.test(file));
+  const optional = chunks.filter(file => !initialChunks.includes(file));
   await writeFile(path.join(destination, appPath.slice(1)), app);
   await writeFile(path.join(destination, stylesPath.slice(1)), styles);
   await mkdir(path.join(destination, 'icons'), { recursive: true });
@@ -32,23 +49,30 @@ export async function buildOperational(outdir = 'dist/operational') {
   await Promise.all(icons.map(file => copyFile(new URL('../public/icons/' + file, import.meta.url), path.join(destination, 'icons', file))));
   await copyFile(new URL('../public/manifest.webmanifest', import.meta.url), path.join(destination, 'manifest.webmanifest'));
   const html = [
-    '<!doctype html><html lang="es"><head><meta charset="utf-8">',
+    '<!doctype html><html lang="es"><head><meta charset="utf-8">', theme,
+    '<style>html{background:#f5f5f7;color-scheme:light}html.dark{background:#0d0d0f;color-scheme:dark}</style>',
     '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">',
     '<meta name="theme-color" content="#c3131f"><meta name="apple-mobile-web-app-capable" content="yes">',
     '<meta name="apple-mobile-web-app-title" content="Félix POS"><meta name="apple-mobile-web-app-status-bar-style" content="default">',
-    '<link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">',
+    '<link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">',
+    '<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">',
+    ...initialChunks.map(file => `<link rel="modulepreload" href="${file}">`),
     `<title>Repuestos Félix</title><link rel="stylesheet" href="${stylesPath}"></head>`,
-    `<body><div id="root"></div><script type="module" src="${appPath}"></script></body></html>`,
+    '<body><div id="root"><main class="pos-startup" aria-busy="true">',
+    '<img src="/icons/icon-192.png" alt="" width="64" height="64"><h1>Félix POS</h1>',
+    '<p role="status"><span class="pos-startup-spinner" aria-hidden="true"></span>Preparando la aplicación…</p></main></div>',
+    `<script type="module" src="${appPath}"></script></body></html>`,
   ].join('\n');
   await writeFile(path.join(destination, 'index.html'), html);
   await writeFile(path.join(destination, 'pwa-shell.html'), html);
-  const files = ['/pwa-shell.html', appPath, stylesPath, '/manifest.webmanifest',
+  const files = ['/pwa-shell.html', appPath, stylesPath, ...initialChunks, '/manifest.webmanifest',
     '/assets/fonts/inter-latin-wght-normal.woff2', '/assets/brand/repuestos-felix.jpg', ...icons.map(file => '/icons/' + file)];
   const template = await readFile(new URL('../public/sw.js', import.meta.url), 'utf8');
   const digest = createHash('sha256').update(template);
-  for (const file of files) digest.update(file).update(await readFile(path.join(destination, file.slice(1))));
+  for (const file of [...files, ...optional]) digest.update(file).update(await readFile(path.join(destination, file.slice(1))));
   const worker = template.replace('__BUILD_ID__', digest.digest('hex').slice(0, 16))
-    .replace(/const FILES = \[[\s\S]*?\];/, `const FILES = ${JSON.stringify(files)};`);
+    .replace(/const FILES = \[[\s\S]*?\];/, `const FILES = ${JSON.stringify(files)};`)
+    .replace('const OPTIONAL = [];', `const OPTIONAL = ${JSON.stringify(optional)};`);
   await writeFile(path.join(destination, 'sw.js'), worker);
   return destination;
 }

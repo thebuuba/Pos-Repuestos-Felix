@@ -70,7 +70,7 @@ test(
       );
       await page.setViewportSize({ width: 390, height: 844 });
       await page
-        .getByRole("button", { name: "Abrir menú", exact: true })
+        .getByRole("button", { name: "Más", exact: true })
         .click();
       await page
         .getByRole("dialog")
@@ -85,15 +85,15 @@ test(
       await page.getByRole("dialog").waitFor({ state: "hidden" });
       assert.equal(await page.getByRole("dialog").count(), 0);
       await page
-        .getByRole("button", { name: "Abrir menú", exact: true })
+        .getByRole("button", { name: "Más", exact: true })
         .click();
       await page.getByRole("dialog").locator('a[href="/ventas"]').click();
       await page.getByRole("dialog").waitFor({ state: "hidden" });
       await page.evaluate(() => document.fonts.ready);
       assert.equal(
         await page.evaluate(() => document.documentElement.scrollHeight),
-        2317,
-        "Mobile invoice form must retain the measured Polymet spacing in standards mode",
+        2317 + 72,
+        "Mobile invoice form retains Polymet spacing plus the 72px reserved for the requested bottom navigation",
       );
       assert.equal(
         await page.evaluate(

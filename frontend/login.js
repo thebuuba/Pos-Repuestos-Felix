@@ -1,4 +1,6 @@
 const form = document.querySelector("form");
+document.documentElement.classList.toggle('pwa-standalone',
+  window.matchMedia('(display-mode: standalone)').matches || !!navigator.standalone);
 const button = form.querySelector("button");
 const error = document.getElementById("error");
 const query = new URLSearchParams(location.search);

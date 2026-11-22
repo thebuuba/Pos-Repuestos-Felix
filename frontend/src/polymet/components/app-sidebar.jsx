@@ -6,14 +6,6 @@ import { cn } from "../../lib/utils.js";
 import { Link } from "react-router-dom";
 import { BrandLogo } from "./brand-logo.jsx";
 import { NAV_GROUPS } from "../data/navigation.js";
-import { Avatar2 } from "../../components/ui/avatar.jsx";
-import { AvatarImage2 } from "../../components/ui/avatar.jsx";
-import { AvatarFallback2 } from "../../components/ui/avatar.jsx";
-import { formatTime } from "../lib/accounts.js";
-import { formatMoney } from "../lib/format.js";
-import { Button } from "../../components/ui/button.jsx";
-import { Lock } from "lucide-react";
-import { LockOpen } from "lucide-react";
 function isActive(item, pathname) {
   return item.path === "/"
     ? pathname === "/"
@@ -21,7 +13,7 @@ function isActive(item, pathname) {
 }
 function AppSidebar({ onNavigate, className }) {
   const { pathname } = useLocation();
-  const { receivables, payables, products, cashSession, cashSummary, cashierAvatar } =
+  const { receivables, payables, products } =
     usePosStore();
   const badges = {
     "/cuentas-por-cobrar": receivables?.filter((r) => balanceOf(r) > 0).length,
@@ -100,53 +92,6 @@ function AppSidebar({ onNavigate, className }) {
           </div>
         ))}
       </nav>
-      {cashSession && <div className="shrink-0 p-3">
-        <div className="relative overflow-hidden rounded-2xl bg-foreground p-4 text-background">
-          <div className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-primary/40 blur-2xl" />
-          <div className="relative flex items-center gap-3">
-            <Avatar2 className="h-9 w-9 ring-2 ring-background/20">
-              <AvatarImage2 src={cashierAvatar} />
-              <AvatarFallback2>{"FR"}</AvatarFallback2>
-            </Avatar2>
-            <div className="min-w-0 leading-tight">
-              <p className="truncate text-sm font-semibold">
-                {cashSession.cashier}
-              </p>
-              <p className="flex items-center gap-1.5 text-[11px] text-background/60">
-                <span
-                  className={cn(
-                    "h-1.5 w-1.5 rounded-full",
-                    cashSession.open ? "bg-emerald-400" : "bg-background/40",
-                  )}
-                />
-                {cashSession.open
-                  ? `Caja 01 · abierta ${formatTime(cashSession.openedAt)}`
-                  : "Caja 01 · cerrada"}
-              </p>
-            </div>
-          </div>
-          <div className="relative mt-4">
-            <p className="text-[11px] text-background/60">
-              {cashSession.open
-                ? "Efectivo esperado en caja"
-                : "Abre la caja para vender"}
-            </p>
-            <p className="text-lg font-semibold tabular-nums">
-              {cashSession.open ? formatMoney(cashSummary.expected) : "—"}
-            </p>
-          </div>
-          <Button
-            asChild={true}
-            size="sm"
-            className="relative mt-3 w-full rounded-xl bg-background text-foreground hover:bg-background/90"
-          >
-            <Link to="/caja" onClick={onNavigate}>
-              {cashSession.open ? <Lock /> : <LockOpen />}
-              {cashSession.open ? "Cerrar caja" : "Abrir caja"}
-            </Link>
-          </Button>
-        </div>
-      </div>}
     </div>
   );
 }

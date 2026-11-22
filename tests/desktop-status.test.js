@@ -13,9 +13,9 @@ const reference = '1a2b3c4d-0000-4000-8000-123456789abc';
 before(async () => {
   directory = await mkdtemp(path.join(tmpdir(), 'felix-desktop-ui-'));
   await build({ stdin: { contents: `import { createRoot } from 'react-dom/client';
-    import { DesktopNotice } from './frontend/src/desktop-status.jsx';
+    import { DesktopSyncStatus } from './frontend/src/desktop-status.jsx';
     import './frontend/src/polymet.css'; import './frontend/standards.css';
-    createRoot(document.getElementById('root')).render(<DesktopNotice onSync={() => { window.catalogRefreshes = (window.catalogRefreshes || 0) + 1; }}/>);`,
+    createRoot(document.getElementById('root')).render(<DesktopSyncStatus onSync={() => { window.catalogRefreshes = (window.catalogRefreshes || 0) + 1; }}/>);`,
     loader: 'jsx', resolveDir: process.cwd() }, outfile: path.join(directory, 'app.js'),
     bundle: true, format: 'esm', jsx: 'automatic', define: { 'process.env.NODE_ENV': '"production"' }, logLevel: 'silent' });
   await writeFile(path.join(directory, 'index.html'), '<!doctype html><html lang="es"><head><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/app.css"></head><body><div id="root"></div><script type="module" src="/app.js"></script></body></html>');
@@ -52,19 +52,40 @@ async function setup(t, desktop = true, status = initial) {
   return { page, state, packets };
 }
 
-test('la web no muestra el aviso Windows ni consulta sus rutas', async t => {
+test('la web no muestra el control Windows ni consulta sus rutas', async t => {
   const { page, packets } = await setup(t, false);
   assert.equal(await page.getByText('Este equipo · almacenamiento local', { exact: true }).count(), 0);
   assert.deepEqual(packets, []);
 });
 
-test('sin internet identifica almacenamiento local, antigüedad y pendientes', async t => {
+test('el estado saludable queda en un botón y los detalles sólo se abren al solicitarlo', async t => {
+  const { page, packets } = await setup(t, true, { ...initial, connection: 'online', pending: 0 });
+  const trigger = page.getByRole('button', { name: 'Sincronización: Al día', exact: true });
+  await trigger.waitFor();
+  assert.equal(await page.getByRole('dialog').count(), 0);
+  assert.equal(await page.getByText('Este equipo · almacenamiento local', { exact: true }).count(), 0);
+  assert.equal(packets.some(packet => packet.path.endsWith('/pending')), false);
+  assert.ok((await trigger.boundingBox()).height <= 40);
+  await trigger.press('Enter');
+  const dialog = page.getByRole('dialog');
+  await dialog.getByText(/Última sincronización/).waitFor();
+  await page.keyboard.press('Escape');
+  await dialog.waitFor({ state: 'hidden' });
+  await page.clock.runFor(100);
+  assert.equal(await trigger.evaluate(element => element === document.activeElement), true);
+});
+
+test('sin internet el control indica pendientes y abre la antigüedad de los datos', async t => {
   const { page } = await setup(t);
-  await page.getByText('Sin conexión al servidor', { exact: true }).waitFor();
-  await page.getByText(/2 operaciones pendientes/).waitFor();
-  assert.match(await page.locator('#root').innerText(), /Datos del servidor desactualizados/);
-  assert.match(await page.locator('#root').innerText(), /22\/11\/26|22\/11\/2026/);
-  assert.match(await page.locator('#root').innerText(), /guardadas en este equipo/);
+  const trigger = page.getByRole('button', { name: 'Sincronización: Sin conexión, 2 operaciones pendientes', exact: true });
+  await trigger.waitFor();
+  assert.match(await trigger.getAttribute('title'), /Inventario y saldos sin actualizar/);
+  await trigger.click();
+  const details = await page.getByRole('dialog').innerText();
+  assert.match(details, /2 operaciones pendientes/);
+  assert.match(details, /inventario y los saldos pueden estar desactualizados/);
+  assert.match(details, /22\/11\/26|22\/11\/2026/);
+  assert.match(details, /se conservan en este equipo/);
 });
 
 test('sincronizar envía una solicitud y espera un estado confirmado antes de quitar pendientes', async t => {
@@ -76,11 +97,12 @@ test('sincronizar envía una solicitud y espera un estado confirmado antes de qu
     state.status = { ...initial, connection: 'online', pending: 0, lastSync: '2026-11-22T14:00:00Z' };
     await route.fulfill({ json: state.status });
   });
+  await page.getByRole('button', { name: /^Sincronización:/ }).click();
   await page.getByRole('button', { name: 'Sincronizar ahora', exact: true }).click();
   assert.equal(await page.getByRole('button', { name: 'Sincronizando…', exact: true }).isDisabled(), true);
   assert.match(await page.locator('#root').innerText(), /2 operaciones pendientes/);
   gate.resolve();
-  await page.getByText('Sin operaciones pendientes', { exact: true }).waitFor();
+  await page.getByRole('dialog').getByText('Sin operaciones pendientes.', { exact: true }).waitFor();
   assert.equal(requests.length, 1);
   assert.equal(requests[0].method(), 'POST');
   assert.deepEqual(requests[0].postDataJSON(), {});
@@ -90,10 +112,10 @@ test('sincronizar envía una solicitud y espera un estado confirmado antes de qu
 test('el conflicto se conserva visible y la lista permite exportar sin sobrescribir', async t => {
   const { page, state, packets } = await setup(t, true, { ...initial, connection: 'conflict', conflict: 'Existencias del servidor insuficientes' });
   state.rows = [{ reference, date: '2026-11-22T14:00:00Z', operation: 'Venta', status: 'conflict', error: 'Existencias del servidor insuficientes', total: '10.25' }];
-  await page.getByText('Conflicto de sincronización', { exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Ver operaciones locales', exact: true }).click();
+  await page.getByRole('button', { name: 'Sincronización: Revisar sincronización, 2 operaciones pendientes', exact: true }).click();
   const dialog = page.getByRole('dialog');
-  await dialog.getByText(reference, { exact: true }).waitFor();
+  await dialog.getByText('Venta', { exact: true }).waitFor();
+  assert.equal(await dialog.getByText(reference, { exact: true }).count(), 0, 'El identificador técnico se conserva en la exportación, no en la interfaz');
   assert.match(await dialog.innerText(), /10\.25/);
   assert.match(await dialog.innerText(), /no se sobrescriben automáticamente/);
   await page.route('**/api/desktop/export', route => route.continue());
@@ -119,23 +141,24 @@ test('el conflicto se conserva visible y la lista permite exportar sin sobrescri
 
 test('primera descarga y sesión remota vencida muestran instrucciones sin afirmar disponibilidad global', async t => {
   const { page, state } = await setup(t, true, { ...initial, initialized: false, lastSync: null, pending: 0, connection: 'authentication' });
-  await page.getByText('Este equipo aún no tiene datos del negocio.', { exact: true }).waitFor();
-  await page.getByText('Sesión del servidor pendiente', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Sincronización: Iniciar sesión', exact: true }).click();
+  await page.getByRole('dialog').getByText(/descargar los datos del negocio antes de trabajar sin conexión/).waitFor();
   state.status = { ...initial, connection: 'authentication' };
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-  await page.getByText(/2 operaciones pendientes/).waitFor();
-  assert.match(await page.locator('#root').innerText(), /no se han descartado/);
+  await page.getByRole('dialog').getByText('2 operaciones pendientes.', { exact: true }).waitFor();
+  assert.match(await page.getByRole('dialog').innerText(), /se conservan en este equipo/);
 });
 
 test('el sondeo actualiza pendientes y conserva la última lectura si el estado local falla', async t => {
   const { page, state } = await setup(t);
-  await page.getByText(/2 operaciones pendientes/).waitFor();
+  await page.getByRole('button', { name: /Sincronización:.*2 operaciones pendientes/ }).waitFor();
   state.status = { ...initial, pending: 3 };
   await page.clock.runFor(15_100);
-  await page.getByText(/3 operaciones pendientes/).waitFor();
+  await page.getByRole('button', { name: /Sincronización:.*3 operaciones pendientes/ }).waitFor();
   state.fail = true;
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-  await page.getByRole('alert').filter({ hasText: /No se pudo consultar/ }).waitFor();
-  assert.match(await page.locator('#root').innerText(), /3 operaciones pendientes/);
+  await page.getByRole('button', { name: 'Sincronización: Revisar sincronización, 3 operaciones pendientes', exact: true }).click();
+  await page.getByRole('alert').filter({ hasText: /No se pudo comprobar/ }).waitFor();
+  assert.match(await page.getByRole('dialog').innerText(), /3 operaciones pendientes/);
   assert.equal(await page.getByText('Sin operaciones pendientes', { exact: true }).count(), 0);
 });

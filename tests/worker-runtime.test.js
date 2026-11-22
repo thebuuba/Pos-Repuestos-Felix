@@ -50,7 +50,7 @@ test('el runtime Workers sirve el frontend y protege los datos con la configurac
   const html = await call('/');
   assert.equal(html.status, 200);
   assert.match(await html.text(), /type="module" src="\/assets\/pwa\/app-[a-f0-9]{16}\.js"/);
-  assert.match(await (await call('/inventario')).text(), /<div id="root"><\/div>/);
+  assert.match(await (await call('/inventario')).text(), /<div id="root"><main class="pos-startup"/);
   const asset = await call('/app.js');
   assert.equal(asset.status, 200);
   assert.ok((await asset.arrayBuffer()).byteLength > 0);

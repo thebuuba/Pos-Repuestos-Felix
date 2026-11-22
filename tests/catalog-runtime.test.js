@@ -296,7 +296,7 @@ test('inventory reflows on mobile, private paths stay private and sales use the 
   assert.equal((await fetch(origin + '/frontend/reference.jsx')).status, 404);
   assert.equal((await fetch(origin + '/desconocido')).status, 404);
   await page.goto(origin + '/ventas');
-  await page.getByRole('heading', { name: /Punto de venta/ }).waitFor();
+  await page.getByRole('heading', { name: 'Agregar productos', exact: true }).waitFor();
   assert.equal(await page.getByText(/El módulo de .*está en preparación/).count(),0);
   assert.deepEqual(browserErrors, []);
   assert.deepEqual(externalRequests, []);

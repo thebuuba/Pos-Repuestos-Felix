@@ -131,7 +131,7 @@ export function OperationalStoreProvider({ client, children }) {
   const state = useSyncExternalStore(client.subscribe, client.getState);
   const writes = useMemo(() => actions(client), [client]);
   useEffect(() => {
-    const reload = () => { client.reload().catch(() => {}); };
+    const reload = () => { client.reload({ background: !!client.getState().snapshot }).catch(() => {}); };
     const refreshVisible = () => { if (!document.hidden) client.reload({ background: true }).catch(() => {}); };
     reload();
     const timer = window.setInterval(refreshVisible, 5_000);

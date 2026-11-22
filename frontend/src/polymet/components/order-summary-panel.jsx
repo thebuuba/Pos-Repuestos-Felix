@@ -11,6 +11,7 @@ import { Button } from "../../components/ui/button.jsx";
 import { Printer } from "lucide-react";
 import { FileClock } from "lucide-react";
 import { X } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
 var METHODS = [
   {
     value: "efectivo",
@@ -50,13 +51,17 @@ function OrderSummaryPanel({
   ncf,
 }) {
   const empty = totals.items === 0;
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const paymentId = useId();
+  const summaryRef = useRef(null);
+  useEffect(() => { if (empty) setPaymentOpen(false); }, [empty]);
   const isCash = condition === "contado" && paymentMethod === "efectivo";
   const receivedNum = Number(received) || 0;
   const change = receivedNum - totals.total;
   const insufficient = isCash && !empty && receivedNum < totals.total;
   const quickAmounts = Array.from(
     new Set([
-      Math.ceil(totals.total),
+      totals.total,
       Math.ceil(totals.total / 500) * 500,
       Math.ceil(totals.total / 1000) * 1000,
       Math.ceil(totals.total / 1000) * 1000 + 1000,
@@ -66,8 +71,8 @@ function OrderSummaryPanel({
     .slice(0, 4);
   const blocked = empty || insufficient || Boolean(disabledReason);
   return (
-    <section className="flex flex-col overflow-hidden rounded-2xl border border-border bg-card">
-      <div className="flex items-start justify-between gap-3 border-b border-dashed border-border px-5 py-4">
+    <section ref={summaryRef} data-payment-open={paymentOpen} className="sale-summary flex flex-col overflow-hidden rounded-2xl border border-border bg-card">
+      <div className="sale-summary-heading flex items-start justify-between gap-3 border-b border-dashed border-border px-5 py-4">
         <div className="min-w-0">
           <p className="text-xs text-muted-foreground">{"Factura"}</p>
           <p className="text-lg font-semibold tracking-tight">
@@ -89,7 +94,7 @@ function OrderSummaryPanel({
           )}
         </div>
       </div>
-      <div className="space-y-2.5 px-5 py-4 text-sm">
+      <div className="sale-summary-breakdown space-y-2.5 px-5 py-4 text-sm">
         <div className="flex justify-between">
           <span className="text-muted-foreground">
             {"Subtotal ("}
@@ -100,7 +105,7 @@ function OrderSummaryPanel({
             {formatMoney(totals.subtotal)}
           </span>
         </div>
-        <div className="flex items-center justify-between gap-2">
+        <div className="sale-summary-discounts flex items-center justify-between gap-2">
           <span className="text-muted-foreground">{"Descuento"}</span>
           <div className="flex items-center gap-1">
             {DISCOUNTS.map((d) => (
@@ -142,7 +147,7 @@ function OrderSummaryPanel({
           </span>
         </div>
       </div>
-      <div className="mx-5 rounded-xl bg-accent px-4 py-3.5">
+      <div className="sale-summary-total mx-5 rounded-xl bg-accent px-4 py-3.5">
         <p className="text-xs font-medium uppercase tracking-wider text-accent-foreground/80">
           {"Total a pagar"}
         </p>
@@ -153,9 +158,18 @@ function OrderSummaryPanel({
           centsClassName="text-primary/50"
         />
       </div>
+      {operational && <Button className="sale-mobile-only sale-open-payment" disabled={empty}
+        aria-expanded={paymentOpen} aria-controls={paymentId}
+        onClick={() => {
+          setPaymentOpen(value => !value);
+          requestAnimationFrame(() => summaryRef.current?.scrollIntoView({ block: 'start' }));
+        }}>
+        {paymentOpen ? 'Volver a productos' : 'Cobrar'}
+      </Button>}
+      <div id={paymentId} className="sale-payment-content">
       {condition === "contado" ? (
-        <div className="space-y-3 px-5 pt-4">
-          <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-muted p-1">
+        <div className="sale-payment-methods space-y-3 px-5 pt-4">
+          <div className="sale-payment-tabs grid grid-cols-3 gap-1.5 rounded-xl bg-muted p-1">
             {METHODS.map((m) => {
               const Icon = m.icon;
               const active = paymentMethod === m.value;
@@ -177,7 +191,7 @@ function OrderSummaryPanel({
               );
             })}
           </div>
-          {operational && isCash && <p className="text-xs text-muted-foreground">El efectivo recibido calcula el cambio. En caja se registra el total de la venta.</p>}
+          {operational && isCash && <p className="sale-desktop-only text-xs text-muted-foreground">El efectivo recibido calcula el cambio. En caja se registra el total de la venta.</p>}
           {isCash && (
             <div className="space-y-2">
               <Label3 className="text-xs text-muted-foreground">
@@ -188,6 +202,7 @@ function OrderSummaryPanel({
                   {"RD$"}
                 </span>
                 <Input
+                  aria-label="Monto recibido"
                   type="number"
                   inputMode="decimal"
                   value={received}
@@ -197,7 +212,7 @@ function OrderSummaryPanel({
                 />
               </div>
               {!empty && (
-                <div className="flex flex-wrap gap-1.5">
+                <div className="sale-quick-amounts flex flex-wrap gap-1.5">
                   {quickAmounts.map((a) => (
                     <button
                       type="button"
@@ -205,7 +220,7 @@ function OrderSummaryPanel({
                       className="h-7 rounded-lg border border-border px-2.5 text-xs font-medium tabular-nums text-muted-foreground hover:border-foreground/30 hover:text-foreground"
                       key={a}
                     >
-                      {a === Math.ceil(totals.total)
+                      {a === totals.total
                         ? "Exacto"
                         : formatMoney(a)}
                     </button>
@@ -239,7 +254,7 @@ function OrderSummaryPanel({
           {" con vencimiento a 30 días."}</>}
         </div>
       )}
-      <div className="mt-auto space-y-2 p-5">
+      <div className="sale-payment-actions mt-auto space-y-2 p-5">
         {disabledReason && !empty && (
           <p className="text-center text-xs font-medium text-amber-600 dark:text-amber-400">
             {disabledReason}
@@ -252,11 +267,11 @@ function OrderSummaryPanel({
         >
           <Printer />
           {operational ? "Registrar venta" : "Guardar e imprimir factura"}
-          <kbd className="ml-1 rounded bg-primary-foreground/20 px-1.5 py-0.5 font-mono text-[10px]">
+          <kbd className="sale-keyboard-hint ml-1 rounded bg-primary-foreground/20 px-1.5 py-0.5 font-mono text-[10px]">
             {"F9"}
           </kbd>
         </Button>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="sale-secondary-actions grid grid-cols-2 gap-2">
           <Button
             variant="outline"
             onClick={onSaveQuote}
@@ -276,6 +291,7 @@ function OrderSummaryPanel({
             {"Cancelar"}
           </Button>
         </div>
+      </div>
       </div>
     </section>
   );

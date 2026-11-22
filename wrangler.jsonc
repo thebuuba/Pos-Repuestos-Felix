@@ -1,6 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "repuestos-felix-pos",
+  "account_id": "386205735992323ba10df4a616176353",
   "main": "src/worker.js",
   "compatibility_date": "2026-11-21",
   "compatibility_flags": ["nodejs_compat"],
@@ -15,9 +16,9 @@
   },
   "vars": {
     "DATABASE_LABEL": "Supabase - Repuestos Felix",
-    "PUBLIC_ORIGIN": ""
+    "PUBLIC_ORIGIN": "https://repuestos-felix-pos.repuestosfelix1994.workers.dev"
   },
-  "hyperdrive": [],
+  "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "1687e8b168374a5d8478baf4c0d6eeb0" }],
   "secrets": { "required": ["SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY", "POS_SESSION_SECRET"] },
   "observability": {
     "enabled": true,

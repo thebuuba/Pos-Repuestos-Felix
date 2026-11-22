@@ -58,13 +58,14 @@ function validatePassword(next, current) {
   }
 }
 
-// The upstream tokens are opaque. Bind them, the ID and the absolute session
-// deadline to this host so the browser cannot extend or switch the session.
+const rememberedSeconds = 365 * 86400;
+// The upstream tokens are opaque. Bind them and the deadline to this host.
+// Only a successful server-side validation can renew a remembered session.
 export function accountSession(hosting, request) {
   const { auth } = hosting;
   const scope = hosting.origin || new URL(request.url).origin;
   const name = hosting.origin ? '__Host-felix-session' : 'felix-session';
-  const attrs = '; Path=/; HttpOnly; SameSite=Strict' + (hosting.origin ? '; Secure' : '');
+  const attrs = '; Path=/; HttpOnly; SameSite=Lax' + (hosting.origin ? '; Secure' : '');
   const now = () => Math.floor(Date.now() / 1000);
   const context = Buffer.from('felix-auth-v2\0' + auth.url + '\0' + scope);
   const raw = (request.headers.get('cookie') || '').split(';').map(item => item.trim()).find(item => item.startsWith(name + '='));
@@ -95,6 +96,13 @@ export function accountSession(hosting, request) {
     if (Buffer.byteLength(value) > 4000) throw serviceError();
     cookie = value;
   }
+  async function refresh() {
+    const refreshed = await authRequest(auth, 'token?grant_type=refresh_token', { body: { refresh_token: session.refresh } });
+    if (!permitted(refreshed?.user) || refreshed.user.id !== session.id) { clear(); return false; }
+    save(refreshed, session.remember ? now() + rememberedSeconds : session.deadline, session.remember);
+    user = refreshed.user;
+    return true;
+  }
   return {
     get cookie() { return cookie; },
     get user() { return user; },
@@ -108,20 +116,19 @@ export function accountSession(hosting, request) {
         const updated = await authRequest(auth, 'user', { method: 'PUT', token: credentials.access_token, body: { password: newPassword } });
         if (!updated) throw Object.assign(new Error('Supabase rechazó la nueva contraseña. Elige otra y vuelve a intentar.'), { status: 400 });
       }
-      save(credentials, now() + (remember ? 30 * 86400 : 8 * 3600), remember);
+      save(credentials, now() + (remember ? rememberedSeconds : 8 * 3600), remember);
       return true;
     },
     async authorized() {
       if (!session || session.deadline <= now()) return false;
-      if (session.expires <= now() + 30) {
-        const refreshed = await authRequest(auth, 'token?grant_type=refresh_token', { body: { refresh_token: session.refresh } });
-        if (!permitted(refreshed?.user) || refreshed.user.id !== session.id) { clear(); return false; }
-        save(refreshed, session.deadline, session.remember);
-        user = refreshed.user;
-        return true;
-      }
+      if (session.expires <= now() + 30) return refresh();
       user = await authRequest(auth, 'user', { method: 'GET', token: session.access });
+      if (!user) return refresh();
       if (!permitted(user) || user.id !== session.id) { clear(); return false; }
+      if (session.remember && session.deadline - now() < 30 * 86400) {
+        save({ user, access_token: session.access, refresh_token: session.refresh, expires_in: session.expires - now() },
+          now() + rememberedSeconds, true);
+      }
       return true;
     },
     async update(body) {

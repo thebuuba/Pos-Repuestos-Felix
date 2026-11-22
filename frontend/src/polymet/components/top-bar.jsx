@@ -1,7 +1,8 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
 import { TooltipProvider2 } from "../../components/ui/tooltip.jsx";
 import { Button } from "../../components/ui/button.jsx";
-import { Menu } from "lucide-react";
+import { Link } from "react-router-dom";
+import { BrandLogo } from "./brand-logo.jsx";
 import { Search } from "lucide-react";
 import { Input } from "../../components/ui/input.jsx";
 import { RefreshCw } from "lucide-react";
@@ -19,6 +20,7 @@ import { useEffect } from "react";
 import { useState } from "react";
 import { usePosStore } from "../../data/pos-context.jsx";
 import { usePwa } from "../../pwa.jsx";
+import { DesktopSyncStatus } from "../../desktop-status.jsx";
 var dateFormatter = new Intl.DateTimeFormat("es-DO", {
   timeZone: "America/Santo_Domingo",
   weekday: "long",
@@ -30,22 +32,25 @@ var timeFormatter = new Intl.DateTimeFormat("es-DO", {
   hour: "numeric",
   minute: "2-digit",
 });
-function TopBar({ onOpenMenu }) {
+function TopBar() {
   const { runtime } = usePosStore();
   const pwa = usePwa();
   const [now, setNow] = useState(() => new Date());
-  const [dark, setDark] = useState(false);
+  const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'));
   const [demoSyncing, setSyncing] = useState(false);
   const syncing = runtime ? runtime.busy : demoSyncing;
   const connected = !runtime || runtime.connection === "connected";
-  const serviceStatus = connected ? (window.__FELIX_DESKTOP__ ? "Equipo disponible" : "Conectado") : runtime.connection === "checking" ? "Verificando…" : "Sin conexión al servicio";
+  const desktop = !!window.__FELIX_DESKTOP__;
+  const serviceStatus = connected ? "Conectado" : runtime.connection === "checking" ? "Verificando…" : "Sin conexión al servicio";
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 30000);
     return () => window.clearInterval(id);
   }, []);
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
-  }, [dark]);
+    document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+    if (runtime) try { localStorage.setItem('felix-theme', dark ? 'dark' : 'light'); } catch { /* Keep the current theme in memory. */ }
+  }, [dark, !!runtime]);
   const handleSync = () => {
     if (runtime) {
       runtime.reload().catch(() => {});
@@ -57,15 +62,7 @@ function TopBar({ onOpenMenu }) {
   return (
     <TooltipProvider2 delayDuration={200}>
       <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-3 border-b border-border bg-card/85 px-4 backdrop-blur-md lg:px-6">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="lg:hidden"
-          onClick={onOpenMenu}
-          aria-label="Abrir menú"
-        >
-          <Menu />
-        </Button>
+        <Link to="/ventas" className="lg:hidden" aria-label="Repuestos Félix · Ventas"><BrandLogo compact /></Link>
         <div className="relative hidden w-full max-w-sm md:block">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -79,13 +76,13 @@ function TopBar({ onOpenMenu }) {
         </div>
         <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
           <div className="hidden items-center gap-3 pr-2 xl:flex">
-            <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium", connected ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-muted text-muted-foreground")}>
+            {!desktop && <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium", connected ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-muted text-muted-foreground")}>
               <span className="relative flex h-2 w-2">
                 {connected && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />}
                 <span className={cn("relative inline-flex h-2 w-2 rounded-full", connected ? "bg-emerald-500" : "bg-muted-foreground")} />
               </span>
               {serviceStatus}
-            </span>
+            </span>}
             <div className="text-right leading-tight">
               <p className="text-sm font-semibold tabular-nums text-foreground">
                 {timeFormatter.format(now)}
@@ -95,9 +92,9 @@ function TopBar({ onOpenMenu }) {
               </p>
             </div>
           </div>
-          <Button
+          {desktop ? <DesktopSyncStatus onSync={() => runtime?.reload?.()} /> : <Button
             variant="outline"
-            className={cn("h-10 rounded-xl bg-card", !runtime && "hidden sm:inline-flex")}
+            className="desktop-data-refresh h-10 rounded-xl bg-card"
             aria-label="Actualizar datos"
             disabled={!!runtime && syncing}
             onClick={handleSync}
@@ -106,7 +103,7 @@ function TopBar({ onOpenMenu }) {
             <span className="hidden lg:inline">
               {syncing ? "Actualizando…" : "Actualizar datos"}
             </span>
-          </Button>
+          </Button>}
           {(!runtime || (pwa && !pwa.installed)) && <Tooltip2>
             <TooltipTrigger2 asChild={true}>
               <Button
@@ -140,7 +137,7 @@ function TopBar({ onOpenMenu }) {
           <Button
             variant="outline"
             size="icon"
-            className="relative h-10 w-10 rounded-xl bg-card"
+            className="desktop-notifications relative h-10 w-10 rounded-xl bg-card"
             aria-label="Notificaciones"
             disabled={!!runtime}
           >

@@ -87,7 +87,7 @@ test('gateway Windows autentica, conserva caja y sesión offline, bloquea origen
       await page.getByLabel('Contraseña', { exact: true }).fill(password);
       await page.getByLabel('Mantener sesión en este dispositivo').check();
       await page.getByRole('button', { name: 'Entrar al sistema' }).click();
-      await page.getByRole('heading', { name: 'Facturación / Punto de venta' }).waitFor({ timeout: 60_000 });
+      await page.getByRole('heading', { name: 'Agregar productos' }).waitFor({ timeout: 60_000 });
     };
     await login();
     assert.equal(await page.evaluate(() => window.__FELIX_DESKTOP__), true);
@@ -114,6 +114,7 @@ test('gateway Windows autentica, conserva caja y sesión offline, bloquea origen
     await call('/api/desktop/sync', { method: 'POST', body: {}, cookie });
     await page.getByRole('link', { name: 'Caja', exact: true }).click();
     const packets = [];
+    const droppedOpeningResponse = Promise.withResolvers();
     await page.route('**/api/caja/abrir', async route => {
       const request = route.request();
       packets.push({ id: request.headers()['idempotency-key'], body: request.postData() });
@@ -122,6 +123,7 @@ test('gateway Windows autentica, conserva caja y sesión offline, bloquea origen
       assert.equal(response.status(), 200);
       await response.body();
       await route.abort('connectionfailed');
+      droppedOpeningResponse.resolve();
     });
     const journal = () => page.evaluate(() => new Promise((done, reject) => {
       const opening = indexedDB.open('repuestos-felix-operaciones', 1);
@@ -137,6 +139,7 @@ test('gateway Windows autentica, conserva caja y sesión offline, bloquea origen
     }));
     await page.getByLabel('Fondo inicial').fill('100.01');
     await page.getByRole('main').getByRole('button', { name: 'Abrir caja', exact: true }).click();
+    await droppedOpeningResponse.promise;
     await page.getByText('Solicitud pendiente de confirmación', { exact: true }).waitFor();
     assert.equal(await page.getByText('Caja abierta', { exact: true }).count(), 0, 'Una respuesta perdida no confirma la apertura en la interfaz');
     const uncertain = await journal();
@@ -164,14 +167,17 @@ test('gateway Windows autentica, conserva caja y sesión offline, bloquea origen
     assert.equal(localBackup.tables.turnos_caja.length, 1, 'La respuesta perdida y el reinicio dejan un solo turno');
     assert.equal((await call('/api/state', { cookie })).json().state.caja.summary.expected, 100.01);
     await page.getByRole('button', { name: 'Cerrar caja', exact: true }).waitFor();
-    await page.getByText('Sin conexión al servidor', { exact: true }).waitFor();
+    await page.getByRole('button', { name: /Sincronización:.*1 operación pendiente/ }).waitFor();
+    assert.equal(await page.getByText('Este equipo · almacenamiento local', { exact: true }).count(), 0);
     const evidence = resolve('dist/verification/desktop');
     await mkdir(evidence, { recursive: true });
-    for (const width of [390, 1440]) {
+    for (const width of [320, 390, 768, 1440]) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
       for (const dark of [false, true]) {
         if (await page.evaluate(() => document.documentElement.classList.contains('dark')) !== dark) await page.getByRole('button', { name: 'Cambiar tema' }).click();
         await page.screenshot({ path: join(evidence, `gateway-caja-${width}-${dark ? 'oscuro' : 'claro'}.png`), fullPage: true, animations: 'disabled' });
+        const control = await page.getByRole('button', { name: /^Sincronización:/ }).boundingBox();
+        assert.ok(control.x >= 0 && control.x + control.width <= width, `El control debe caber en ${width}px`);
       }
     }
     assert.equal((await call('/logout', { method: 'POST', body: {}, cookie })).status, 200);
@@ -191,7 +197,7 @@ test('gateway Windows autentica, conserva caja y sesión offline, bloquea origen
     network = 'online';
     await login();
     cookie = (await context.cookies(app.origin)).filter(item => item.name === 'felix-desktop').map(item => item.name + '=' + item.value).join(';');
-    await page.waitForFunction(async () => (await (await fetch('/api/desktop/status')).json()).pending === 0);
+    assert.equal((await call('/api/desktop/sync', { method: 'POST', body: {}, cookie })).json().pending, 0);
     network = 'revoked';
     assert.equal((await call('/api/account', { cookie })).status, 401);
     assert.equal((await call('/api/state', { cookie })).status, 401, 'Un 401 en una API remota autenticada también revoca la sesión local');

@@ -6,6 +6,7 @@ const FILES = [
   '/assets/brand/repuestos-felix.jpg',
   '/icons/icon-192.png', '/icons/icon-512.png', '/icons/maskable-512.png', '/icons/apple-touch-icon.png',
 ];
+const OPTIONAL = [];
 const PAGES = new Set(['/', '/index.html', '/ventas', '/inventario', '/compras', '/caja', '/clientes', '/suplidores',
   '/reportes', '/cuentas-por-cobrar', '/cuentas-por-pagar', '/configuracion', '/ayuda']);
 
@@ -30,15 +31,19 @@ self.addEventListener('fetch', (event) => {
   // Solo interfaz estática: nunca API, respaldos, login ni transacciones.
   if (request.method !== 'GET' || url.origin !== self.location.origin || url.search) return;
   if (request.mode === 'navigate' && PAGES.has(url.pathname)) {
-    event.respondWith(fetch(request).catch(async () => {
-      const cache = await caches.open(CACHE);
-      return await cache.match('/pwa-shell.html') || Response.error();
-    }));
+    // Only the public, data-free shell is cached. The API still validates the
+    // session and fetches current data; reopening no longer waits for HTML auth.
+    event.respondWith((async () => await caches.match('/pwa-shell.html', { cacheName: CACHE }) || fetch(request).catch(() => Response.error()))());
     return;
   }
-  if (!FILES.includes(url.pathname)) return;
+  if (!FILES.includes(url.pathname) && !OPTIONAL.includes(url.pathname)) return;
   event.respondWith((async () => {
-    const cache = await caches.open(CACHE);
-    return await cache.match(url.pathname) || fetch(request);
+    // Una petición tardía no debe recrear la caché retirada por la nueva versión.
+    const cached = await caches.match(url.pathname, { cacheName: CACHE });
+    if (cached) return cached;
+    const cache = OPTIONAL.includes(url.pathname) && (await caches.keys()).includes(CACHE) ? await caches.open(CACHE) : null;
+    const response = await fetch(new Request(request, { credentials: 'omit' }));
+    if (cache && response.ok) event.waitUntil(cache.put(url.pathname, response.clone()));
+    return response;
   })());
 });

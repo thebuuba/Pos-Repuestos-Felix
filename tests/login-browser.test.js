@@ -25,6 +25,7 @@ test(
       const context = await browser.newContext({
         viewport: { width: 390, height: 844 },
         locale: "es-DO",
+        colorScheme: "dark",
       });
       const page = await context.newPage();
       const errors = [];
@@ -33,6 +34,7 @@ test(
       await page
         .getByRole("heading", { name: "Iniciar sesión", exact: true })
         .waitFor();
+      assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme), 'light', 'El acceso usa el mismo tema predeterminado que el POS');
       await page.getByLabel("Usuario", { exact: true }).fill("felix");
       await page.getByLabel("Contraseña", { exact: true }).fill("incorrecta");
       await page.getByRole("button", { name: "Entrar al sistema" }).click();
@@ -61,8 +63,8 @@ test(
         (c) => c.name === "felix-session",
       );
       assert.ok(cookie.httpOnly);
-      assert.equal(cookie.sameSite, "Strict");
-      assert.ok(cookie.expires > Date.now() / 1000 + 29 * 86400);
+      assert.equal(cookie.sameSite, "Lax");
+      assert.ok(cookie.expires > Date.now() / 1000 + 364 * 86400);
       const saved = await context.storageState();
       await context.close();
       const reopened = await browser.newContext({
@@ -70,7 +72,14 @@ test(
         viewport: { width: 320, height: 844 },
       });
       const next = await reopened.newPage();
-      await next.goto(origin + "/inventario");
+      // Enter from another site, as with a saved link or a message. Strict
+      // cookies used to omit the session during this top-level navigation.
+      await next.goto(origin.replace('127.0.0.1', 'localhost') + '/login');
+      await next.evaluate(href => {
+        const link = document.createElement('a'); link.textContent = 'Abrir el POS'; link.href = href;
+        document.body.append(link);
+      }, origin + '/inventario');
+      await next.getByRole('link', { name: 'Abrir el POS' }).click();
       await next
         .getByRole("heading", {
           name: "Catálogo de artículos e inventario",

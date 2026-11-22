@@ -16,6 +16,7 @@ import { Button } from "../../components/ui/button.jsx";
 import { CirclePause } from "lucide-react";
 import { RotateCcw } from "lucide-react";
 import { Lock } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { Link } from "react-router-dom";
 import { InvoiceSettingsCard } from "../components/invoice-settings-card.jsx";
 import { LayoutGrid } from "lucide-react";
@@ -30,24 +31,40 @@ import { useEffect } from "react";
 import { useMemo } from "react";
 import { useRef } from "react";
 import { useState } from "react";
-function SaleLayout({ invoice, selection, cart, summary, locked = false }) {
+import { useId } from "react";
+function MobileSaleDetails({ label, children }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return <div className="sale-details" data-open={open}>
+    <button type="button" className="sale-mobile-only sale-details-toggle" aria-expanded={open}
+      aria-controls={id} onClick={() => setOpen(value => !value)}>
+      <span>{label}</span><ChevronDown aria-hidden="true" />
+    </button>
+    <div id={id} className="sale-details-content">{children}</div>
+  </div>;
+}
+function SaleLayout({ invoice, selection, selectionActions, cart, catalog, summary, locked = false }) {
+  const SelectionHeading = catalog ? 'h1' : 'h2';
   return (
     <div
       inert={locked ? "" : undefined}
-      className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_400px]"
+      className="sale-layout grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_400px]"
     >
-      <div className="min-w-0 space-y-6">
-        {invoice}
-        <section className="space-y-4 rounded-2xl border border-border bg-card p-5">
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-primary">
+      <div className="sale-items min-w-0 space-y-6">
+        {!catalog && invoice}
+        <section className="sale-selection space-y-4 rounded-2xl border border-border bg-card p-5">
+          <div className="sale-selection-heading flex items-center gap-2">
+            <div className="sale-selection-icon flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-primary">
               <LayoutGrid className="h-4 w-4" />
             </div>
-            <h2 className="text-base font-semibold">{"Agregar productos"}</h2>
+            <SelectionHeading className="text-base font-semibold">{"Agregar productos"}</SelectionHeading>
+            {selectionActions && <div className="sale-selection-actions">{selectionActions}</div>}
           </div>
           {selection}
         </section>
         {cart}
+        {catalog && invoice}
+        {catalog}
       </div>
       <div className="lg:sticky lg:top-24">{summary}</div>
     </div>
@@ -361,7 +378,7 @@ function PointOfSalePage() {
 export { PointOfSalePage };
 
 export function OperationalPointOfSalePage() {
-  const { products, customers, categories, settings, cashSession, runtime, registerSale } =
+  const { products, customers, settings, cashSession, runtime, registerSale } =
     usePosStore();
   const cashCustomer = customers.find((row) => row.isCashCustomer);
   const [customerId, setCustomerId] = useState(() => cashCustomer?.id ?? null);
@@ -395,7 +412,9 @@ export function OperationalPointOfSalePage() {
         ((cartQuantities[item.product.id] ?? 0) + item.quantity) * 100,
       ) / 100;
   }
-  const locked = sending || !!failure?.retry || !!runtime.pending || runtime.busy;
+  // Another tab's confirmation or a catalog refresh must not freeze this draft.
+  // Checkout still waits for the shared journal; an already-sent sale stays locked.
+  const locked = sending || !!failure?.retry;
   let disabledReason;
   if (runtime.connection !== "connected")
     disabledReason = "Conecta con el servicio para registrar la venta.";
@@ -506,33 +525,7 @@ export function OperationalPointOfSalePage() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Facturación / Punto de venta"
-        description="Agrega productos, revisa el detalle y registra la venta."
-        actions={
-          <>
-            <Button
-              disabled
-              variant="outline"
-              className="h-10 rounded-xl bg-card"
-              title="Ventas en espera no disponibles"
-            >
-              <CirclePause />
-              En espera
-            </Button>
-            <Button
-              disabled={locked}
-              variant="outline"
-              className="h-10 rounded-xl bg-card"
-              onClick={resetSale}
-            >
-              <RotateCcw />
-              Nueva venta
-            </Button>
-          </>
-        }
-      />
+    <div className="pos-sale space-y-6">
       {(failure || sending) && (
         <div
           role={failure ? "alert" : "status"}
@@ -560,7 +553,16 @@ export function OperationalPointOfSalePage() {
       </div>}
       <SaleLayout
         locked={locked}
+        selectionActions={<>
+          <Button disabled variant="outline" className="sale-desktop-only h-10 rounded-xl bg-card"
+            title="Ventas en espera no disponibles"><CirclePause />En espera</Button>
+          <Button disabled={locked} variant="outline" className="h-11 rounded-xl bg-card" onClick={resetSale}>
+            <RotateCcw />
+            <span className="sale-desktop-only">Nueva venta</span><span className="sale-mobile-only">Limpiar</span>
+          </Button>
+        </>}
         invoice={
+          <MobileSaleDetails label={`Datos de factura · ${customer?.name ?? "Seleccionar cliente"} · ${condition === "contado" ? "Contado" : "Crédito"}`}>
           <InvoiceSettingsCard
             operational
             customers={customers}
@@ -577,9 +579,9 @@ export function OperationalPointOfSalePage() {
             condition={condition}
             onConditionChange={setCondition}
           />
+          </MobileSaleDetails>
         }
         selection={
-          <>
             <ProductSearchBar
               operational
               disabled={locked || !!receipt}
@@ -588,14 +590,21 @@ export function OperationalPointOfSalePage() {
               onPriceLevelChange={setPriceLevel}
               onAdd={(p, qty) => editQuantity(p, priceLevel, qty)}
             />
+        }
+        catalog={
+          <section className="sale-product-catalog rounded-2xl border border-border bg-card p-5">
+            <MobileSaleDetails label="Ver catálogo de productos">
+            <h2 className="sale-desktop-only mb-4 text-base font-semibold">Catálogo de productos</h2>
             <QuickProductsGrid
               products={products}
-              categories={categories}
+              categories={[]}
+              pageSize={8}
               priceLevel={priceLevel}
               onAdd={(p) => editQuantity(p, priceLevel, 1)}
               cartQuantities={cartQuantities}
             />
-          </>
+            </MobileSaleDetails>
+          </section>
         }
         cart={
           <CartTable

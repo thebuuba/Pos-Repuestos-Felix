@@ -466,7 +466,9 @@ export function createPosClient() {
       const packet = await updatePending(current => {
         checkGeneration(databaseId);
         if (!current) return { id: crypto.randomUUID(), method, path, body, databaseId, baseRevision: state.snapshot.revision, status: 'prepared' };
-        if (current.method === method && current.path === path && current.databaseId === databaseId && current.body === body) return current;
+        // Equal sale contents can belong to two customers. Only an explicit
+        // recovery may reuse the pending invoice's idempotency key.
+        if (resource !== 'ventas' && current.method === method && current.path === path && current.databaseId === databaseId && current.body === body) return current;
         throw new Error('Resuelve la solicitud pendiente antes de guardar otra operación.');
       });
       return send(packet);

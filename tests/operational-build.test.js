@@ -50,7 +50,7 @@ test('the root without an API waits for confirmed data before showing the dashbo
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     assert.equal((await page.goto(server.origin + '/')).status(), 200);
-    await page.getByRole('main').getByRole('button', { name: 'Actualizar datos', exact: true }).waitFor();
+    await page.getByRole('main').getByRole('button', { name: 'Reintentar', exact: true }).waitFor();
     assert.equal((await fetch(server.origin + '/api/state')).status, 404);
     assert.equal(await page.getByRole('heading', { name: 'Catálogo de artículos e inventario', exact: true }).count(), 0);
     assert.equal(await page.getByText('Mostrando 0 de 0 productos', { exact: true }).count(), 0);

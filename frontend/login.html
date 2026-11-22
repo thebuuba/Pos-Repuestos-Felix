@@ -6,7 +6,14 @@
       name="viewport"
       content="width=device-width,initial-scale=1,viewport-fit=cover"
     />
-    <meta name="color-scheme" content="light dark" />
+    <!--APP_THEME-->
+    <meta name="theme-color" content="#c3131f" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Félix POS" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
     <title>Iniciar sesión · Repuestos Félix</title>
     <style>
       @font-face {
@@ -25,8 +32,7 @@
         --border: hsl(240 6% 90.5%);
         --red: hsl(356 82% 42%);
       }
-      @media (prefers-color-scheme: dark) {
-        :root {
+        :root.dark {
           color-scheme: dark;
           --bg: hsl(240 6% 5.5%);
           --card: hsl(240 5% 9%);
@@ -35,7 +41,6 @@
           --border: hsl(240 4% 17%);
           --red: hsl(356 78% 52%);
         }
-      }
       * {
         box-sizing: border-box;
       }
@@ -195,6 +200,10 @@
         main {
           padding: 24px;
         }
+      }
+      @media (max-width: 1023px) {
+        .pwa-standalone, .pwa-standalone body, .pwa-standalone body * { touch-action: pan-x pan-y; }
+        input { font-size: 16px; }
       }
     </style>
     <script src="/login.js" defer></script>
