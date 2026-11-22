@@ -56,15 +56,16 @@ var MOVE_UI = {
 };
 function CashRegisterPage() {
   const {
-    cashSession,
-    cashSummary: s,
-    cashMovements,
-    closures,
+    runtime,
+    cashSession = {open:false,openedAt:"",cashier:""},
+    cashSummary: s = {},
+    cashMovements = [],
+    closures = [],
     openCash,
     closeCash,
     addCashMovement,
   } = usePosStore();
-  const [opening, setOpening] = useState("5000");
+  const [opening, setOpening] = useState(runtime ? "" : "5000");
   const [countOpen, setCountOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
   const sessionMoves = cashMovements.filter(
@@ -77,7 +78,7 @@ function CashRegisterPage() {
       <PageHeader
         title="Caja"
         description={
-          cashSession.open
+          runtime ? "Control de apertura, movimientos y cierres de efectivo." : cashSession.open
             ? `Caja 01 abierta por ${cashSession.cashier} a las ${formatTime(cashSession.openedAt)}.`
             : "La caja está cerrada. Ábrela con el fondo inicial para empezar a vender."
         }
@@ -103,6 +104,7 @@ function CashRegisterPage() {
           )
         }
       />
+      {runtime && <p role="status" className="rounded-xl border border-border bg-card p-4 text-sm">El registro de turnos de caja requiere habilitar su almacenamiento y conciliación. Las ventas y compras se consultan en sus respectivas pantallas.</p>}
       {!cashSession.open ? (
         <div className="mx-auto max-w-md rounded-2xl border border-border bg-card p-6 text-center">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-accent text-primary">
@@ -116,7 +118,7 @@ function CashRegisterPage() {
             <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
               {"RD$"}
             </span>
-            <Input
+            <Input disabled={!!runtime}
               type="number"
               value={opening}
               onChange={(e) => setOpening(e.target.value)}
@@ -125,7 +127,7 @@ function CashRegisterPage() {
           </div>
           <div className="mt-3 flex justify-center gap-2">
             {[2000, 3000, 5000, 1e4].map((a) => (
-              <button
+              <button disabled={!!runtime}
                 type="button"
                 onClick={() => setOpening(String(a))}
                 className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium tabular-nums text-muted-foreground hover:text-foreground"
@@ -136,6 +138,7 @@ function CashRegisterPage() {
             ))}
           </div>
           <Button
+            disabled={!!runtime}
             className="mt-6 h-12 w-full rounded-xl text-[15px] font-semibold"
             onClick={() => {
               openCash(Number(opening) || 0);

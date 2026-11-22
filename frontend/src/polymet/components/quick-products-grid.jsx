@@ -2,17 +2,19 @@
 import { CATEGORIES } from "../../data/catalog-options.js";
 import { cn } from "../../lib/utils.js";
 import { Plus } from "lucide-react";
-import { formatMoney } from "../lib/format.js";
+import { formatUnitMoney } from "../lib/format.js";
 import { useMemo } from "react";
 import { useState } from "react";
 var ALL = "Todos";
 function QuickProductsGrid({
   products,
+  categories = CATEGORIES,
   priceLevel,
   onAdd,
   cartQuantities = {},
 }) {
   const [category, setCategory] = useState(ALL);
+  const [page, setPage] = useState(0);
   const filtered = useMemo(
     () =>
       category === ALL
@@ -20,13 +22,15 @@ function QuickProductsGrid({
         : products.filter((p) => p.category === category),
     [products, category],
   );
+  const lastPage = Math.max(0, Math.ceil(filtered.length / 48) - 1);
+  const currentPage = Math.min(page, lastPage);
   return (
     <div>
       <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
-        {[ALL, ...CATEGORIES].map((c) => (
+        {[ALL, ...categories.filter(c => c !== ALL)].map((c) => (
           <button
             type="button"
-            onClick={() => setCategory(c)}
+            onClick={() => { setCategory(c); setPage(0); }}
             className={cn(
               "h-8 shrink-0 rounded-full border px-3.5 text-xs font-medium transition-colors",
               category === c
@@ -40,7 +44,7 @@ function QuickProductsGrid({
         ))}
       </div>
       <div className="mt-3 grid max-h-[248px] grid-cols-2 gap-2.5 overflow-y-auto pr-1 sm:grid-cols-3 xl:grid-cols-4">
-        {filtered.map((p) => {
+        {filtered.slice(currentPage * 48, (currentPage + 1) * 48).map((p) => {
           const out = p.stock === 0;
           const low = !out && p.stock <= p.minStock;
           const inCart = cartQuantities[p.id];
@@ -74,7 +78,7 @@ function QuickProductsGrid({
                   {!out && (
                     <Plus className="hidden h-3.5 w-3.5 group-hover:inline" />
                   )}
-                  {formatMoney(p.prices[priceLevel])}
+                  {formatUnitMoney((p.pricesExact ?? p.prices)[priceLevel])}
                 </span>
                 <span
                   className={cn(
@@ -103,6 +107,11 @@ function QuickProductsGrid({
           );
         })}
       </div>
+      {lastPage > 0 && <div className="mt-2 flex items-center justify-end gap-3 text-xs text-muted-foreground">
+        <button type="button" disabled={!currentPage} onClick={() => setPage(currentPage - 1)}>Anterior</button>
+        <span>{currentPage + 1} / {lastPage + 1}</span>
+        <button type="button" disabled={currentPage === lastPage} onClick={() => setPage(currentPage + 1)}>Siguiente</button>
+      </div>}
     </div>
   );
 }

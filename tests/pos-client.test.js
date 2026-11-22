@@ -456,6 +456,44 @@ for (const method of ['PUT', 'DELETE']) {
   });
 }
 
+for (const resource of ['ventas', 'compras']) for (const mismatch of ['missing', 'quantity']) {
+  test(`${resource} conserva la solicitud si una confirmación de replay omite o cambia el documento (${mismatch})`, async t => {
+    const page = await tab(t);
+    const created = await createProduct(page, `${resource}-${mismatch}`);
+    const product = created.state.productos.find(p => p.id === created.result.id);
+    const sale = resource === 'ventas';
+    let supplier;
+    if (!sale) supplier = await page.evaluate(() => client.writeOperation({method:'POST',path:'/api/suplidores',
+      databaseId:client.getState().snapshot.databaseId,payload:{nombre:'Suplidor de confirmación'}}));
+    const payload = sale ? { clienteId:created.state.clientes[0].id,condicion:'Contado',tipoComprobante:'B02',
+      items:[{productoId:product.id,cantidad:'1.25',nivelPrecio:'precio1'}] } : {
+      suplidorId:supplier.result.id,numero:'Confirmación '+mismatch,
+      items:[{codigo:product.codigo,nombre:product.nombre,cantidad:'1.25',costo:'1.0001',precio1:'2',precio2:'0',precio3:'0'}] };
+    const packets=[];
+    await page.route('**/api/'+resource,async route=>{
+      packets.push({body:route.request().postData(),key:route.request().headers()['idempotency-key']});
+      const response=await route.fetch();
+      assert.equal(response.status(),200);
+      if(packets.length>1)return route.fulfill({response});
+      const observed=await response.json();
+      observed.confirmation.replayed=true;
+      const documents=sale?'facturas':'compras';
+      if(mismatch==='missing')observed.state[documents]=observed.state[documents].filter(d=>d.id!==observed.result.id);
+      else observed.state[documents].find(d=>d.id===observed.result.id).items[0].cant=2;
+      return route.fulfill({response,json:observed});
+    });
+    await assert.rejects(page.evaluate(op=>client.writeOperation(op),{method:'POST',path:'/api/'+resource,
+      databaseId:created.databaseId,payload}),/No se confirmó/);
+    assert.equal(await page.evaluate(()=>Boolean(client.getState().pending)),true);
+    const confirmed=await page.evaluate(()=>client.retryPending());
+    assert.equal(confirmed.confirmation.replayed,true);
+    assert.deepEqual(packets,[packets[0],packets[0]]);
+    assert.equal(await page.evaluate(()=>client.getState().pending),null);
+    const count=await pool.query(`SELECT count(*)::int AS n FROM ${sale?'ventas':'compras'} WHERE id=$1`,[confirmed.result.id]);
+    assert.equal(count.rows[0].n,1);
+  });
+}
+
 test('an unreadable first 409 preserves the packet and checks the generation after the rejection', { timeout: 20_000 }, async t => {
   const page = await tab(t);
   const snapshot = await page.evaluate(() => client.getState().snapshot);

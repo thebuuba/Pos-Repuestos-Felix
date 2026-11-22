@@ -30,6 +30,7 @@ var METHODS = [
 ];
 var DISCOUNTS = [0, 5, 10, 15];
 function OrderSummaryPanel({
+  operational = false,
   invoiceNumber,
   customerName,
   comprobante,
@@ -105,6 +106,7 @@ function OrderSummaryPanel({
             {DISCOUNTS.map((d) => (
               <button
                 type="button"
+                disabled={operational}
                 onClick={() => onDiscountChange(d)}
                 className={cn(
                   "h-6 rounded-md px-1.5 text-[11px] font-semibold transition-colors",
@@ -160,6 +162,7 @@ function OrderSummaryPanel({
               return (
                 <button
                   type="button"
+                  disabled={operational}
                   onClick={() => onPaymentMethodChange(m.value)}
                   className={cn(
                     "flex h-9 items-center justify-center gap-1.5 rounded-lg text-xs font-medium transition-all",
@@ -175,6 +178,7 @@ function OrderSummaryPanel({
               );
             })}
           </div>
+          {operational && <p className="text-xs text-muted-foreground">La venta se registra al contado. El medio de pago y el efectivo recibido no se registran.</p>}
           {isCash && (
             <div className="space-y-2">
               <Label3 className="text-xs text-muted-foreground">
@@ -229,11 +233,11 @@ function OrderSummaryPanel({
         </div>
       ) : (
         <div className="mx-5 mt-4 rounded-xl border border-dashed border-border px-4 py-3 text-xs text-muted-foreground">
-          {"La factura se registrará en "}
+          {operational ? "La venta se sumará al saldo del cliente." : <>{"La factura se registrará en "}
           <span className="font-medium text-foreground">
             {"Cuentas x cobrar"}
           </span>
-          {" con vencimiento a 30 días."}
+          {" con vencimiento a 30 días."}</>}
         </div>
       )}
       <div className="mt-auto space-y-2 p-5">
@@ -248,7 +252,7 @@ function OrderSummaryPanel({
           className="h-12 w-full rounded-xl text-[15px] font-semibold shadow-md shadow-primary/20"
         >
           <Printer />
-          {"Guardar e imprimir factura"}
+          {operational ? "Registrar venta" : "Guardar e imprimir factura"}
           <kbd className="ml-1 rounded bg-primary-foreground/20 px-1.5 py-0.5 font-mono text-[10px]">
             {"F9"}
           </kbd>
@@ -257,7 +261,7 @@ function OrderSummaryPanel({
           <Button
             variant="outline"
             onClick={onSaveQuote}
-            disabled={empty}
+            disabled={empty || operational}
             className="h-10 rounded-xl bg-card"
           >
             <FileClock />

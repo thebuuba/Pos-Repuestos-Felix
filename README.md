@@ -1,14 +1,14 @@
 # POS Repuestos Félix
 
-El POS de Repuestos Félix abre **Inventario** con el diseño de Polymet. La importación de NetPOS cargó 7.681 artículos en la base de Supabase del negocio. Consulta [dónde encontrar usuarios, inventario, clientes, suplidores e históricos](docs/donde-esta-cada-dato.md).
+El POS de Repuestos Félix abre el **Panel** con el diseño de Polymet. Punto de venta, Inventario, Compras, Clientes, Suplidores, Configuración y Reportes usan la API del negocio. La importación de NetPOS cargó 7.681 artículos en Supabase. Consulta [dónde encontrar usuarios, inventario, clientes, suplidores e históricos](docs/donde-esta-cada-dato.md).
 
-La API se comparte entre **Cloudflare Workers y Node.js local**, con **PostgreSQL local o Supabase**. La nueva PWA, Windows y los módulos restantes mantienen trabajo pendiente; su estado está en [estado del sistema](docs/estado-sistema-unificado.md). Las contraseñas permanecen en el servidor.
+La API se comparte entre **Cloudflare Workers y Node.js local**, con **PostgreSQL local o Supabase**. Caja, abonos, conciliación de cuentas, PWA y Windows mantienen trabajo pendiente; su estado está en [estado del sistema](docs/estado-sistema-unificado.md). Supabase Auth gestiona las cuentas de acceso.
 
 ## Organización del proyecto
 
 ```text
 frontend/                Interfaz compartida de Polymet
-  operational.jsx        Entrada de inventario con datos reales de la API
+  operational.jsx        Doce rutas con datos reales y disponibilidad explícita
   reference.jsx          Referencia de diseño aislada para pruebas
 dist/operational/        Compilación principal generada con pnpm build
 public/                  Interfaz anterior y recursos conservados
@@ -43,7 +43,7 @@ La instalación y la sincronización offline de la interfaz Polymet siguen pendi
 
 ## Diseño compartido de Polymet (rama de trabajo)
 
-La referencia visual aprobada, reglas y procedencia están en [la documentación del diseño](docs/design/recuperacion-polymet.md). `pnpm build` y `pnpm build:design` compilan la entrada operativa, sin datos de demostración. `pnpm preview` o `pnpm preview:design` sirven esa interfaz en `http://127.0.0.1:3001`: es una vista estática y muestra la falta de conexión si no hay API. La activación en el servicio del negocio y la transición de la PWA anterior siguen pendientes.
+La referencia visual aprobada, reglas y procedencia están en [la documentación del diseño](docs/design/recuperacion-polymet.md). `pnpm build` y `pnpm build:design` compilan la entrada operativa, sin datos de demostración. `pnpm preview` o `pnpm preview:design` sirven esa interfaz en `http://127.0.0.1:3001`: es una vista estática y muestra la falta de conexión si no hay API. El servicio real se inicia con el perfil de PostgreSQL correspondiente. La transición de la PWA anterior sigue pendiente.
 
 La demostración original se conserva únicamente para comparación y pruebas mediante `pnpm build:reference` y `pnpm preview:reference`; no se utiliza como entrada del negocio. `pnpm test:design` comprueba esa referencia aislada con Edge. El trabajo del Excel está documentado en [inventario e importación](docs/inventario-excel.md).
 
@@ -141,17 +141,18 @@ La API administrativa admite respaldos operativos v5 mediante `GET /api/backup` 
 
 ## Guardado y alcance
 
-- Las entidades tienen claves foráneas, importes `NUMERIC` de dos decimales y restricciones de integridad. El historial conserva los nombres y precios del documento aunque cambie el catálogo. Dar de baja un artículo conserva su historial.
+- Las entidades tienen claves foráneas y restricciones de integridad. Los importes de documentos tienen dos decimales, las tarifas/costos unitarios cuatro y las cantidades dos. El historial conserva nombres y precios aunque cambie el catálogo. Dar de baja un artículo conserva su historial.
 - Ventas y compras se guardan mediante operaciones específicas. El servidor bloquea las filas necesarias, calcula los importes en centavos exactos y guarda documento, detalles y movimientos en una transacción. Dos cajas no pueden vender simultáneamente la última unidad.
 - La edición de productos/configuración comprueba su versión para evitar sobrescribir cambios de otra caja. Clientes y suplidores se seleccionan por ID.
 - Cada base tiene un identificador persistente que se renueva al restaurar un respaldo. Las pestañas antiguas deben actualizar sus datos. Reiniciar Node.js conserva ese identificador.
 - No se vacían formularios, descuentan existencias confirmadas ni imprime la factura hasta recibir la confirmación del servidor.
-- Si se pierde la respuesta de un guardado, se conservan su cuerpo y su clave idempotente en la pantalla abierta. Los formularios se bloquean y aparece **Reintentar operación pendiente**. Ese botón repite la misma solicitud y recupera su resultado sin duplicarla. Mantén la pantalla abierta hasta confirmar; los borradores no persisten al cerrarla.
+- Antes de enviar un guardado, IndexedDB conserva su cuerpo y su clave idempotente. Si se pierde la respuesta, el formulario se bloquea y ofrece reintentar la misma solicitud. Al recargar o abrir otra pestaña, **Reintentar solicitud** recupera la operación pendiente sin duplicarla. Un borrador que aún no se ha enviado no persiste al cerrar la pantalla.
+- La previsualización y el servidor comparten el cálculo exacto con ITBIS incluido en el precio. La venta comprueba las versiones de artículos/configuración y las existencias. Las ventas a crédito requieren un cliente con límite configurado; el servidor serializa el control del saldo disponible.
 - Las compras quedan registradas con suplidor y número. Se rechaza registrar de nuevo el mismo número para el mismo suplidor.
 - La restauración admite hasta 10 MB y rechaza una revisión obsoleta. No se permite reemplazar el estado completo mediante `PUT /api/state`.
 - Por defecto el servidor escucha únicamente en `127.0.0.1`. El modo público requiere origen HTTPS explícito, usuario y contraseña de acceso; consulta la siguiente sección. La publicación requiere configurar un alojamiento.
 - Las ventas nuevas reciben un número interno y no generan NCF autorizados. Los NCF históricos se conservan. Antes de utilizar comprobantes fiscales se necesita implementar la emisión y secuencias autorizadas correspondientes.
-- El resumen de caja y el listado de facturas mantienen las funciones que tenía el HTML. No se ha añadido cierre contable, anulación ni exportación fiscal 607.
+- Las doce rutas muestran sus pantallas de Polymet. Caja y los abonos permanecen deshabilitados hasta contar con persistencia y conciliación. Cuentas por cobrar muestra las ventas a crédito nuevas; Clientes conserva también los saldos de apertura. Cuentas por pagar indica que falta conciliar los históricos. No se ha añadido anulación ni exportación fiscal 607.
 
 ## Preparar el acceso por internet
 

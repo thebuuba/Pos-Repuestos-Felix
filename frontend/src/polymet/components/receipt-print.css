@@ -1,0 +1,54 @@
+@media print {
+  @page recibo-termico {
+    size: auto;
+    margin: 0;
+  }
+  @page recibo-carta {
+    size: letter;
+    margin: 0.5in;
+  }
+  body:has(.pos-receipt-document) > :not(.pos-receipt-dialog),
+  .pos-receipt-dialog > :not(.pos-receipt-document) {
+    display: none !important;
+  }
+  .pos-receipt-dialog,
+  .pos-receipt-document {
+    position: static !important;
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    overflow: visible !important;
+    transition: none !important;
+    animation: none !important;
+    transform: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    background: white !important;
+    color: black !important;
+  }
+  .pos-receipt-document * { color: black !important; }
+  .pos-receipt-dialog[data-print-format] {
+    max-width: 100% !important;
+    width: 80mm !important;
+    page: recibo-termico;
+  }
+  .pos-receipt-dialog[data-print-format="Térmica 58 mm"] {
+    width: 58mm !important;
+  }
+  .pos-receipt-dialog[data-print-format="Carta (8.5 x 11)"] {
+    width: 7.5in !important;
+    page: recibo-carta;
+  }
+  .pos-receipt-dialog:not([data-print-format="Carta (8.5 x 11)"]) .pos-receipt-document {
+    box-sizing: border-box;
+    padding-inline: 3mm !important;
+  }
+  .pos-receipt-document .truncate {
+    overflow: visible;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}

@@ -10,16 +10,51 @@ import { toast as ue } from "sonner";
 import { Trash2 } from "lucide-react";
 import { Calculator } from "lucide-react";
 import { adjustedCost } from "../lib/pricing.js";
+import { normalizeFormula } from "../../../../src/domain/pricing.js";
 import { ConfirmDialog } from "./confirm-dialog.jsx";
-import { useState } from "react";
+import { useRef, useState } from "react";
 var SAMPLE_COST = 1000;
-function PriceFormulasEditor({ formulas, rounding, usage, onSave, onDelete }) {
+function PriceFormulasEditor({ formulas, rounding, usage, onSave, onDelete, runtime }) {
   const [toDelete, setToDelete] = useState(null);
-  const update = (f, patch) =>
-    onSave({
-      ...f,
-      ...patch,
-    });
+  const [draft, setDraft] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [uncertain, setUncertain] = useState(false);
+  const inFlight = useRef(false);
+  const visible = draft && !formulas.some(f => f.id === draft.id) ? [...formulas, draft] : formulas;
+  const update = (f, patch) => {
+    const next = { ...f, ...patch };
+    if (runtime) {
+      setError(null);
+      setDraft(next);
+    } else onSave(next);
+  };
+  const add = () => {
+    if (runtime) {
+      setError(null);
+      setDraft({ id: crypto.randomUUID(), databaseId: runtime.databaseId, name: "",
+        costFactor: 1, margins: { p1: 0, p2: 0, p3: 0 } });
+    } else onSave({ id: newId("f"), name: "Nueva fórmula", costFactor: 1, margins: { p1: 35, p2: 25, p3: 15 } });
+  };
+  const save = async () => {
+    if (inFlight.current || !draft) return;
+    inFlight.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      normalizeFormula(draft);
+      await onSave(draft);
+      setDraft(null);
+      setUncertain(false);
+      ue.success("Fórmula guardada");
+    } catch (cause) {
+      setError(cause.message);
+      setUncertain(Boolean(cause.uncertain));
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
+  };
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 rounded-xl bg-muted/60 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
@@ -38,25 +73,18 @@ function PriceFormulasEditor({ formulas, rounding, usage, onSave, onDelete }) {
         <Button
           variant="outline"
           className="shrink-0 rounded-xl bg-card"
-          onClick={() =>
-            onSave({
-              id: newId("f"),
-              name: "Nueva fórmula",
-              costFactor: 1,
-              margins: {
-                p1: 35,
-                p2: 25,
-                p3: 15,
-              },
-            })
-          }
+          disabled={Boolean(draft)}
+          onClick={add}
         >
           <Plus />
           {"Agregar fórmula"}
         </Button>
       </div>
       <div className="space-y-3">
-        {formulas.map((f) => {
+        {visible.map((record) => {
+          const editing = draft?.id === record.id;
+          const f = editing ? draft : record;
+          const locked = busy || uncertain || (draft && !editing);
           let sample, previewError;
           try {
             sample = {
@@ -72,6 +100,8 @@ function PriceFormulasEditor({ formulas, rounding, usage, onSave, onDelete }) {
                 <div className="min-w-[200px] flex-1 space-y-1.5">
                   <p className="text-xs text-muted-foreground">{"Nombre"}</p>
                   <Input
+                    disabled={locked}
+                    aria-label="Nombre de la fórmula"
                     value={f.name}
                     onChange={(e) =>
                       update(f, {
@@ -88,10 +118,12 @@ function PriceFormulasEditor({ formulas, rounding, usage, onSave, onDelete }) {
                   <Input
                     type="number"
                     step="0.001"
+                    disabled={locked}
+                    aria-label="Ajuste costo"
                     value={f.costFactor}
                     onChange={(e) =>
                       update(f, {
-                        costFactor: Number(e.target.value) || 1,
+                        costFactor: runtime ? e.target.value : Number(e.target.value) || 1,
                       })
                     }
                     className="h-10 rounded-xl"
@@ -105,12 +137,15 @@ function PriceFormulasEditor({ formulas, rounding, usage, onSave, onDelete }) {
                     </p>
                     <Input
                       type="number"
+                      disabled={locked}
+                      step="0.0001"
+                      aria-label={`${k.toUpperCase()} ganancia %`}
                       value={f.margins[k]}
                       onChange={(e) =>
                         update(f, {
                           margins: {
                             ...f.margins,
-                            [k]: Number(e.target.value) || 0,
+                            [k]: runtime ? e.target.value : Number(e.target.value) || 0,
                           },
                         })
                       }
@@ -129,6 +164,7 @@ function PriceFormulasEditor({ formulas, rounding, usage, onSave, onDelete }) {
                         })
                       : setToDelete(f)
                   }
+                  disabled={Boolean(draft)}
                   aria-label="Eliminar fórmula"
                 >
                   <Trash2 />
@@ -176,6 +212,17 @@ function PriceFormulasEditor({ formulas, rounding, usage, onSave, onDelete }) {
                   </span>
                 ) : null}
               </div>
+              {editing && <div className="mt-3 space-y-2">
+                {error && <p role="alert" className="text-sm text-primary">{error}</p>}
+                <div className="flex flex-wrap gap-2">
+                  <Button disabled={busy || !f.name.trim()} className="rounded-xl" onClick={save}>
+                    {busy ? "Confirmando…" : uncertain ? "Reintentar" : "Guardar fórmula"}
+                  </Button>
+                  <Button variant="outline" disabled={busy || uncertain} className="rounded-xl" onClick={() => { setDraft(null); setError(null); }}>
+                    Descartar cambios
+                  </Button>
+                </div>
+              </div>}
             </div>
           );
         })}
@@ -185,8 +232,8 @@ function PriceFormulasEditor({ formulas, rounding, usage, onSave, onDelete }) {
         onOpenChange={(o) => !o && setToDelete(null)}
         title="¿Eliminar fórmula?"
         description={`Se eliminará "${toDelete?.name ?? ""}".`}
-        onConfirm={() => {
-          if (toDelete) onDelete(toDelete.id);
+        onConfirm={async () => {
+          if (toDelete) await onDelete(runtime ? toDelete : toDelete.id);
           setToDelete(null);
         }}
       />

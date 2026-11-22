@@ -1,4 +1,5 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
+import { averageAmount, salesTotal } from "../lib/sales-analytics.js";
 import { MoneyDisplay } from "./money-display.jsx";
 import { Select2 } from "../../components/ui/select.jsx";
 import { SelectTrigger2 } from "../../components/ui/select.jsx";
@@ -15,19 +16,20 @@ import { Bar } from "recharts";
 import { Cell } from "recharts";
 import { useMemo } from "react";
 import { useState } from "react";
-function SalesActivityChart({ data, currentIndex }) {
+function SalesActivityChart({ data, currentIndex, lastSix }) {
   const [range, setRange] = useState("year");
   const visible = useMemo(() => {
+    if (range === "6m" && lastSix) return lastSix.map((row, i) => ({ ...row, current: i === 5 }));
     const start = range === "6m" ? Math.max(0, currentIndex - 5) : 0;
     const end = range === "6m" ? currentIndex + 1 : data.length;
     return data.slice(start, end).map((d, i) => ({
       ...d,
       current: start + i === currentIndex,
     }));
-  }, [data, currentIndex, range]);
+  }, [data, currentIndex, lastSix, range]);
   const withSales = visible.filter((d) => d.total > 0);
-  const total = withSales.reduce((s, d) => s + d.total, 0);
-  const average = withSales.length ? total / withSales.length : 0;
+  const total = salesTotal(withSales);
+  const average = averageAmount(total, withSales.length);
   return (
     <section className="flex h-full flex-col rounded-2xl border border-border bg-card p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -40,7 +42,7 @@ function SalesActivityChart({ data, currentIndex }) {
         </div>
         <div className="flex flex-col items-end gap-3">
           <Select2 value={range} onValueChange={setRange}>
-            <SelectTrigger2 className="h-9 w-[150px] rounded-full border-transparent bg-muted shadow-none">
+            <SelectTrigger2 aria-label="Período de actividad" className="h-9 w-[150px] rounded-full border-transparent bg-muted shadow-none">
               <SelectValue2 />
             </SelectTrigger2>
             <SelectContent2>
@@ -66,7 +68,7 @@ function SalesActivityChart({ data, currentIndex }) {
         className="mt-4 aspect-[none] h-[220px] w-full"
       >
         <BarChart
-          data={visible}
+          data={visible.map(row => ({ ...row, plot: Number(row.total) }))}
           margin={{
             top: 8,
             left: 0,
@@ -79,9 +81,9 @@ function SalesActivityChart({ data, currentIndex }) {
             content={
               <ChartTooltipContent
                 hideIndicator={true}
-                formatter={(value) => (
+                formatter={(_value, _name, item) => (
                   <span className="font-semibold tabular-nums">
-                    {formatMoney(Number(value))}
+                    {formatMoney(item.payload.total)}
                   </span>
                 )}
               />
@@ -115,7 +117,7 @@ function SalesActivityChart({ data, currentIndex }) {
               fontSize: 12,
             }}
           />
-          <Bar dataKey="total" radius={[10, 10, 10, 10]} maxBarSize={44}>
+          <Bar dataKey="plot" radius={[10, 10, 10, 10]} maxBarSize={44}>
             {visible.map((d) => (
               <Cell
                 fill={d.current ? "hsl(var(--chart-1))" : "url(#sales-stripes)"}

@@ -1,10 +1,9 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
 import { usePosStore } from "../../data/pos-context.jsx";
-import { round2 } from "../lib/format.js";
+import { averageAmount, businessDay, downloadSales, reportData } from "../lib/sales-analytics.js";
 import { PageHeader } from "../components/page-header.jsx";
 import { cn } from "../../lib/utils.js";
 import { Button } from "../../components/ui/button.jsx";
-import { toast as ue } from "sonner";
 import { Download } from "lucide-react";
 import { MiniStat } from "../components/section-card.jsx";
 import { Wallet } from "lucide-react";
@@ -43,129 +42,12 @@ var PERIODS = [
     label: "Este mes",
   },
 ];
-function periodStart(p) {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  if (p === "7d") d.setDate(d.getDate() - 6);
-  if (p === "30d") d.setDate(d.getDate() - 29);
-  if (p === "mes") d.setDate(1);
-  return d;
-}
-var dayFmt = new Intl.DateTimeFormat("es-DO", {
-  day: "numeric",
-  month: "short",
-});
-var hourFmt = (h) => `${h % 12 || 12}${h < 12 ? "a" : "p"}`;
-var METHOD_LABELS = {
-  efectivo: "Efectivo",
-  tarjeta: "Tarjeta",
-  transferencia: "Transferencia",
-  credito: "Crédito",
-};
 function ReportsPage() {
-  const { sales, products, voidSale } = usePosStore();
+  const { sales, products, voidSale, runtime } = usePosStore();
   const [period, setPeriod] = useState("30d");
-  const data = useMemo(() => {
-    const start = periodStart(period);
-    const inPeriod = sales.filter((s) => new Date(s.date) >= start);
-    const valid = inPeriod.filter((s) => s.status !== "anulada");
-    const costOf = (id) => products.find((p) => p.id === id)?.cost ?? 0;
-    const net = valid.reduce((s, x) => s + x.subtotal - x.discount, 0);
-    const itbis = valid.reduce((s, x) => s + x.itbis, 0);
-    const total = valid.reduce((s, x) => s + x.total, 0);
-    const cost = valid.reduce(
-      (s, x) =>
-        s + x.lines.reduce((t, l) => t + costOf(l.productId) * l.quantity, 0),
-      0,
-    );
-    const series = [];
-    if (period === "hoy") {
-      for (let h = 8; h <= 18; h++) {
-        series.push({
-          label: hourFmt(h),
-          total: round2(
-            valid
-              .filter((s) => new Date(s.date).getHours() === h)
-              .reduce((t, s) => t + s.total, 0),
-          ),
-        });
-      }
-    } else {
-      const cursor = new Date(start);
-      const today = new Date();
-      while (cursor <= today) {
-        const key = cursor.toDateString();
-        series.push({
-          label: dayFmt.format(cursor),
-          total: round2(
-            valid
-              .filter((s) => new Date(s.date).toDateString() === key)
-              .reduce((t, s) => t + s.total, 0),
-          ),
-        });
-        cursor.setDate(cursor.getDate() + 1);
-      }
-    }
-    const methods = Object.keys(METHOD_LABELS).map((m) => ({
-      key: m,
-      label: METHOD_LABELS[m],
-      total: round2(
-        valid.filter((s) => s.method === m).reduce((t, s) => t + s.total, 0),
-      ),
-      count: valid.filter((s) => s.method === m).length,
-    }));
-    const map = new Map();
-    for (const s of valid) {
-      for (const l of s.lines) {
-        const row = map.get(l.productId) ?? {
-          name: l.name,
-          code: l.code,
-          qty: 0,
-          revenue: 0,
-          cost: 0,
-        };
-        row.qty += l.quantity;
-        row.revenue += l.subtotal;
-        row.cost += costOf(l.productId) * l.quantity;
-        map.set(l.productId, row);
-      }
-    }
-    const top = [...map.values()]
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 7);
-    const catMap = new Map();
-    for (const s of valid) {
-      for (const l of s.lines) {
-        const cat =
-          products.find((p) => p.id === l.productId)?.category ?? "Otros";
-        catMap.set(cat, (catMap.get(cat) ?? 0) + l.subtotal);
-      }
-    }
-    const categories = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
-    const fiscal = ["B01", "B02", "B14", "B15"].map((t) => {
-      const list = valid.filter((s) => s.comprobante === t);
-      return {
-        type: t,
-        count: list.length,
-        base: round2(list.reduce((x, s) => x + s.subtotal - s.discount, 0)),
-        itbis: round2(list.reduce((x, s) => x + s.itbis, 0)),
-      };
-    });
-    return {
-      inPeriod,
-      valid,
-      net,
-      itbis,
-      total,
-      profit: net - cost,
-      series,
-      methods,
-      top,
-      categories,
-      fiscal,
-      voided: inPeriod.length - valid.length,
-    };
-  }, [sales, products, period]);
+  const today = businessDay();
+  const operational = Boolean(runtime);
+  const data = useMemo(() => reportData(sales, products, period, today, operational), [sales, products, period, today, operational]);
   const maxMethod = Math.max(...data.methods.map((m) => m.total), 1);
   const maxCat = Math.max(...data.categories.map((c) => c[1]), 1);
   return (
@@ -179,6 +61,7 @@ function ReportsPage() {
               {PERIODS.map((p) => (
                 <button
                   type="button"
+                  aria-pressed={period === p.value}
                   onClick={() => setPeriod(p.value)}
                   className={cn(
                     "h-8 rounded-full px-3.5 text-xs font-medium transition-colors",
@@ -195,11 +78,7 @@ function ReportsPage() {
             <Button
               variant="outline"
               className="h-10 rounded-full bg-card px-5"
-              onClick={() =>
-                ue.success("Reporte exportado", {
-                  description: "Se descargó el archivo Excel del período.",
-                })
-              }
+              onClick={() => downloadSales(data.inPeriod, `ventas-${period}-${today}`)}
             >
               <Download />
               {"Exportar"}
@@ -207,26 +86,26 @@ function ReportsPage() {
           </Fragment>
         }
       />
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MiniStat
           icon={Wallet}
           tone="primary"
           label="Ventas totales"
           value={formatMoney(data.total)}
-          hint={`${data.valid.length} facturas · ${data.voided} anuladas`}
+          hint={operational ? `${data.valid.length} facturas registradas` : `${data.valid.length} facturas · ${data.voided} anuladas`}
         />
         <MiniStat
           icon={TrendingUp}
           tone="success"
           label="Ganancia bruta"
-          value={formatMoney(data.profit)}
-          hint={`Margen ${data.net ? ((data.profit / data.net) * 100).toFixed(1) : 0}% sobre venta neta`}
+          value={data.profit === null ? "—" : formatMoney(data.profit)}
+          hint={data.profit === null ? "Costo histórico de venta no registrado" : `Margen ${Number(data.net) ? ((data.profit / data.net) * 100).toFixed(1) : 0}% sobre venta neta`}
         />
         <MiniStat
           icon={Receipt}
           label="Ticket promedio"
           value={formatMoney(
-            data.valid.length ? data.total / data.valid.length : 0,
+            averageAmount(data.total, data.valid.length),
           )}
         />
         <MiniStat
@@ -234,10 +113,10 @@ function ReportsPage() {
           tone="warning"
           label="ITBIS cobrado"
           value={formatMoney(data.itbis)}
-          hint="A declarar en el IT-1"
+          hint={operational ? "ITBIS registrado en las ventas" : "A declarar en el IT-1"}
         />
       </div>
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <SectionCard
           title="Ventas por día"
           icon={TrendingUp}
@@ -249,7 +128,7 @@ function ReportsPage() {
             className="aspect-[none] h-[240px] w-full"
           >
             <BarChart
-              data={data.series}
+              data={data.series.map(row => ({ ...row, plot: Number(row.total) }))}
               margin={{
                 top: 8,
                 left: 0,
@@ -262,9 +141,9 @@ function ReportsPage() {
                 content={
                   <ChartTooltipContent
                     hideIndicator={true}
-                    formatter={(v) => (
+                    formatter={(_value, _name, item) => (
                       <span className="font-semibold tabular-nums">
-                        {formatMoney(Number(v))}
+                        {formatMoney(item.payload.total)}
                       </span>
                     )}
                   />
@@ -282,7 +161,7 @@ function ReportsPage() {
                 minTickGap={16}
               />
               <Bar
-                dataKey="total"
+                dataKey="plot"
                 fill="hsl(var(--chart-1))"
                 radius={[6, 6, 6, 6]}
                 maxBarSize={32}
@@ -290,7 +169,7 @@ function ReportsPage() {
             </BarChart>
           </ChartContainer>
         </SectionCard>
-        <SectionCard title="Formas de pago" icon={Coins}>
+        <SectionCard title={operational ? "Condiciones de venta" : "Formas de pago"} icon={Coins}>
           <div className="space-y-4">
             {data.methods.map((m) => (
               <div key={m.key}>
@@ -319,7 +198,7 @@ function ReportsPage() {
           </div>
         </SectionCard>
       </div>
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <SectionCard
           title="Más vendidos"
           icon={Trophy}
@@ -344,10 +223,11 @@ function ReportsPage() {
                 </tr>
               </thead>
               <tbody>
+                {data.top.length === 0 && <tr><td colSpan={5} className="p-5 text-center text-muted-foreground">Sin ventas en el período.</td></tr>}
                 {data.top.map((t, i) => (
                   <tr
                     className="border-b border-border last:border-0"
-                    key={t.code}
+                    key={t.id}
                   >
                     <td className="px-5 py-3">
                       <span
@@ -374,7 +254,7 @@ function ReportsPage() {
                       {formatMoney(t.revenue)}
                     </td>
                     <td className="px-5 py-3 text-right tabular-nums text-emerald-600 dark:text-emerald-400">
-                      {formatMoney(t.revenue - t.cost)}
+                      {t.profit === null ? "—" : formatMoney(t.profit)}
                     </td>
                   </tr>
                 ))}
@@ -383,8 +263,9 @@ function ReportsPage() {
           </div>
         </SectionCard>
         <div className="space-y-4">
-          <SectionCard title="Por categoría">
+          <SectionCard title="Por categoría" description={operational ? "Venta neta por categoría actual" : undefined}>
             <div className="space-y-3">
+              {!data.categories.length && <p className="text-sm text-muted-foreground">Sin ventas en el período.</p>}
               {data.categories.map(([cat, value]) => (
                 <div className="flex items-center gap-3 text-sm" key={cat}>
                   <span className="w-24 shrink-0 truncate text-muted-foreground">
@@ -406,10 +287,11 @@ function ReportsPage() {
             </div>
           </SectionCard>
           <SectionCard
-            title="Resumen fiscal (607)"
+            title={operational ? "Comprobantes registrados" : "Resumen fiscal (607)"}
             description="Base imponible e ITBIS por comprobante"
           >
             <div className="space-y-2 text-sm">
+              {!data.fiscal.length && <p className="text-muted-foreground">Sin comprobantes en el período.</p>}
               {data.fiscal.map((f) => (
                 <div
                   className="flex items-center justify-between rounded-xl bg-muted/60 px-3 py-2"
@@ -437,7 +319,7 @@ function ReportsPage() {
           </SectionCard>
         </div>
       </div>
-      <SalesReportTable sales={data.inPeriod} onVoid={voidSale} />
+      <SalesReportTable key={period} sales={data.inPeriod} onVoid={voidSale} />
     </div>
   );
 }

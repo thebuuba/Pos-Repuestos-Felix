@@ -11,7 +11,7 @@ import { Field } from "./form-field.jsx";
 import { Input } from "../../components/ui/input.jsx";
 import { cn } from "../../lib/utils.js";
 import { inputClass } from "./form-field.jsx";
-import { PAYMENT_METHODS } from "../data/pos-data.js";
+import { PAYMENT_METHODS } from "../../data/sales-options.js";
 import { DialogFooter } from "../../components/ui/dialog.jsx";
 import { Button } from "../../components/ui/button.jsx";
 import { useEffect } from "react";

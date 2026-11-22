@@ -60,6 +60,7 @@ const resourceFields = { productos: productFields, clientes: customerFields, sup
   configuracion: settingsFields };
 
 function checkTarget(method, path) {
+  if (method === 'POST' && ['/api/ventas', '/api/compras'].includes(path)) return { resource: path.slice(5), target: null };
   if (method === 'PUT' && path === '/api/configuracion') return { resource: 'configuracion', target: 1 };
   const match = typeof path === 'string' && /^\/api\/(productos|clientes|suplidores|formulas)(?:\/([1-9]\d*))?$/.exec(path);
   if (match && (match[2] ? ['PUT', 'DELETE'].includes(method) && id(Number(match[2])) : method === 'POST')) {
@@ -72,6 +73,27 @@ function checkPayload(method, resource, payload) {
   const mutable = resourceFields[resource];
   const invalid = () => { throw new Error('Los campos de la solicitud no son válidos.'); };
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) invalid();
+  if (resource === 'ventas' || resource === 'compras') {
+    const sale = resource === 'ventas';
+    const header = sale ? { clienteId: id, condicion: oneOf('Contado','Credito'), tipoComprobante: oneOf('B01','B02','B14'),
+      versionConfiguracion: id } : { suplidorId: id, numero: name };
+    const fields = sale ? { productoId: id, cantidad: v => decimalQuantity(v) && Number(v) > 0,
+      nivelPrecio: oneOf('precio1','precio2','precio3'), versionProducto: id } :
+      { codigo: name, nombre: name, cantidad: v => decimalQuantity(v) && Number(v) > 0, costo: cost, precio1: cost, precio2: cost, precio3: cost,
+        productoId: nullable(id), versionProducto: nullable(id) };
+    const required = sale ? ['productoId','cantidad','nivelPrecio'] : ['codigo','nombre','cantidad','costo','precio1','precio2','precio3'];
+    if (!Array.isArray(payload.items) || !payload.items.length || payload.items.length > 1000 ||
+        Object.entries(payload).some(([key,value]) => key !== 'items' && (!header[key] || !header[key](value))) ||
+        Object.keys(header).some(key => !key.startsWith('version') && !Object.hasOwn(payload,key))) invalid();
+    for (const row of payload.items) {
+      if (!row || typeof row !== 'object' || Array.isArray(row) ||
+          Object.entries(row).some(([key,value]) => !fields[key] || !fields[key](value)) ||
+          required.some(key => !Object.hasOwn(row,key))) invalid();
+      if (!sale && (Object.hasOwn(row,'productoId') !== Object.hasOwn(row,'versionProducto') ||
+          (Object.hasOwn(row,'productoId') && (row.productoId === null) !== (row.versionProducto === null)))) invalid();
+    }
+    return;
+  }
   if (method !== 'POST' && !id(payload.version)) invalid();
   const entries = Object.entries(payload);
   if (resource === 'configuracion' && entries.length < 2) invalid();
@@ -178,7 +200,27 @@ function checkConfirmation(snapshot, packet, resource, expected, payload) {
   // Older journals have no baseline. Their exact operation can still be confirmed by the server.
   if (Object.hasOwn(packet, 'baseRevision') && (!Number.isSafeInteger(packet.baseRevision) ||
       packet.baseRevision < 0 || snapshot.revision <= packet.baseRevision)) throw new Error(unconfirmed);
-  // The current snapshot on a replay can reflect subsequent edits and deactivations.
+  if (resource === 'ventas' || resource === 'compras') {
+    // Documents are immutable, including when recovering a lost response.
+    const sale = resource === 'ventas';
+    const rows = sale ? snapshot.state.facturas : snapshot.state.compras;
+    const row = rows.find(row => row.id === target);
+    if (!row || row.items.length !== payload.items.length || (sale
+      ? row.clienteId !== payload.clienteId || row.condicion !== payload.condicion || row.tipoComprobante !== payload.tipoComprobante
+      : row.suplidorId !== payload.suplidorId || row.numero !== payload.numero.trim())) throw new Error(unconfirmed);
+    for (const [index, item] of payload.items.entries()) {
+      const saved = row.items[index];
+      if (quantityUnits(saved.cant) !== quantityUnits(item.cantidad) || (sale
+        ? saved.productoId !== item.productoId
+        : (item.productoId != null && saved.productoId !== item.productoId) || saved.codigo !== item.codigo || saved.nombre !== item.nombre.trim() ||
+          costUnits(saved.costoExacto ?? saved.costo) !== costUnits(item.costo) ||
+          ['p1','p2','p3'].some((level, n) => costUnits(saved.preciosExactos?.[level] ?? saved[level]) !== costUnits(item['precio' + (n + 1)])))) {
+        throw new Error(unconfirmed);
+      }
+    }
+    return;
+  }
+  // Mutable catalog rows can reflect subsequent edits and deactivations on a replay.
   if (proof.replayed) return;
   const row = resource === 'configuracion' ? snapshot.state.configuracion : snapshot.state[resource].find(item => item.id === target);
   if (packet.method === 'DELETE') {

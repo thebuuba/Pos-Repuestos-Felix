@@ -28,5 +28,5 @@ export async function buildOperational(outdir = 'dist/operational') {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  console.log('Inventario compilado en', await buildOperational());
+  console.log('POS compilado en', await buildOperational());
 }

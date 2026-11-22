@@ -1,0 +1,2508 @@
+{
+  "version": "99fdb61658b9417c680d007618ae1c23bf135b1e",
+  "fixedTime": "2026-11-21T20:00:00Z",
+  "clockStrategy": "Fixed Date constructor for fixture business dates; real Date.now for JavaScript animations",
+  "checkedAt": "2026-11-22T13:16:03.232Z",
+  "results": [
+    {
+      "route": "/",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": false,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 390,
+            "height": 2773.72
+          },
+          {
+            "tag": "H1",
+            "x": 16,
+            "y": 80,
+            "width": 358,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 37,
+            "y": 2334.72,
+            "width": 620,
+            "height": 466
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 390,
+            "height": 2621
+          },
+          {
+            "tag": "H1",
+            "x": 16,
+            "y": 80,
+            "width": 358,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 37,
+            "y": 2182,
+            "width": 620,
+            "height": 466
+          }
+        ]
+      },
+      "overflow": {
+        "reference": true,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": false,
+        "referenceSize": [
+          678,
+          2838
+        ],
+        "localSize": [
+          390,
+          2685
+        ]
+      },
+      "screenshots": [
+        "390-light-panel-reference.png",
+        "390-light-panel-local.png"
+      ]
+    },
+    {
+      "route": "/reportes",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": true,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 390,
+            "height": 4135
+          },
+          {
+            "tag": "H1",
+            "x": 16,
+            "y": 80,
+            "width": 358,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 17,
+            "y": 1439,
+            "width": 560,
+            "height": 540
+          },
+          {
+            "tag": "TABLE",
+            "x": 17,
+            "y": 2813,
+            "width": 860,
+            "height": 1312
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 390,
+            "height": 4135
+          },
+          {
+            "tag": "H1",
+            "x": 16,
+            "y": 80,
+            "width": 358,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 17,
+            "y": 1439,
+            "width": 560,
+            "height": 540
+          },
+          {
+            "tag": "TABLE",
+            "x": 17,
+            "y": 2813,
+            "width": 860,
+            "height": 1312
+          }
+        ]
+      },
+      "overflow": {
+        "reference": true,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": false,
+        "referenceSize": [
+          578,
+          4199
+        ],
+        "localSize": [
+          390,
+          4199
+        ]
+      },
+      "screenshots": [
+        "390-light-reportes-reference.png",
+        "390-light-reportes-local.png"
+      ]
+    },
+    {
+      "route": "/configuracion",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": true,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 390,
+            "height": 780
+          },
+          {
+            "tag": "H1",
+            "x": 16,
+            "y": 80,
+            "width": 358,
+            "height": 32
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 390,
+            "height": 780
+          },
+          {
+            "tag": "H1",
+            "x": 16,
+            "y": 80,
+            "width": 358,
+            "height": 32
+          }
+        ]
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 76,
+        "totalPixels": 329160,
+        "differenceBounds": {
+          "minX": 34,
+          "minY": 25,
+          "maxX": 359,
+          "maxY": 775
+        },
+        "changedPercent": 0.02,
+        "meanMaxChannelDifference": 0.061
+      },
+      "screenshots": [
+        "390-light-configuracion-reference.png",
+        "390-light-configuracion-local.png"
+      ]
+    },
+    {
+      "route": "/ayuda",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": true,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 390,
+            "height": 1628
+          },
+          {
+            "tag": "H1",
+            "x": 16,
+            "y": 80,
+            "width": 358,
+            "height": 32
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 390,
+            "height": 1628
+          },
+          {
+            "tag": "H1",
+            "x": 16,
+            "y": 80,
+            "width": 358,
+            "height": 32
+          }
+        ]
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 276,
+        "totalPixels": 659880,
+        "differenceBounds": {
+          "minX": 44,
+          "minY": 25,
+          "maxX": 359,
+          "maxY": 1645
+        },
+        "changedPercent": 0.04,
+        "meanMaxChannelDifference": 0.067
+      },
+      "screenshots": [
+        "390-light-ayuda-reference.png",
+        "390-light-ayuda-local.png"
+      ]
+    },
+    {
+      "route": "/",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": false,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 390,
+            "height": 2773.72
+          },
+          {
+            "tag": "H1",
+            "x": 16,
+            "y": 80,
+            "width": 358,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 37,
+            "y": 2334.72,
+            "width": 620,
+            "height": 466
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 390,
+            "height": 2621
+          },
+          {
+            "tag": "H1",
+            "x": 16,
+            "y": 80,
+            "width": 358,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 37,
+            "y": 2182,
+            "width": 620,
+            "height": 466
+          }
+        ]
+      },
+      "overflow": {
+        "reference": true,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": false,
+        "referenceSize": [
+          678,
+          2838
+        ],
+        "localSize": [
+          390,
+          2685
+        ]
+      },
+      "screenshots": [
+        "390-dark-panel-reference.png",
+        "390-dark-panel-local.png"
+      ]
+    },
+    {
+      "route": "/reportes",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": true,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 390,
+            "height": 4135
+          },
+          {
+            "tag": "H1",
+            "x": 16,
+            "y": 80,
+            "width": 358,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 17,
+            "y": 1439,
+            "width": 560,
+            "height": 540
+          },
+          {
+            "tag": "TABLE",
+            "x": 17,
+            "y": 2813,
+            "width": 860,
+            "height": 1312
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 390,
+            "height": 4135
+          },
+          {
+            "tag": "H1",
+            "x": 16,
+            "y": 80,
+            "width": 358,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 17,
+            "y": 1439,
+            "width": 560,
+            "height": 540
+          },
+          {
+            "tag": "TABLE",
+            "x": 17,
+            "y": 2813,
+            "width": 860,
+            "height": 1312
+          }
+        ]
+      },
+      "overflow": {
+        "reference": true,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": false,
+        "referenceSize": [
+          578,
+          4199
+        ],
+        "localSize": [
+          390,
+          4199
+        ]
+      },
+      "screenshots": [
+        "390-dark-reportes-reference.png",
+        "390-dark-reportes-local.png"
+      ]
+    },
+    {
+      "route": "/configuracion",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": true,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 390,
+            "height": 780
+          },
+          {
+            "tag": "H1",
+            "x": 16,
+            "y": 80,
+            "width": 358,
+            "height": 32
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 390,
+            "height": 780
+          },
+          {
+            "tag": "H1",
+            "x": 16,
+            "y": 80,
+            "width": 358,
+            "height": 32
+          }
+        ]
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 46,
+        "totalPixels": 329160,
+        "differenceBounds": {
+          "minX": 34,
+          "minY": 26,
+          "maxX": 359,
+          "maxY": 775
+        },
+        "changedPercent": 0.01,
+        "meanMaxChannelDifference": 0.114
+      },
+      "screenshots": [
+        "390-dark-configuracion-reference.png",
+        "390-dark-configuracion-local.png"
+      ]
+    },
+    {
+      "route": "/ayuda",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": true,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 390,
+            "height": 1628
+          },
+          {
+            "tag": "H1",
+            "x": 16,
+            "y": 80,
+            "width": 358,
+            "height": 32
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 390,
+            "height": 1628
+          },
+          {
+            "tag": "H1",
+            "x": 16,
+            "y": 80,
+            "width": 358,
+            "height": 32
+          }
+        ]
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 191,
+        "totalPixels": 659880,
+        "differenceBounds": {
+          "minX": 45,
+          "minY": 26,
+          "maxX": 359,
+          "maxY": 1645
+        },
+        "changedPercent": 0.03,
+        "meanMaxChannelDifference": 0.108
+      },
+      "screenshots": [
+        "390-dark-ayuda-reference.png",
+        "390-dark-ayuda-local.png"
+      ]
+    },
+    {
+      "route": "/",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "light",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": true,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 768,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 768,
+            "height": 2232.41
+          },
+          {
+            "tag": "H1",
+            "x": 24,
+            "y": 88,
+            "width": 356.97,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 45,
+            "y": 1865.41,
+            "width": 678,
+            "height": 386
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 768,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 768,
+            "height": 2232.41
+          },
+          {
+            "tag": "H1",
+            "x": 24,
+            "y": 88,
+            "width": 356.97,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 45,
+            "y": 1865.41,
+            "width": 678,
+            "height": 386
+          }
+        ]
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 3836,
+        "totalPixels": 1763328,
+        "differenceBounds": {
+          "minX": 47,
+          "minY": 25,
+          "maxX": 737,
+          "maxY": 1117
+        },
+        "changedPercent": 0.22,
+        "meanMaxChannelDifference": 0.584
+      },
+      "screenshots": [
+        "768-light-panel-reference.png",
+        "768-light-panel-local.png"
+      ]
+    },
+    {
+      "route": "/reportes",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "light",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": true,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 768,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 768,
+            "height": 3721
+          },
+          {
+            "tag": "H1",
+            "x": 24,
+            "y": 100,
+            "width": 396.33,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 25,
+            "y": 1145,
+            "width": 718,
+            "height": 464
+          },
+          {
+            "tag": "TABLE",
+            "x": 25,
+            "y": 2391,
+            "width": 860,
+            "height": 1312
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 768,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 768,
+            "height": 3721
+          },
+          {
+            "tag": "H1",
+            "x": 24,
+            "y": 100,
+            "width": 396.33,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 25,
+            "y": 1145,
+            "width": 718,
+            "height": 464
+          },
+          {
+            "tag": "TABLE",
+            "x": 25,
+            "y": 2391,
+            "width": 860,
+            "height": 1312
+          }
+        ]
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 10163,
+        "totalPixels": 2906880,
+        "differenceBounds": {
+          "minX": 45,
+          "minY": 25,
+          "maxX": 742,
+          "maxY": 3668
+        },
+        "changedPercent": 0.35,
+        "meanMaxChannelDifference": 0.66
+      },
+      "screenshots": [
+        "768-light-reportes-reference.png",
+        "768-light-reportes-local.png"
+      ]
+    },
+    {
+      "route": "/configuracion",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "light",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": true,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 768,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 768,
+            "height": 960
+          },
+          {
+            "tag": "H1",
+            "x": 24,
+            "y": 88,
+            "width": 511.72,
+            "height": 32
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 768,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 768,
+            "height": 960
+          },
+          {
+            "tag": "H1",
+            "x": 24,
+            "y": 88,
+            "width": 511.72,
+            "height": 32
+          }
+        ]
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 114,
+        "totalPixels": 786432,
+        "differenceBounds": {
+          "minX": 47,
+          "minY": 25,
+          "maxX": 737,
+          "maxY": 575
+        },
+        "changedPercent": 0.01,
+        "meanMaxChannelDifference": 0.032
+      },
+      "screenshots": [
+        "768-light-configuracion-reference.png",
+        "768-light-configuracion-local.png"
+      ]
+    },
+    {
+      "route": "/ayuda",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "light",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": true,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 768,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 768,
+            "height": 1342
+          },
+          {
+            "tag": "H1",
+            "x": 24,
+            "y": 88,
+            "width": 284.58,
+            "height": 32
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 768,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 768,
+            "height": 1342
+          },
+          {
+            "tag": "H1",
+            "x": 24,
+            "y": 88,
+            "width": 284.58,
+            "height": 32
+          }
+        ]
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 314,
+        "totalPixels": 1079808,
+        "differenceBounds": {
+          "minX": 53,
+          "minY": 25,
+          "maxX": 737,
+          "maxY": 1351
+        },
+        "changedPercent": 0.03,
+        "meanMaxChannelDifference": 0.045
+      },
+      "screenshots": [
+        "768-light-ayuda-reference.png",
+        "768-light-ayuda-local.png"
+      ]
+    },
+    {
+      "route": "/",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": true,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 768,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 768,
+            "height": 2232.41
+          },
+          {
+            "tag": "H1",
+            "x": 24,
+            "y": 88,
+            "width": 356.97,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 45,
+            "y": 1865.41,
+            "width": 678,
+            "height": 386
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 768,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 768,
+            "height": 2232.41
+          },
+          {
+            "tag": "H1",
+            "x": 24,
+            "y": 88,
+            "width": 356.97,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 45,
+            "y": 1865.41,
+            "width": 678,
+            "height": 386
+          }
+        ]
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 2751,
+        "totalPixels": 1763328,
+        "differenceBounds": {
+          "minX": 85,
+          "minY": 25,
+          "maxX": 737,
+          "maxY": 1117
+        },
+        "changedPercent": 0.16,
+        "meanMaxChannelDifference": 0.482
+      },
+      "screenshots": [
+        "768-dark-panel-reference.png",
+        "768-dark-panel-local.png"
+      ]
+    },
+    {
+      "route": "/reportes",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": true,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 768,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 768,
+            "height": 3721
+          },
+          {
+            "tag": "H1",
+            "x": 24,
+            "y": 100,
+            "width": 396.33,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 25,
+            "y": 1145,
+            "width": 718,
+            "height": 464
+          },
+          {
+            "tag": "TABLE",
+            "x": 25,
+            "y": 2391,
+            "width": 860,
+            "height": 1312
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 768,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 768,
+            "height": 3721
+          },
+          {
+            "tag": "H1",
+            "x": 24,
+            "y": 100,
+            "width": 396.33,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 25,
+            "y": 1145,
+            "width": 718,
+            "height": 464
+          },
+          {
+            "tag": "TABLE",
+            "x": 25,
+            "y": 2391,
+            "width": 860,
+            "height": 1312
+          }
+        ]
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 9912,
+        "totalPixels": 2906880,
+        "differenceBounds": {
+          "minX": 45,
+          "minY": 25,
+          "maxX": 742,
+          "maxY": 3668
+        },
+        "changedPercent": 0.34,
+        "meanMaxChannelDifference": 0.581
+      },
+      "screenshots": [
+        "768-dark-reportes-reference.png",
+        "768-dark-reportes-local.png"
+      ]
+    },
+    {
+      "route": "/configuracion",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": true,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 768,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 768,
+            "height": 960
+          },
+          {
+            "tag": "H1",
+            "x": 24,
+            "y": 88,
+            "width": 511.72,
+            "height": 32
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 768,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 768,
+            "height": 960
+          },
+          {
+            "tag": "H1",
+            "x": 24,
+            "y": 88,
+            "width": 511.72,
+            "height": 32
+          }
+        ]
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 73,
+        "totalPixels": 786432,
+        "differenceBounds": {
+          "minX": 62,
+          "minY": 25,
+          "maxX": 737,
+          "maxY": 575
+        },
+        "changedPercent": 0.01,
+        "meanMaxChannelDifference": 0.06
+      },
+      "screenshots": [
+        "768-dark-configuracion-reference.png",
+        "768-dark-configuracion-local.png"
+      ]
+    },
+    {
+      "route": "/ayuda",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": true,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 768,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 768,
+            "height": 1342
+          },
+          {
+            "tag": "H1",
+            "x": 24,
+            "y": 88,
+            "width": 284.58,
+            "height": 32
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 768,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 768,
+            "height": 1342
+          },
+          {
+            "tag": "H1",
+            "x": 24,
+            "y": 88,
+            "width": 284.58,
+            "height": 32
+          }
+        ]
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 218,
+        "totalPixels": 1079808,
+        "differenceBounds": {
+          "minX": 53,
+          "minY": 25,
+          "maxX": 737,
+          "maxY": 1351
+        },
+        "changedPercent": 0.02,
+        "meanMaxChannelDifference": 0.077
+      },
+      "screenshots": [
+        "768-dark-ayuda-reference.png",
+        "768-dark-ayuda-local.png"
+      ]
+    },
+    {
+      "route": "/",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": true,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 1000
+          },
+          {
+            "tag": "HEADER",
+            "x": 256,
+            "y": 0,
+            "width": 1184,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 256,
+            "y": 64,
+            "width": 1184,
+            "height": 1221
+          },
+          {
+            "tag": "H1",
+            "x": 288,
+            "y": 96,
+            "width": 356.97,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 687.66,
+            "y": 846,
+            "width": 699.34,
+            "height": 386
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 1000
+          },
+          {
+            "tag": "HEADER",
+            "x": 256,
+            "y": 0,
+            "width": 1184,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 256,
+            "y": 64,
+            "width": 1184,
+            "height": 1221
+          },
+          {
+            "tag": "H1",
+            "x": 288,
+            "y": 96,
+            "width": 356.97,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 687.66,
+            "y": 846,
+            "width": 699.34,
+            "height": 386
+          }
+        ]
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 3983,
+        "totalPixels": 1850400,
+        "differenceBounds": {
+          "minX": 1,
+          "minY": 22,
+          "maxX": 1401,
+          "maxY": 952
+        },
+        "changedPercent": 0.22,
+        "meanMaxChannelDifference": 0.522
+      },
+      "screenshots": [
+        "1440-light-panel-reference.png",
+        "1440-light-panel-local.png"
+      ]
+    },
+    {
+      "route": "/reportes",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": true,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 1000
+          },
+          {
+            "tag": "HEADER",
+            "x": 256,
+            "y": 0,
+            "width": 1184,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 256,
+            "y": 64,
+            "width": 1184,
+            "height": 2447
+          },
+          {
+            "tag": "H1",
+            "x": 288,
+            "y": 96,
+            "width": 518.02,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 289,
+            "y": 729,
+            "width": 739.33,
+            "height": 464
+          },
+          {
+            "tag": "TABLE",
+            "x": 289,
+            "y": 1409,
+            "width": 1118,
+            "height": 1012
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 1000
+          },
+          {
+            "tag": "HEADER",
+            "x": 256,
+            "y": 0,
+            "width": 1184,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 256,
+            "y": 64,
+            "width": 1184,
+            "height": 2447
+          },
+          {
+            "tag": "H1",
+            "x": 288,
+            "y": 96,
+            "width": 518.02,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 289,
+            "y": 729,
+            "width": 739.33,
+            "height": 464
+          },
+          {
+            "tag": "TABLE",
+            "x": 289,
+            "y": 1409,
+            "width": 1118,
+            "height": 1012
+          }
+        ]
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 18079,
+        "totalPixels": 3615840,
+        "differenceBounds": {
+          "minX": 1,
+          "minY": 22,
+          "maxX": 1401,
+          "maxY": 2399
+        },
+        "changedPercent": 0.5,
+        "meanMaxChannelDifference": 0.782
+      },
+      "screenshots": [
+        "1440-light-reportes-reference.png",
+        "1440-light-reportes-local.png"
+      ]
+    },
+    {
+      "route": "/configuracion",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": true,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 1000
+          },
+          {
+            "tag": "HEADER",
+            "x": 256,
+            "y": 0,
+            "width": 1184,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 256,
+            "y": 64,
+            "width": 1184,
+            "height": 936
+          },
+          {
+            "tag": "H1",
+            "x": 288,
+            "y": 96,
+            "width": 511.72,
+            "height": 32
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 1000
+          },
+          {
+            "tag": "HEADER",
+            "x": 256,
+            "y": 0,
+            "width": 1184,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 256,
+            "y": 64,
+            "width": 1184,
+            "height": 936
+          },
+          {
+            "tag": "H1",
+            "x": 288,
+            "y": 96,
+            "width": 511.72,
+            "height": 32
+          }
+        ]
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 288,
+        "totalPixels": 1440000,
+        "differenceBounds": {
+          "minX": 1,
+          "minY": 22,
+          "maxX": 1401,
+          "maxY": 952
+        },
+        "changedPercent": 0.02,
+        "meanMaxChannelDifference": 0.037
+      },
+      "screenshots": [
+        "1440-light-configuracion-reference.png",
+        "1440-light-configuracion-local.png"
+      ]
+    },
+    {
+      "route": "/ayuda",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": true,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 1000
+          },
+          {
+            "tag": "HEADER",
+            "x": 256,
+            "y": 0,
+            "width": 1184,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 256,
+            "y": 64,
+            "width": 1184,
+            "height": 936
+          },
+          {
+            "tag": "H1",
+            "x": 288,
+            "y": 96,
+            "width": 284.58,
+            "height": 32
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 1000
+          },
+          {
+            "tag": "HEADER",
+            "x": 256,
+            "y": 0,
+            "width": 1184,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 256,
+            "y": 64,
+            "width": 1184,
+            "height": 936
+          },
+          {
+            "tag": "H1",
+            "x": 288,
+            "y": 96,
+            "width": 284.58,
+            "height": 32
+          }
+        ]
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 485,
+        "totalPixels": 1440000,
+        "differenceBounds": {
+          "minX": 1,
+          "minY": 22,
+          "maxX": 1401,
+          "maxY": 952
+        },
+        "changedPercent": 0.03,
+        "meanMaxChannelDifference": 0.052
+      },
+      "screenshots": [
+        "1440-light-ayuda-reference.png",
+        "1440-light-ayuda-local.png"
+      ]
+    },
+    {
+      "route": "/",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": true,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 1000
+          },
+          {
+            "tag": "HEADER",
+            "x": 256,
+            "y": 0,
+            "width": 1184,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 256,
+            "y": 64,
+            "width": 1184,
+            "height": 1221
+          },
+          {
+            "tag": "H1",
+            "x": 288,
+            "y": 96,
+            "width": 356.97,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 687.66,
+            "y": 846,
+            "width": 699.34,
+            "height": 386
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 1000
+          },
+          {
+            "tag": "HEADER",
+            "x": 256,
+            "y": 0,
+            "width": 1184,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 256,
+            "y": 64,
+            "width": 1184,
+            "height": 1221
+          },
+          {
+            "tag": "H1",
+            "x": 288,
+            "y": 96,
+            "width": 356.97,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 687.66,
+            "y": 846,
+            "width": 699.34,
+            "height": 386
+          }
+        ]
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 2905,
+        "totalPixels": 1850400,
+        "differenceBounds": {
+          "minX": 1,
+          "minY": 23,
+          "maxX": 1401,
+          "maxY": 952
+        },
+        "changedPercent": 0.16,
+        "meanMaxChannelDifference": 0.484
+      },
+      "screenshots": [
+        "1440-dark-panel-reference.png",
+        "1440-dark-panel-local.png"
+      ]
+    },
+    {
+      "route": "/reportes",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": true,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 1000
+          },
+          {
+            "tag": "HEADER",
+            "x": 256,
+            "y": 0,
+            "width": 1184,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 256,
+            "y": 64,
+            "width": 1184,
+            "height": 2447
+          },
+          {
+            "tag": "H1",
+            "x": 288,
+            "y": 96,
+            "width": 518.02,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 289,
+            "y": 729,
+            "width": 739.33,
+            "height": 464
+          },
+          {
+            "tag": "TABLE",
+            "x": 289,
+            "y": 1409,
+            "width": 1118,
+            "height": 1012
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 1000
+          },
+          {
+            "tag": "HEADER",
+            "x": 256,
+            "y": 0,
+            "width": 1184,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 256,
+            "y": 64,
+            "width": 1184,
+            "height": 2447
+          },
+          {
+            "tag": "H1",
+            "x": 288,
+            "y": 96,
+            "width": 518.02,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 289,
+            "y": 729,
+            "width": 739.33,
+            "height": 464
+          },
+          {
+            "tag": "TABLE",
+            "x": 289,
+            "y": 1409,
+            "width": 1118,
+            "height": 1012
+          }
+        ]
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 16680,
+        "totalPixels": 3615840,
+        "differenceBounds": {
+          "minX": 1,
+          "minY": 23,
+          "maxX": 1401,
+          "maxY": 2399
+        },
+        "changedPercent": 0.46,
+        "meanMaxChannelDifference": 0.631
+      },
+      "screenshots": [
+        "1440-dark-reportes-reference.png",
+        "1440-dark-reportes-local.png"
+      ]
+    },
+    {
+      "route": "/configuracion",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": true,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 1000
+          },
+          {
+            "tag": "HEADER",
+            "x": 256,
+            "y": 0,
+            "width": 1184,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 256,
+            "y": 64,
+            "width": 1184,
+            "height": 936
+          },
+          {
+            "tag": "H1",
+            "x": 288,
+            "y": 96,
+            "width": 511.72,
+            "height": 32
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 1000
+          },
+          {
+            "tag": "HEADER",
+            "x": 256,
+            "y": 0,
+            "width": 1184,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 256,
+            "y": 64,
+            "width": 1184,
+            "height": 936
+          },
+          {
+            "tag": "H1",
+            "x": 288,
+            "y": 96,
+            "width": 511.72,
+            "height": 32
+          }
+        ]
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 247,
+        "totalPixels": 1440000,
+        "differenceBounds": {
+          "minX": 1,
+          "minY": 23,
+          "maxX": 1401,
+          "maxY": 952
+        },
+        "changedPercent": 0.02,
+        "meanMaxChannelDifference": 0.067
+      },
+      "screenshots": [
+        "1440-dark-configuracion-reference.png",
+        "1440-dark-configuracion-local.png"
+      ]
+    },
+    {
+      "route": "/ayuda",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": true,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 1000
+          },
+          {
+            "tag": "HEADER",
+            "x": 256,
+            "y": 0,
+            "width": 1184,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 256,
+            "y": 64,
+            "width": 1184,
+            "height": 936
+          },
+          {
+            "tag": "H1",
+            "x": 288,
+            "y": 96,
+            "width": 284.58,
+            "height": 32
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 1000
+          },
+          {
+            "tag": "HEADER",
+            "x": 256,
+            "y": 0,
+            "width": 1184,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 256,
+            "y": 64,
+            "width": 1184,
+            "height": 936
+          },
+          {
+            "tag": "H1",
+            "x": 288,
+            "y": 96,
+            "width": 284.58,
+            "height": 32
+          }
+        ]
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 390,
+        "totalPixels": 1440000,
+        "differenceBounds": {
+          "minX": 1,
+          "minY": 23,
+          "maxX": 1401,
+          "maxY": 952
+        },
+        "changedPercent": 0.03,
+        "meanMaxChannelDifference": 0.09
+      },
+      "screenshots": [
+        "1440-dark-ayuda-reference.png",
+        "1440-dark-ayuda-local.png"
+      ]
+    }
+  ]
+}

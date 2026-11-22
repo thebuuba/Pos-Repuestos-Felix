@@ -1,14 +1,14 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
 import { formatMoney } from "../lib/format.js";
 function SalesGoalGauge({ goal, achieved, breakdown }) {
-  const pct = Math.min(100, Math.round((achieved / goal) * 100));
+  const pct = goal > 0 ? Math.min(100, Math.round((achieved / goal) * 100)) : null;
   const remaining = Math.max(0, goal - achieved);
   return (
     <section className="flex h-full flex-col rounded-2xl border border-border bg-card p-5">
       <div className="flex items-center justify-between">
         <h2 className="text-[17px] font-medium">{"Meta del día"}</h2>
         <span className="text-xs text-muted-foreground">
-          {formatMoney(goal)}
+          {pct === null ? "Sin configurar" : formatMoney(goal)}
         </span>
       </div>
       <div className="relative mx-auto mt-4 w-full max-w-[260px]">
@@ -44,17 +44,15 @@ function SalesGoalGauge({ goal, achieved, breakdown }) {
             stroke="hsl(var(--chart-1))"
             strokeWidth="28"
             pathLength={100}
-            strokeDasharray={`${pct} 100`}
+            strokeDasharray={`${pct ?? 0} 100`}
           />
         </svg>
         <div className="absolute inset-x-0 bottom-0 text-center">
           <p className="text-[36px] font-semibold leading-none tracking-tight tabular-nums">
-            {pct}
-            {"%"}
+            {pct === null ? "—" : `${pct}%`}
           </p>
           <p className="mt-1.5 text-xs text-muted-foreground">
-            {"Faltan "}
-            {formatMoney(remaining)}
+            {pct === null ? "Meta pendiente de configuración" : `Faltan ${formatMoney(remaining)}`}
           </p>
         </div>
       </div>

@@ -152,14 +152,16 @@ test('el carrito impide exceder existencias y permite quitar líneas', () => {
 });
 
 test('una venta a crédito guarda factura, stock y balance antes de imprimir', async () => {
-  fill({ 'fac-buscar-prod': 'BUJ-01', 'fac-cantidad': 2, 'fac-condicion': 'Credito' });
+  const created = await write('POST','/api/clientes',{nombre:'Cliente de crédito',limiteCredito:1000});
+  await window.actualizarDatos();
+  fill({ 'fac-buscar-prod': 'BUJ-01', 'fac-cantidad': 2, 'fac-condicion': 'Credito', 'fac-cliente':created.result.id });
   window.agregarLineaFactura();
   await window.procesarFactura();
   const { state } = await saved();
   assert.equal(state.facturas.length, 1);
   assert.equal(state.facturas[0].total, 300);
   assert.equal(state.productos[0].stock, 48);
-  assert.equal(state.clientes[0].deuda, 300);
+  assert.equal(state.clientes.find(c=>c.id===created.result.id).deuda, 300);
   assert.equal(prints, 1);
   assert.equal($('tabla-facturas').rows.length, 1);
   assert.equal($('fac-total').textContent, '0.00');
@@ -179,7 +181,7 @@ test('un conflicto conserva el formulario y recarga los cambios de la otra sesi�
   fill({ 'cli-nombre': "Cliente O'Neil", 'cli-rnc': '123', 'cli-tel': '809-555-0100' });
   await window.guardarCliente();
   assert.equal($('cli-nombre').value, '');
-  assert.equal((await saved()).state.clientes.length, 2);
+  assert.ok((await saved()).state.clientes.some(c=>c.nombre==="Cliente O'Neil"));
 });
 
 test('un fallo conserva el carrito y solo imprime al confirmar el reintento', async () => {
@@ -264,7 +266,9 @@ test('un artículo exento muestra el mismo ITBIS y total antes y después de con
   await write('POST', '/api/productos', { codigo: 'EXENTO', nombre: 'Artículo exento', stock: 2, costo: 10,
     precio1: 118, precio2: 110, precio3: 100, gravado: false });
   await window.actualizarDatos();
-  while ($('tabla-detalle-factura').rows.length) window.quitarLineaFactura(0);
+  const previousRows = $('tabla-detalle-factura').rows.length;
+  for (let i = 0; i < previousRows; i++) window.quitarLineaFactura(0);
+  assert.equal($('tabla-detalle-factura').rows.length,0,'el borrador anterior debe poder vaciarse');
   fill({ 'fac-buscar-prod': 'EXENTO', 'fac-cantidad': 1, 'fac-nivel-precio': 'precio1',
     'fac-cliente': window.db.clientes[0].id, 'fac-ncf': 'B02', 'fac-condicion': 'Contado' });
   window.agregarLineaFactura();

@@ -1,0 +1,652 @@
+{
+  "version": "99fdb61658b9417c680d007618ae1c23bf135b1e",
+  "fixedTime": "2026-11-21T20:00:00Z",
+  "clockStrategy": "Fixed Date constructor for fixture business dates; real Date.now for JavaScript animations",
+  "checkedAt": "2026-11-22T13:11:57.781Z",
+  "results": [
+    {
+      "route": "/compras",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": true,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 390,
+            "height": 2333.5
+          },
+          {
+            "tag": "H1",
+            "x": 16,
+            "y": 80,
+            "width": 358,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 17,
+            "y": 2147.5,
+            "width": 720,
+            "height": 233
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 390,
+            "height": 2333.5
+          },
+          {
+            "tag": "H1",
+            "x": 16,
+            "y": 80,
+            "width": 358,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 17,
+            "y": 2147.5,
+            "width": 720,
+            "height": 233
+          }
+        ]
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 2082,
+        "totalPixels": 935220,
+        "differenceBounds": {
+          "minX": 37,
+          "minY": 25,
+          "maxX": 359,
+          "maxY": 2362
+        },
+        "changedPercent": 0.22,
+        "meanMaxChannelDifference": 0.439
+      },
+      "screenshots": [
+        "390-light-compras-reference.png",
+        "390-light-compras-local.png"
+      ]
+    },
+    {
+      "route": "/compras",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": true,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 390,
+            "height": 2333.5
+          },
+          {
+            "tag": "H1",
+            "x": 16,
+            "y": 80,
+            "width": 358,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 17,
+            "y": 2147.5,
+            "width": 720,
+            "height": 233
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 390,
+            "height": 2333.5
+          },
+          {
+            "tag": "H1",
+            "x": 16,
+            "y": 80,
+            "width": 358,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 17,
+            "y": 2147.5,
+            "width": 720,
+            "height": 233
+          }
+        ]
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 2396,
+        "totalPixels": 935220,
+        "differenceBounds": {
+          "minX": 37,
+          "minY": 26,
+          "maxX": 359,
+          "maxY": 2363
+        },
+        "changedPercent": 0.26,
+        "meanMaxChannelDifference": 0.47
+      },
+      "screenshots": [
+        "390-dark-compras-reference.png",
+        "390-dark-compras-local.png"
+      ]
+    },
+    {
+      "route": "/compras",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "light",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": true,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 768,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 768,
+            "height": 1657
+          },
+          {
+            "tag": "H1",
+            "x": 24,
+            "y": 88,
+            "width": 534.44,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 25,
+            "y": 1463,
+            "width": 720,
+            "height": 233
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 768,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 768,
+            "height": 1657
+          },
+          {
+            "tag": "H1",
+            "x": 24,
+            "y": 88,
+            "width": 534.44,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 25,
+            "y": 1463,
+            "width": 720,
+            "height": 233
+          }
+        ]
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 3566,
+        "totalPixels": 1321728,
+        "differenceBounds": {
+          "minX": 45,
+          "minY": 25,
+          "maxX": 737,
+          "maxY": 1677
+        },
+        "changedPercent": 0.27,
+        "meanMaxChannelDifference": 0.449
+      },
+      "screenshots": [
+        "768-light-compras-reference.png",
+        "768-light-compras-local.png"
+      ]
+    },
+    {
+      "route": "/compras",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": true,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 768,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 768,
+            "height": 1657
+          },
+          {
+            "tag": "H1",
+            "x": 24,
+            "y": 88,
+            "width": 534.44,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 25,
+            "y": 1463,
+            "width": 720,
+            "height": 233
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "tag": "HEADER",
+            "x": 0,
+            "y": 0,
+            "width": 768,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 0,
+            "y": 64,
+            "width": 768,
+            "height": 1657
+          },
+          {
+            "tag": "H1",
+            "x": 24,
+            "y": 88,
+            "width": 534.44,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 25,
+            "y": 1463,
+            "width": 720,
+            "height": 233
+          }
+        ]
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 3947,
+        "totalPixels": 1321728,
+        "differenceBounds": {
+          "minX": 45,
+          "minY": 25,
+          "maxX": 737,
+          "maxY": 1678
+        },
+        "changedPercent": 0.3,
+        "meanMaxChannelDifference": 0.463
+      },
+      "screenshots": [
+        "768-dark-compras-reference.png",
+        "768-dark-compras-local.png"
+      ]
+    },
+    {
+      "route": "/compras",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": false,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 1000
+          },
+          {
+            "tag": "HEADER",
+            "x": 256,
+            "y": 0,
+            "width": 1184,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 256,
+            "y": 64,
+            "width": 1184,
+            "height": 1105.5
+          },
+          {
+            "tag": "H1",
+            "x": 288,
+            "y": 96,
+            "width": 534.44,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 289,
+            "y": 963.5,
+            "width": 1118,
+            "height": 173
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 1000
+          },
+          {
+            "tag": "HEADER",
+            "x": 256,
+            "y": 0,
+            "width": 1184,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 256,
+            "y": 64,
+            "width": 1184,
+            "height": 1108.5
+          },
+          {
+            "tag": "H1",
+            "x": 288,
+            "y": 96,
+            "width": 534.44,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 289,
+            "y": 963.5,
+            "width": 1118,
+            "height": 176
+          }
+        ]
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": false,
+        "referenceSize": [
+          1440,
+          1170
+        ],
+        "localSize": [
+          1440,
+          1173
+        ]
+      },
+      "screenshots": [
+        "1440-light-compras-reference.png",
+        "1440-light-compras-local.png"
+      ]
+    },
+    {
+      "route": "/compras",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "textMatches": null,
+      "referenceSource": "Approved archived capture in dist/design-comparison-final",
+      "geometryMatches": false,
+      "geometry": {
+        "reference": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 1000
+          },
+          {
+            "tag": "HEADER",
+            "x": 256,
+            "y": 0,
+            "width": 1184,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 256,
+            "y": 64,
+            "width": 1184,
+            "height": 1105.5
+          },
+          {
+            "tag": "H1",
+            "x": 288,
+            "y": 96,
+            "width": 534.44,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 289,
+            "y": 963.5,
+            "width": 1118,
+            "height": 173
+          }
+        ],
+        "local": [
+          {
+            "tag": "ASIDE",
+            "x": 0,
+            "y": 0,
+            "width": 256,
+            "height": 1000
+          },
+          {
+            "tag": "HEADER",
+            "x": 256,
+            "y": 0,
+            "width": 1184,
+            "height": 64
+          },
+          {
+            "tag": "MAIN",
+            "x": 256,
+            "y": 64,
+            "width": 1184,
+            "height": 1108.5
+          },
+          {
+            "tag": "H1",
+            "x": 288,
+            "y": 96,
+            "width": 534.44,
+            "height": 32
+          },
+          {
+            "tag": "TABLE",
+            "x": 289,
+            "y": 963.5,
+            "width": 1118,
+            "height": 176
+          }
+        ]
+      },
+      "overflow": {
+        "reference": false,
+        "local": false
+      },
+      "pixels": {
+        "dimensionsMatch": false,
+        "referenceSize": [
+          1440,
+          1170
+        ],
+        "localSize": [
+          1440,
+          1173
+        ]
+      },
+      "screenshots": [
+        "1440-dark-compras-reference.png",
+        "1440-dark-compras-local.png"
+      ]
+    }
+  ]
+}

@@ -78,10 +78,12 @@ function initials(name) {
     .toUpperCase();
 }
 function CustomersPage() {
-  const { customers, sales, receivables, saveCustomer, deleteCustomer } =
+  const { runtime, customers, sales, receivables, saveCustomer, deleteCustomer } =
     usePosStore();
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(0);
   const [formOpen, setFormOpen] = useState(false);
+  const [creationDatabaseId, setCreationDatabaseId] = useState(null);
   const [editing, setEditing] = useState(null);
   const [detail, setDetail] = useState(null);
   const [toDelete, setToDelete] = useState(null);
@@ -100,7 +102,7 @@ function CustomersPage() {
     return map;
   }, [sales]);
   const list = customers
-    .filter((c) => c.id !== "c-000")
+    .filter((c) => runtime ? !c.isCashCustomer : c.id !== "c-000")
     .filter((c) => {
       const q = query.trim().toLowerCase();
       return (
@@ -133,6 +135,7 @@ function CustomersPage() {
             className="h-10 rounded-full px-5 shadow-md shadow-primary/20"
             onClick={() => {
               setEditing(null);
+              setCreationDatabaseId(runtime?.databaseId);
               setFormOpen(true);
             }}
           >
@@ -146,7 +149,7 @@ function CustomersPage() {
           icon={Users}
           tone="primary"
           label="Clientes registrados"
-          value={customers.length - 1}
+          value={customers.filter(c => runtime ? !c.isCashCustomer : c.id !== "c-000").length}
         />
         <MiniStat
           icon={Wallet}
@@ -166,7 +169,7 @@ function CustomersPage() {
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => { setQuery(e.target.value); setPage(0); }}
               placeholder="Buscar por nombre, RNC o teléfono…"
               className="h-10 rounded-xl pl-9"
             />
@@ -198,7 +201,7 @@ function CustomersPage() {
                 </tr>
               </thead>
               <tbody>
-                {list.map((c) => {
+                {list.slice(page * 50, (page + 1) * 50).map((c) => {
                   const st = stats[c.id];
                   const used = c.creditLimit
                     ? Math.min(100, (c.balance / c.creditLimit) * 100)
@@ -322,6 +325,11 @@ function CustomersPage() {
             </table>
           </div>
         )}
+        {list.length > 50 && <div className="flex items-center justify-between gap-3 border-t p-4 text-sm">
+          <Button variant="outline" disabled={page === 0} onClick={() => setPage(p => p - 1)}>Anterior</Button>
+          <span>Página {page + 1} de {Math.ceil(list.length / 50)}</span>
+          <Button variant="outline" disabled={(page + 1) * 50 >= list.length} onClick={() => setPage(p => p + 1)}>Siguiente</Button>
+        </div>}
       </section>
       <PartyFormSheet
         open={formOpen}
@@ -338,15 +346,16 @@ function CustomersPage() {
           creditLimit: String(editing?.creditLimit ?? 0),
         }}
         submitLabel={editing ? "Guardar cambios" : "Crear cliente"}
-        onSave={(v) => {
-          saveCustomer({
-            id: editing?.id ?? newId("c"),
+        onSave={async (v) => {
+          await saveCustomer({
+            ...(runtime ? {databaseId: editing?.databaseId ?? creationDatabaseId, version: editing?.version} : {}),
+            id: editing?.id ?? (runtime ? crypto.randomUUID() : newId("c")),
             name: v.name.trim(),
-            rnc: v.rnc.trim() || undefined,
-            phone: v.phone.trim() || undefined,
-            email: v.email.trim() || undefined,
-            address: v.address.trim() || undefined,
-            creditLimit: Math.max(0, Number(v.creditLimit) || 0),
+            rnc: v.rnc.trim(),
+            phone: v.phone.trim(),
+            email: v.email.trim(),
+            address: v.address.trim(),
+            creditLimit: v.creditLimit.trim() === "" ? null : v.creditLimit,
             balance: editing?.balance ?? 0,
           });
           ue.success(editing ? "Cliente actualizado" : "Cliente creado", {
@@ -390,7 +399,7 @@ function CustomersPage() {
                     {"Crédito disponible"}
                   </p>
                   <p className="text-lg font-semibold tabular-nums">
-                    {formatMoney(
+                    {detailCustomer.creditLimit === null ? "Sin límite configurado" : formatMoney(
                       Math.max(
                         0,
                         detailCustomer.creditLimit - detailCustomer.balance,
@@ -403,7 +412,7 @@ function CustomersPage() {
                 <Button asChild={true} className="mt-3 w-full rounded-xl">
                   <Link to={`/cuentas-por-cobrar?cliente=${detailCustomer.id}`}>
                     <HandCoins />
-                    {"Registrar cobro"}
+                    {runtime ? "Consultar ventas a crédito" : "Registrar cobro"}
                   </Link>
                 </Button>
               )}
@@ -413,7 +422,7 @@ function CustomersPage() {
                 </p>
                 {detailDocs.length === 0 ? (
                   <p className="mt-2 text-sm text-muted-foreground">
-                    {"No tiene facturas pendientes."}
+                    {runtime ? "Los documentos históricos están pendientes de conciliación. El balance de apertura se conserva arriba." : "No tiene facturas pendientes."}
                   </p>
                 ) : (
                   <ul className="mt-2 divide-y divide-border">
@@ -475,8 +484,8 @@ function CustomersPage() {
         onOpenChange={(o) => !o && setToDelete(null)}
         title="¿Eliminar cliente?"
         description={`Se eliminará ${toDelete?.name ?? ""}. Sus facturas anteriores se conservan.`}
-        onConfirm={() => {
-          if (toDelete) deleteCustomer(toDelete.id);
+        onConfirm={async () => {
+          if (toDelete) await deleteCustomer(runtime ? toDelete : toDelete.id);
           setToDelete(null);
           ue("Cliente eliminado");
         }}

@@ -11,6 +11,12 @@ import { Package } from "lucide-react";
 import { PurchaseEntryForm } from "../components/purchase-entry-form.jsx";
 import { toast as ue } from "sonner";
 import { PurchasesHistoryTable } from "../components/purchases-history-table.jsx";
+import { cents, decimalUnits } from "../../../../src/pos/operation-fields.js";
+import { needsRestock } from "../components/inventory-table.jsx";
+
+const businessMonth = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Santo_Domingo", year: "numeric", month: "2-digit",
+});
 function PurchasesPage() {
   const {
     suppliers,
@@ -20,15 +26,13 @@ function PurchasesPage() {
     payables,
     settings,
     registerPurchase,
+    runtime,
   } = usePosStore();
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
-  const monthPurchases = purchases.filter(
-    (p) => new Date(p.date) >= monthStart,
-  );
-  const monthTotal = monthPurchases.reduce((s, p) => s + p.total, 0);
-  const owed = payables.reduce((s, p) => s + balanceOf(p), 0);
+  const month = businessMonth.format(new Date());
+  const monthPurchases = purchases.filter(p =>
+    (p.date.length === 10 ? p.date.slice(0, 7) : businessMonth.format(new Date(p.date))) === month);
+  const monthTotal = decimalUnits(monthPurchases.reduce((sum, p) => sum + cents(p.total), 0n), 2);
+  const owed = payables?.reduce((s, p) => s + balanceOf(p), 0);
   return (
     <div className="space-y-6">
       <PageHeader
@@ -46,8 +50,8 @@ function PurchasesPage() {
         <MiniStat
           icon={Receipt}
           label="Pendiente a suplidores"
-          value={formatMoney(owed)}
-          hint="Ver Cuentas x pagar"
+          value={runtime ? "—" : formatMoney(owed)}
+          hint={runtime ? "Saldo no disponible" : "Ver Cuentas x pagar"}
         />
         <MiniStat
           icon={Truck}
@@ -58,7 +62,7 @@ function PurchasesPage() {
           icon={Package}
           tone="warning"
           label="Por reponer"
-          value={products.filter((p) => p.stock <= p.minStock).length}
+          value={products.filter(runtime ? needsRestock : p => p.stock <= p.minStock).length}
           hint="Artículos bajo el mínimo"
         />
       </div>
@@ -67,9 +71,11 @@ function PurchasesPage() {
         formulas={formulas}
         products={products}
         rounding={settings.rounding}
-        onSubmit={(input) => {
-          const purchase = registerPurchase(input);
-          ue.success(`Compra ${purchase.number} subida al inventario`, {
+        runtime={runtime}
+        onSubmit={async (input) => {
+          const result = await registerPurchase(input);
+          const purchase = runtime ? result.state.compras.find(row => row.id === result.result.id) : result;
+          ue.success(`Compra ${runtime ? purchase.numero : purchase.number} subida al inventario`, {
             description: `${input.lines.length} artículos · ${formatMoney(purchase.total)}`,
           });
         }}

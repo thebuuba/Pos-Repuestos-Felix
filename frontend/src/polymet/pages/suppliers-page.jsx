@@ -23,9 +23,10 @@ import { newId } from "../../data/new-id.js";
 import { ConfirmDialog } from "../components/confirm-dialog.jsx";
 import { useState } from "react";
 function SuppliersPage() {
-  const { suppliers, formulas, purchases, saveSupplier, deleteSupplier } =
+  const { runtime, suppliers, formulas, purchases, saveSupplier, deleteSupplier } =
     usePosStore();
   const [formOpen, setFormOpen] = useState(false);
+  const [creationDatabaseId, setCreationDatabaseId] = useState(null);
   const [editing, setEditing] = useState(null);
   const [toDelete, setToDelete] = useState(null);
   const fields = [
@@ -68,18 +69,17 @@ function SuppliersPage() {
       key: "formulaId",
       label: "Fórmula de precios",
       type: "select",
-      options: formulas.map((f) => ({
-        value: f.id,
+      options: [...(runtime ? [{value:"none",label:"Sin fórmula"}] : []), ...formulas.map((f) => ({
+        value: String(f.id),
         label: `${f.name} (${formulaSummary(f)})`,
-      })),
+      }))],
       hint: "Se aplica sola al subir sus facturas de compra.",
     },
   ];
   const totalOwed = suppliers.reduce((s, x) => s + x.balance, 0);
-  const monthStart = new Date();
-  monthStart.setDate(1);
+  const month = new Intl.DateTimeFormat('en-CA', { timeZone:'America/Santo_Domingo',year:'numeric',month:'2-digit' }).format(new Date());
   const monthTotal = purchases
-    .filter((p) => new Date(p.date) >= monthStart)
+    .filter((p) => p.date.slice(0,7) === month)
     .reduce((s, p) => s + p.total, 0);
   return (
     <div className="space-y-6">
@@ -91,6 +91,7 @@ function SuppliersPage() {
             className="h-10 rounded-full px-5 shadow-md shadow-primary/20"
             onClick={() => {
               setEditing(null);
+              setCreationDatabaseId(runtime?.databaseId);
               setFormOpen(true);
             }}
           >
@@ -110,7 +111,7 @@ function SuppliersPage() {
           icon={Receipt}
           tone="warning"
           label="Les debemos"
-          value={formatMoney(totalOwed)}
+          value={runtime ? "Pendiente de conciliar" : formatMoney(totalOwed)}
         />
         <MiniStat
           icon={PackagePlus}
@@ -118,14 +119,14 @@ function SuppliersPage() {
           value={formatMoney(monthTotal)}
         />
       </div>
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {suppliers.map((s) => {
           const formula = formulas.find((f) => f.id === s.formulaId);
           const own = purchases.filter((p) => p.supplierId === s.id);
           const last = own[0];
           return (
             <div
-              className="flex flex-col rounded-2xl border border-border bg-card p-5 transition-shadow hover:shadow-md"
+              className="flex min-w-0 flex-col rounded-2xl border border-border bg-card p-5 transition-shadow hover:shadow-md"
               key={s.id}
             >
               <div className="flex items-start justify-between gap-3">
@@ -135,7 +136,7 @@ function SuppliersPage() {
                   </div>
                   <div className="min-w-0">
                     <p className="truncate font-semibold">{s.name}</p>
-                    <p className="font-mono text-xs text-muted-foreground">
+                    <p className="truncate font-mono text-xs text-muted-foreground">
                       {"RNC "}
                       {s.rnc || "—"}
                     </p>
@@ -171,7 +172,7 @@ function SuppliersPage() {
                   </Button>
                 </div>
               </div>
-              <div className="mt-4 space-y-1.5 text-sm text-muted-foreground">
+              <div className="mt-4 min-w-0 space-y-1.5 text-sm text-muted-foreground" style={{overflowWrap:'anywhere'}}>
                 <p className="flex items-center gap-2">
                   <User className="h-3.5 w-3.5" />
                   {s.contact || "—"}
@@ -213,14 +214,13 @@ function SuppliersPage() {
                         : "font-semibold tabular-nums"
                     }
                   >
-                    {formatMoney(s.balance)}
+                    {s.balance === null ? "Pendiente" : formatMoney(s.balance)}
                   </p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">{"Crédito"}</p>
                   <p className="font-semibold">
-                    {s.creditDays}
-                    {" días"}
+                    {s.creditDays === null ? "Sin registrar" : s.creditDays + " días"}
                   </p>
                 </div>
                 <div className="col-span-2 text-xs text-muted-foreground">
@@ -254,21 +254,22 @@ function SuppliersPage() {
           rnc: editing?.rnc ?? "",
           phone: editing?.phone ?? "",
           contact: editing?.contact ?? "",
-          creditDays: String(editing?.creditDays ?? 30),
+          creditDays: String(editing?.creditDays ?? (runtime ? "" : 30)),
           email: editing?.email ?? "",
-          formulaId: editing?.formulaId ?? formulas[0]?.id ?? "",
+          formulaId: runtime ? String(editing?.formulaId ?? "none") : editing?.formulaId ?? formulas[0]?.id ?? "",
         }}
         submitLabel={editing ? "Guardar cambios" : "Crear suplidor"}
-        onSave={(v) => {
-          saveSupplier({
-            id: editing?.id ?? newId("s"),
+        onSave={async (v) => {
+          await saveSupplier({
+            ...(runtime ? {databaseId: editing?.databaseId ?? creationDatabaseId, version: editing?.version} : {}),
+            id: editing?.id ?? (runtime ? crypto.randomUUID() : newId("s")),
             name: v.name.trim(),
             rnc: v.rnc.trim(),
             phone: v.phone.trim(),
             contact: v.contact.trim(),
-            email: v.email.trim() || undefined,
-            creditDays: Math.max(0, Number(v.creditDays) || 0),
-            formulaId: v.formulaId,
+            email: v.email.trim(),
+            creditDays: v.creditDays.trim() === "" ? null : Number(v.creditDays),
+            formulaId: runtime ? (v.formulaId === "none" ? null : Number(v.formulaId)) : v.formulaId,
           });
           ue.success(editing ? "Suplidor actualizado" : "Suplidor creado", {
             description: v.name,
@@ -281,8 +282,8 @@ function SuppliersPage() {
         onOpenChange={(o) => !o && setToDelete(null)}
         title="¿Eliminar suplidor?"
         description={`Se eliminará ${toDelete?.name ?? ""}. Las compras anteriores se conservan.`}
-        onConfirm={() => {
-          if (toDelete) deleteSupplier(toDelete.id);
+        onConfirm={async () => {
+          if (toDelete) await deleteSupplier(runtime ? toDelete : toDelete.id);
           setToDelete(null);
           ue("Suplidor eliminado");
         }}

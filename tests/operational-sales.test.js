@@ -1,0 +1,50 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { quoteSale, saleRequest, receiptFromConfirmation, updateSaleLine } from '../frontend/src/data/operational-sales.js';
+
+const product = { id: 19, version: 7, databaseId: 'catalog', taxable: true, stock: 3.02,
+  pricesExact: { p1: '10.0030', p2: '1.0050' }, code: 'R', name: 'Repuesto' };
+const second = { ...product, id: 20, taxable: false, pricesExact: { p1: '4.9999' } };
+const settings = { version: 3, itbisRate: 18, databaseId: 'catalog' };
+
+test('los totales incluyen el ITBIS por línea y usan cuatro decimales de precio y centésimas de unidad', () => {
+  let cart = updateSaleLine([], product, 'p1', '2.50');
+  cart = updateSaleLine(cart, second, 'p1', '0.01');
+  const quote = quoteSale(cart, 18);
+  assert.deepEqual(quote.totals, { items: 2.51, subtotal: 21.24, discount: 0, itbis: 3.82, total: 25.06 });
+  assert.equal(quote.lines[0].subtotal, 25.01);
+  assert.equal(quote.lines[0].unitPrice, '10.0030');
+  assert.deepEqual(saleRequest(cart, settings, 9, 'contado', 'B02'), {
+    databaseId: 'catalog', clienteId: 9, condicion: 'Contado', tipoComprobante: 'B02', versionConfiguracion: 3,
+    items: [{ productoId: 19, versionProducto: 7, nivelPrecio: 'precio1', cantidad: '2.50' },
+      { productoId: 20, versionProducto: 7, nivelPrecio: 'precio1', cantidad: '0.01' }],
+  });
+});
+
+test('la suma del stock abarca todos los precios y el carrito conserva la base y versión originales', () => {
+  const first = updateSaleLine([], product, 'p1', '0.01');
+  const accumulated = updateSaleLine(first, product, 'p1', '3.00');
+  assert.equal(accumulated[0].quantity, 3.01);
+  const cart = updateSaleLine(accumulated, product, 'p2', '0.01');
+  assert.throws(() => updateSaleLine(cart, product, 'p2', '0.01'), /existencias/i);
+  assert.throws(() => updateSaleLine(cart, { ...product, version: 8 }, 'p1', '0.01'), /cambió/);
+  assert.throws(() => updateSaleLine([], product, 'p1', '1.001'), /cantidad/);
+  assert.throws(() => saleRequest(cart, { ...settings, databaseId: 'otra' }, 9, 'contado', 'B02'), /base/);
+});
+
+test('el recibo usa el registro confirmado por el servidor, sin inventar tiempo, efectivo o NCF', () => {
+  const doc = { id: 91, cliente: 'Cliente confirmado', clienteRnc: '', fechaISO: '2026-11-22',
+    condicion: 'Contado', tipoComprobante: 'B02', ncf: null, base: 21.2, itbis: 3.81, total: 25.01,
+    items: [{ id: 5, codigo: 'R', nombre: 'Nombre histórico', cant: 2.5, precioExacto: '10.0030', subtotal: 25.01 }] };
+  const snapshot = { result: { id: 91 }, state: { facturas: [{ id: 90 }, doc] } };
+  const receipt = receiptFromConfirmation(snapshot);
+  assert.equal(receipt.invoiceNumber, 'Registro 91');
+  assert.equal(receipt.dateOnly, '2026-11-22');
+  assert.equal(receipt.customerName, 'Cliente confirmado');
+  assert.deepEqual(receipt.totals, { subtotal: 21.2, itbis: 3.81, total: 25.01 });
+  assert.equal(receipt.lines[0].product.name, 'Nombre histórico');
+  assert.equal(receipt.lines[0].unitPrice, '10.0030');
+  assert.equal(receipt.ncf, null);
+  assert.equal(receipt.received, undefined);
+  assert.equal(receipt.paymentLabel, undefined);
+});

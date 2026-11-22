@@ -14,8 +14,11 @@ import { SettingsPage } from "../pages/settings-page.jsx";
 import { HelpPage } from "../pages/help-page.jsx";
 import { PosShell } from "../../pos-shell.jsx";
 
+import { MONTHLY_SALES, CURRENT_MONTH_INDEX, DAILY_GOAL, PEAK_HOURS } from "../data/dashboard-data.js";
+import { helpReference } from "./help-reference.js";
+const dashboardReference = { activity: { data: MONTHLY_SALES, currentIndex: CURRENT_MONTH_INDEX }, goal: DAILY_GOAL.goal, peak: PEAK_HOURS };
 const pages = {
-  "/": DashboardPage,
+  "/": () => <DashboardPage reference={dashboardReference} />,
   "/ventas": PointOfSalePage,
   "/inventario": InventoryPage,
   "/compras": PurchasesPage,
@@ -26,7 +29,7 @@ const pages = {
   "/cuentas-por-cobrar": ReceivablesPage,
   "/cuentas-por-pagar": PayablesPage,
   "/configuracion": SettingsPage,
-  "/ayuda": HelpPage,
+  "/ayuda": () => <HelpPage reference={helpReference} />,
 };
 
 export function RepuestosFelixPos() {

@@ -9,8 +9,8 @@ function intensityClass(value, max) {
   if (r > 0.15) return "bg-primary/10";
   return "bg-muted";
 }
-function PeakHoursHeatmap({ days, hours, values }) {
-  const max = Math.max(...values.flat());
+function PeakHoursHeatmap({ days = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"], hours = ["8a", "9a", "10a", "11a", "12p", "1p", "2p", "3p", "4p", "5p", "6p"], values }) {
+  const max = values ? Math.max(1, ...values.flat()) : 1;
   return (
     <section className="flex h-full flex-col rounded-2xl border border-border bg-card p-5">
       <div className="flex items-center justify-between">
@@ -28,10 +28,10 @@ function PeakHoursHeatmap({ days, hours, values }) {
                   {day}
                 </span>
                 {hours.map((hour, h) => {
-                  const v = values[d][h];
+                  const v = values?.[d][h];
                   return (
                     <div
-                      title={`${day} ${hour}: ${v} facturas`}
+                      title={values ? `${day} ${hour}: ${v} facturas` : undefined}
                       className={cn(
                         "aspect-square rounded-md transition-transform hover:scale-110",
                         intensityClass(v, max),
@@ -54,6 +54,7 @@ function PeakHoursHeatmap({ days, hours, values }) {
           </div>
         </div>
       </div>
+      {!values && <p className="mt-4 text-xs text-muted-foreground">Las facturas registran la fecha, sin detalle por hora.</p>}
       <div className="mt-4 flex items-center justify-end gap-1.5 text-[11px] text-muted-foreground">
         {"Menos"}
         <span className="h-3 w-3 rounded bg-muted" />

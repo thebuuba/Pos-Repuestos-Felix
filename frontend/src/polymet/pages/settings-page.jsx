@@ -23,45 +23,96 @@ import { SelectTrigger2 } from "../../components/ui/select.jsx";
 import { SelectValue2 } from "../../components/ui/select.jsx";
 import { SelectContent2 } from "../../components/ui/select.jsx";
 import { SelectItem2 } from "../../components/ui/select.jsx";
-import { PRICE_LEVELS } from "../data/pos-data.js";
+import { PRICE_LEVELS } from "../../data/sales-options.js";
 import { Textarea } from "../../components/ui/textarea.jsx";
 import { Switch2 } from "../../components/ui/switch.jsx";
-import { useState } from "react";
+import { useRef, useState } from "react";
 var TAB_CLASS =
   "gap-2 rounded-lg px-3.5 data-[state=active]:bg-card data-[state=active]:shadow-sm";
 function SettingsPage() {
   const {
-    settings,
+    settings, runtime,
     updateSettings,
     formulas,
     suppliers,
     saveFormula,
     deleteFormula,
   } = usePosStore();
-  const [business, setBusiness] = useState(settings.business);
-  const [billing, setBilling] = useState({
+  const [drafts, setDrafts] = useState({});
+  const [request, setRequest] = useState(null);
+  const [error, setError] = useState(null);
+  const sending = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const business = drafts.negocio?.value ?? settings.business;
+  const billing = drafts.facturacion?.value ?? {
+    ...settings,
     itbisRate: String(settings.itbisRate),
     rounding: String(settings.rounding),
-    defaultPriceLevel: settings.defaultPriceLevel,
-    allowNegativeStock: settings.allowNegativeStock,
-    ticketFooter: settings.ticketFooter,
-    printer: settings.printer,
-  });
+  };
+  const edit = (section, value) => {
+    if (sending.current || request) return;
+    setError(null);
+    setDrafts(prev => ({ ...prev, [section]: {
+      databaseId: settings.databaseId, version: settings.version, ...prev[section], value,
+    } }));
+  };
+  const setBusiness = value => edit("negocio", value);
+  const setBilling = value => edit("facturacion", value);
+  const discard = section => {
+    setError(null);
+    setDrafts(prev => { const next = { ...prev }; delete next[section]; return next; });
+  };
   const [ncf, setNcf] = useState(settings.ncf);
   const usage = suppliers.reduce((acc, s) => {
     acc[s.formulaId] = (acc[s.formulaId] ?? 0) + 1;
     return acc;
   }, {});
-  const save = (patch, label) => {
-    updateSettings(patch);
-    ue.success(`${label} guardado`);
+  const save = async (patch, label) => {
+    const section = patch.business ? "negocio" : patch.ncf ? "ncf" : "facturacion";
+    if (sending.current || (request && request.section !== section)) return;
+    const draft = drafts[section];
+    if (runtime && !request && (!draft || draft.databaseId !== settings.databaseId || draft.version !== settings.version)) {
+      setError("La configuración cambió. Carga los datos actuales antes de editar.");
+      return;
+    }
+    if (runtime && section === "facturacion" && (!/^\d{1,3}(?:\.\d{1,4})?$/.test(patch.itbisRate) || Number(patch.itbisRate) > 100)) {
+      setError("Indica un ITBIS entre 0 y 100 %, con hasta cuatro decimales.");
+      return;
+    }
+    const dto = request?.dto ?? (runtime ? { ...patch, databaseId: draft.databaseId, version: draft.version } : patch);
+    sending.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      await updateSettings(dto);
+      discard(section);
+      setRequest(null);
+      ue.success(`${label} guardado`);
+    } catch (cause) {
+      setError(cause.message);
+      setRequest(cause.uncertain ? { section, dto } : null);
+    } finally {
+      sending.current = false;
+      setBusy(false);
+    }
   };
+  const controls = section => {
+    const draft = drafts[section];
+    return runtime && draft && !request && (
+      <Button type="button" variant="outline" disabled={busy} className="ml-2 mt-6 rounded-xl" onClick={() => discard(section)}>
+        {draft.version !== settings.version || draft.databaseId !== settings.databaseId ? "Cargar datos actuales" : "Descartar cambios"}
+      </Button>
+    );
+  };
+  const saveDisabled = section => busy || (runtime && !drafts[section]) || (request && request.section !== section);
+  const saveLabel = section => busy ? "Confirmando…" : request?.section === section ? "Reintentar" : "Guardar cambios";
   return (
     <div className="space-y-6">
       <PageHeader
         title="Configuración"
         description="Datos del negocio, fórmulas de precios, comprobantes fiscales y facturación."
       />
+      {error && <p role="alert" className="text-sm text-primary">{error}</p>}
       <Tabs2 defaultValue="negocio" className="space-y-6">
         <TabsList2 className="h-auto flex-wrap justify-start gap-1 rounded-xl bg-muted p-1">
           <TabsTrigger2 value="negocio" className={TAB_CLASS}>
@@ -87,9 +138,9 @@ function SettingsPage() {
             description="Aparecen en el ticket y en los reportes."
             icon={Building}
           >
-            <div className="grid max-w-3xl gap-4 sm:grid-cols-2">
-              <Field label="Nombre comercial">
-                <Input
+            <fieldset disabled={busy || Boolean(request)} className="grid min-w-0 max-w-3xl gap-4 sm:grid-cols-2">
+              <Field label="Nombre comercial" htmlFor="business-name">
+                <Input id="business-name"
                   value={business.name}
                   onChange={(e) =>
                     setBusiness({
@@ -100,8 +151,8 @@ function SettingsPage() {
                   className={inputClass}
                 />
               </Field>
-              <Field label="RNC">
-                <Input
+              <Field label="RNC" htmlFor="business-rnc">
+                <Input id="business-rnc"
                   value={business.rnc}
                   onChange={(e) =>
                     setBusiness({
@@ -112,8 +163,8 @@ function SettingsPage() {
                   className={inputClass}
                 />
               </Field>
-              <Field label="Teléfono">
-                <Input
+              <Field label="Teléfono" htmlFor="business-phone">
+                <Input id="business-phone"
                   value={business.phone}
                   onChange={(e) =>
                     setBusiness({
@@ -124,8 +175,8 @@ function SettingsPage() {
                   className={inputClass}
                 />
               </Field>
-              <Field label="Correo">
-                <Input
+              <Field label="Correo" htmlFor="business-email">
+                <Input id="business-email"
                   value={business.email}
                   onChange={(e) =>
                     setBusiness({
@@ -136,8 +187,8 @@ function SettingsPage() {
                   className={inputClass}
                 />
               </Field>
-              <Field label="Dirección" className="sm:col-span-2">
-                <Input
+              <Field label="Dirección" htmlFor="business-address" className="sm:col-span-2">
+                <Input id="business-address"
                   value={business.address}
                   onChange={(e) =>
                     setBusiness({
@@ -148,8 +199,9 @@ function SettingsPage() {
                   className={inputClass}
                 />
               </Field>
-            </div>
+            </fieldset>
             <Button
+              disabled={saveDisabled("negocio")}
               className="mt-6 rounded-xl"
               onClick={() =>
                 save(
@@ -161,17 +213,19 @@ function SettingsPage() {
               }
             >
               <Save />
-              {"Guardar cambios"}
+              {saveLabel("negocio")}
             </Button>
+            {controls("negocio")}
           </SectionCard>
         </TabsContent2>
         <TabsContent2 value="precios" className="mt-0">
           <SectionCard
             title="Fórmulas de precios"
-            description="Se guardan al escribir. Cada suplidor usa una para calcular P1, P2 y P3."
+            description={runtime ? "Guarda cada fórmula para aplicar sus porcentajes en las compras del suplidor." : "Se guardan al escribir. Cada suplidor usa una para calcular P1, P2 y P3."}
             icon={Calculator}
           >
             <PriceFormulasEditor
+              runtime={runtime}
               formulas={formulas}
               rounding={settings.rounding}
               usage={usage}
@@ -183,9 +237,10 @@ function SettingsPage() {
         <TabsContent2 value="ncf" className="mt-0">
           <SectionCard
             title="Secuencias de comprobantes"
-            description="Rangos autorizados por la DGII. El sistema asigna el siguiente NCF en cada factura."
+            description={runtime ? "La emisión de NCF requiere rangos autorizados y configurados." : "Rangos autorizados por la DGII. El sistema asigna el siguiente NCF en cada factura."}
             icon={FileBadge}
           >
+            {runtime ? <p className="text-sm text-muted-foreground">Emisión fiscal pendiente de habilitación.</p> : <>
             <div className="grid gap-4 md:grid-cols-2">
               {ncf.map((n, i) => {
                 const used = Math.min(100, (n.next / n.end) * 100);
@@ -299,14 +354,18 @@ function SettingsPage() {
               <Save />
               {"Guardar secuencias"}
             </Button>
+            </>}
           </SectionCard>
         </TabsContent2>
         <TabsContent2 value="facturacion" className="mt-0">
           <SectionCard title="Facturación e impresión" icon={Printer}>
-            <div className="grid max-w-3xl gap-4 sm:grid-cols-3">
-              <Field label="ITBIS %">
-                <Input
+            <fieldset disabled={busy || Boolean(request)} className="grid min-w-0 max-w-3xl gap-4 sm:grid-cols-3">
+              <Field label="ITBIS %" htmlFor="billing-tax">
+                <Input id="billing-tax"
                   type="number"
+                  min="0"
+                  max="100"
+                  step="0.0001"
                   value={billing.itbisRate}
                   onChange={(e) =>
                     setBilling({
@@ -317,7 +376,7 @@ function SettingsPage() {
                   className={inputClass}
                 />
               </Field>
-              <Field label="Redondear precios a" hint="Al calcular con fórmula">
+              <Field label="Redondear precios a" htmlFor="billing-rounding" hint="Al calcular con fórmula">
                 <Select2
                   value={billing.rounding}
                   onValueChange={(v) =>
@@ -327,7 +386,7 @@ function SettingsPage() {
                     })
                   }
                 >
-                  <SelectTrigger2 className={inputClass}>
+                  <SelectTrigger2 id="billing-rounding" className={inputClass}>
                     <SelectValue2 />
                   </SelectTrigger2>
                   <SelectContent2>
@@ -339,9 +398,9 @@ function SettingsPage() {
                   </SelectContent2>
                 </Select2>
               </Field>
-              <Field label="Precio por defecto en ventas">
+              <Field label="Precio por defecto en ventas" htmlFor="billing-level">
                 <Select2
-                  value={billing.defaultPriceLevel}
+                  value={billing.defaultPriceLevel ?? ""}
                   onValueChange={(v) =>
                     setBilling({
                       ...billing,
@@ -349,7 +408,7 @@ function SettingsPage() {
                     })
                   }
                 >
-                  <SelectTrigger2 className={inputClass}>
+                  <SelectTrigger2 id="billing-level" className={inputClass}>
                     <SelectValue2 />
                   </SelectTrigger2>
                   <SelectContent2>
@@ -361,9 +420,9 @@ function SettingsPage() {
                   </SelectContent2>
                 </Select2>
               </Field>
-              <Field label="Impresora" className="sm:col-span-3">
+              <Field label="Impresora" htmlFor="billing-printer" className="sm:col-span-3">
                 <Select2
-                  value={billing.printer}
+                  value={billing.printer ?? ""}
                   onValueChange={(v) =>
                     setBilling({
                       ...billing,
@@ -371,7 +430,7 @@ function SettingsPage() {
                     })
                   }
                 >
-                  <SelectTrigger2 className={inputClass}>
+                  <SelectTrigger2 id="billing-printer" className={inputClass}>
                     <SelectValue2 />
                   </SelectTrigger2>
                   <SelectContent2>
@@ -388,10 +447,10 @@ function SettingsPage() {
                 </Select2>
               </Field>
               <Field
-                label="Mensaje al pie del ticket"
+                label="Mensaje al pie del ticket" htmlFor="billing-footer"
                 className="sm:col-span-3"
               >
-                <Textarea
+                <Textarea id="billing-footer"
                   value={billing.ticketFooter}
                   onChange={(e) =>
                     setBilling({
@@ -409,11 +468,12 @@ function SettingsPage() {
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {
-                      "Si está apagado, el punto de venta bloquea artículos agotados."
+                      runtime ? "El servicio exige existencias suficientes para confirmar la venta." : "Si está apagado, el punto de venta bloquea artículos agotados."
                     }
                   </p>
                 </div>
                 <Switch2
+                  disabled={Boolean(runtime)}
                   checked={billing.allowNegativeStock}
                   onCheckedChange={(v) =>
                     setBilling({
@@ -423,13 +483,14 @@ function SettingsPage() {
                   }
                 />
               </label>
-            </div>
+            </fieldset>
             <Button
+              disabled={saveDisabled("facturacion")}
               className="mt-6 rounded-xl"
               onClick={() =>
                 save(
                   {
-                    itbisRate: Math.max(0, Number(billing.itbisRate) || 0),
+                    itbisRate: runtime ? billing.itbisRate : Number(billing.itbisRate),
                     rounding: Number(billing.rounding) || 0,
                     defaultPriceLevel: billing.defaultPriceLevel,
                     allowNegativeStock: billing.allowNegativeStock,
@@ -441,8 +502,9 @@ function SettingsPage() {
               }
             >
               <Save />
-              {"Guardar cambios"}
+              {saveLabel("facturacion")}
             </Button>
+            {controls("facturacion")}
           </SectionCard>
         </TabsContent2>
       </Tabs2>

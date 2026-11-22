@@ -46,6 +46,8 @@ var BUCKET_STYLE = {
   },
 };
 function AccountsView({
+  readOnly = false,
+  unavailable = false,
   docs,
   parties,
   partyLabel,
@@ -60,17 +62,17 @@ function AccountsView({
   const [paying, setPaying] = useState(null);
   const partyName = (id) => parties.find((p) => p.id === id)?.name ?? "—";
   const open = docs.filter((d) => balanceOf(d) > 0);
-  const aging = agingSummary(open);
-  const totalOpen = Object.values(aging).reduce((s, v) => s + v, 0);
-  const overdue = totalOpen - aging.corriente;
+  const aging = agingSummary(open.filter(d => d.dueDate));
+  const totalOpen = open.reduce((s,d) => s + balanceOf(d),0);
+  const overdue = Object.values(aging).reduce((s,v) => s+v,0) - aging.corriente;
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return docs
       .filter((d) => showPaid || balanceOf(d) > 0)
-      .filter((d) => partyId === "all" || d.partyId === partyId)
+      .filter((d) => partyId === "all" || String(d.partyId) === partyId)
       .filter(
         (d) =>
-          bucket === "all" || (balanceOf(d) > 0 && agingBucket(d) === bucket),
+          bucket === "all" || (d.dueDate && balanceOf(d) > 0 && agingBucket(d) === bucket),
       )
       .filter(
         (d) =>
@@ -78,27 +80,28 @@ function AccountsView({
           d.document.toLowerCase().includes(q) ||
           partyName(d.partyId).toLowerCase().includes(q),
       )
-      .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+      .sort((a, b) => (a.dueDate ?? a.date).localeCompare(b.dueDate ?? b.date));
   }, [docs, showPaid, partyId, bucket, query, parties]);
   const filteredBalance = rows.reduce((s, d) => s + balanceOf(d), 0);
   return (
     <div className="space-y-6">
+      {(readOnly || unavailable) && <p role="status" className="rounded-xl border border-border bg-card p-4 text-sm">{unavailable ? "Los saldos de suplidores están pendientes de conciliación con los históricos importados." : "Consulta de ventas a crédito. El registro de abonos y los vencimientos están pendientes de habilitación."}</p>}
       <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
         <div className="rounded-2xl bg-primary p-5 text-primary-foreground">
           <p className="text-sm text-primary-foreground/80">
-            {"Balance pendiente"}
+            {readOnly ? "Ventas a crédito del sistema" : "Balance pendiente"}
           </p>
-          <MoneyDisplay
+          {unavailable ? <p className="mt-1 text-3xl">Pendiente</p> : <MoneyDisplay
             value={totalOpen}
             className="mt-1 text-[34px] leading-tight"
             symbolClassName="text-primary-foreground/70"
             centsClassName="text-primary-foreground/55"
-          />
+          />}
           <div className="mt-4 grid grid-cols-2 gap-3 border-t border-primary-foreground/20 pt-4 text-sm">
             <div>
               <p className="text-xs text-primary-foreground/70">{"Vencido"}</p>
               <p className="font-semibold tabular-nums">
-                {formatMoney(overdue)}
+                {unavailable || readOnly ? "Sin vencimientos confirmados" : formatMoney(overdue)}
               </p>
             </div>
             <div>
@@ -140,6 +143,7 @@ function AccountsView({
               <button
                 type="button"
                 onClick={() => setBucket(bucket === b.key ? "all" : b.key)}
+                disabled={readOnly || unavailable}
                 className={cn(
                   "rounded-xl border p-2.5 text-left transition-colors",
                   bucket === b.key
@@ -158,7 +162,7 @@ function AccountsView({
                   {b.label}
                 </span>
                 <span className="mt-1 block text-sm font-semibold tabular-nums">
-                  {formatMoney(aging[b.key])}
+                  {readOnly || unavailable ? "—" : formatMoney(aging[b.key])}
                 </span>
               </button>
             ))}
@@ -187,7 +191,7 @@ function AccountsView({
                 {"s"}
               </SelectItem2>
               {parties.map((p) => (
-                <SelectItem2 value={p.id} key={p.id}>
+                <SelectItem2 value={String(p.id)} key={p.id}>
                   {p.name}
                 </SelectItem2>
               ))}
@@ -201,8 +205,8 @@ function AccountsView({
         {rows.length === 0 ? (
           <EmptyState
             icon={CircleCheck}
-            title="Todo al día"
-            description="No hay documentos pendientes con estos filtros."
+            title={unavailable ? "Conciliación pendiente" : readOnly ? "Sin ventas a crédito registradas" : "Todo al día"}
+            description={unavailable ? "Los históricos se conservan. Todavía no hay un saldo conciliado para mostrar." : readOnly ? "Los saldos de apertura se consultan en Clientes. Esta tabla muestra las ventas a crédito del sistema nuevo." : "No hay documentos pendientes con estos filtros."}
           />
         ) : (
           <div className="overflow-x-auto">
@@ -246,10 +250,10 @@ function AccountsView({
                         {partyName(d.partyId)}
                       </td>
                       <td className="px-3 py-3 text-muted-foreground">
-                        {formatDate(d.dueDate)}
+                        {d.dueDate ? formatDate(d.dueDate) : "Sin vencimiento registrado"}
                       </td>
                       <td className="px-3 py-3">
-                        {bal === 0 ? (
+                        {!d.dueDate ? "Pendiente" : bal === 0 ? (
                           <span className="rounded-full border border-emerald-600/40 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
                             {"Saldada"}
                           </span>
@@ -281,6 +285,7 @@ function AccountsView({
                           <Button
                             size="sm"
                             className="rounded-lg"
+                            disabled={readOnly || unavailable}
                             onClick={() => setPaying(d)}
                           >
                             {verb}
@@ -302,7 +307,7 @@ function AccountsView({
           <span>
             {"Balance filtrado: "}
             <span className="font-semibold text-foreground">
-              {formatMoney(filteredBalance)}
+              {unavailable ? "Pendiente" : formatMoney(filteredBalance)}
             </span>
           </span>
         </div>

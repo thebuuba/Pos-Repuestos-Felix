@@ -108,7 +108,7 @@ test('deactivation preserves document history and refuses customers with outstan
   const productId = (await get()).state.productos.find(p => p.codigo === 'H1').id;
   await confirmed('suplidores/' + sid, { version: 1 }, 'DELETE');
   for (const condicion of ['Contado', 'Credito']) {
-    const id = (await confirmed('clientes', { nombre: 'Histórico ' + condicion })).result.id;
+    const id = (await confirmed('clientes', { nombre: 'Histórico ' + condicion, limiteCredito: 20 })).result.id;
     const sale = await confirmed('ventas', { clienteId: id, condicion, tipoComprobante: 'B02',
       items: [{ productoId: productId, cantidad: 1, nivelPrecio: 'precio1' }] });
     if (condicion === 'Credito') await rejected(409, 'clientes/' + id, { version: 1 }, 'DELETE');

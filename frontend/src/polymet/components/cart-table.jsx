@@ -6,7 +6,7 @@ import { TriangleAlert } from "lucide-react";
 import { Minus } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import { Plus } from "lucide-react";
-import { formatMoney } from "../lib/format.js";
+import { formatMoney, formatUnitMoney } from "../lib/format.js";
 var LEVEL_LABEL = {
   p1: "P1",
   p2: "P2",
@@ -102,7 +102,7 @@ function CartTable({ lines, onQuantityChange, onRemove, onClear }) {
                           type="button"
                           onClick={() =>
                             line.quantity > 1
-                              ? onQuantityChange(line.key, line.quantity - 1)
+                              ? onQuantityChange(line.key, (Math.round(line.quantity * 100) - 100) / 100)
                               : onRemove(line.key)
                           }
                           className="flex h-full w-8 items-center justify-center text-muted-foreground hover:text-foreground"
@@ -121,7 +121,7 @@ function CartTable({ lines, onQuantityChange, onRemove, onClear }) {
                         <button
                           type="button"
                           onClick={() =>
-                            onQuantityChange(line.key, line.quantity + 1)
+                            onQuantityChange(line.key, (Math.round(line.quantity * 100) + 100) / 100)
                           }
                           className="flex h-full w-8 items-center justify-center text-muted-foreground hover:text-foreground"
                           aria-label="Sumar"
@@ -131,7 +131,7 @@ function CartTable({ lines, onQuantityChange, onRemove, onClear }) {
                       </div>
                     </td>
                     <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">
-                      {formatMoney(line.unitPrice)}
+                      {formatUnitMoney(line.unitPrice)}
                     </td>
                     <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">
                       {formatMoney(line.itbis)}

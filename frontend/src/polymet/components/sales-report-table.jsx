@@ -11,12 +11,7 @@ import { Ban } from "lucide-react";
 import { ConfirmDialog } from "./confirm-dialog.jsx";
 import { toast as ue } from "sonner";
 import { useState } from "react";
-var METHOD_LABEL = {
-  efectivo: "Efectivo",
-  tarjeta: "Tarjeta",
-  transferencia: "Transferencia",
-  credito: "Crédito",
-};
+import { paymentLabel } from "../lib/sales-analytics.js";
 var STATUS_UI = {
   pagada: "border-emerald-600/40 text-emerald-700 dark:text-emerald-400",
   pendiente: "border-foreground/50 text-foreground",
@@ -41,16 +36,15 @@ function SalesReportTable({ sales, onVoid }) {
         <div>
           <h2 className="text-base font-semibold">{"Facturas del período"}</h2>
           <p className="text-xs text-muted-foreground">
-            {
-              "Busca y anula facturas. Al anular, la mercancía vuelve al inventario."
-            }
+            {onVoid ? "Busca y anula facturas. Al anular, la mercancía vuelve al inventario." : "Busca por número de registro, NCF o cliente. La anulación no está habilitada."}
           </p>
         </div>
         <div className="relative w-full sm:w-72">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Buscar facturas"
+            onChange={(e) => { setQuery(e.target.value); setLimit(15); }}
             placeholder="Factura, NCF o cliente…"
             className="h-10 rounded-xl pl-9"
           />
@@ -96,7 +90,7 @@ function SalesReportTable({ sales, onVoid }) {
                     {s.customerName}
                   </td>
                   <td className="px-3 py-3 text-muted-foreground">
-                    {METHOD_LABEL[s.method]}
+                    {paymentLabel(s)}
                   </td>
                   <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">
                     {formatMoney(s.itbis)}
@@ -111,11 +105,11 @@ function SalesReportTable({ sales, onVoid }) {
                         STATUS_UI[s.status],
                       )}
                     >
-                      {s.status}
+                      {s.status ?? "Registrada"}
                     </span>
                   </td>
                   <td className="px-5 py-3 text-right">
-                    {s.status !== "anulada" && (
+                    {onVoid && s.status !== "anulada" && (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -156,9 +150,9 @@ function SalesReportTable({ sales, onVoid }) {
         title={`¿Anular la factura ${toVoid?.number ?? ""}?`}
         description="La mercancía regresará al inventario y, si era a crédito, se elimina la cuenta por cobrar."
         confirmLabel="Anular factura"
-        onConfirm={() => {
+        onConfirm={async () => {
           if (toVoid) {
-            onVoid(toVoid.id);
+            await onVoid(toVoid.id);
             ue(`Factura ${toVoid.number} anulada`);
           }
           setToVoid(null);

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { PosStoreContext } from './pos-context.jsx';
 import { catalogCategories } from './catalog-options.js';
+import { purchaseOperation } from './operational-purchases.js';
 
 function productFromSnapshot(p, databaseId) {
   return {
@@ -60,6 +61,7 @@ function presentation(snapshot) {
         pricesExact: line.preciosExactos, prices: { p1: line.p1, p2: line.p2, p3: line.p3 } })),
     })).sort(newestFirst) ?? [],
     receivables: [],
+    payables: [],
   };
 }
 
@@ -108,6 +110,8 @@ function durableAction(client, operation) {
 function actions(client) {
   const record = (resource, fields) => durableAction(client, dto => recordOperation(resource, dto, fields));
   return {
+    registerSale: durableAction(client, ({ databaseId, ...payload }) => ({ databaseId, method: 'POST', path: '/api/ventas', payload })),
+    registerPurchase: durableAction(client, purchaseOperation),
     saveProduct: record('productos', productPayload), deleteProduct: record('productos'),
     saveCustomer: record('clientes', c => writeFields(c, customerFields)), deleteCustomer: record('clientes'),
     saveSupplier: record('suplidores', s => writeFields(s, supplierFields)), deleteSupplier: record('suplidores'),

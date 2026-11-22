@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { saleLineAmounts } from '../domain/sale-pricing.js';
 import { validateState } from './legacy-state.js';
-import { OperationError, fail, text, productCode, id, money, quantityUnits, costUnits, decimalUnits } from './operation-fields.js';
+import { OperationError, fail, text, productCode, id, money, cents, quantityUnits, costUnits, decimalUnits } from './operation-fields.js';
 import { contactOperation, settingsOperation } from './contact-operations.js';
 import { backupLayout, exportBackup, rows, tables } from './relational-backup.js';
 export { fail } from './operation-fields.js';
@@ -150,7 +151,7 @@ async function productOperation(client, method, productId, body) {
   return { id: savedId };
 }
 async function sale(client, body) {
-  const customer = (await client.query('SELECT * FROM clientes WHERE id=$1 AND activo FOR SHARE', [id(body.clienteId)])).rows[0];
+  const customer = (await client.query('SELECT * FROM clientes WHERE id=$1 AND activo FOR UPDATE', [id(body.clienteId)])).rows[0];
   if (!customer) fail('Selecciona un cliente activo.');
   if (!['Contado', 'Credito'].includes(body.condicion) || !['B01', 'B02', 'B14'].includes(body.tipoComprobante)) fail('Condición o tipo de comprobante inválido.');
   if (!Array.isArray(body.items) || !body.items.length || body.items.length > 1000) fail('La venta debe tener entre 1 y 1000 líneas.');
@@ -169,15 +170,22 @@ async function sale(client, body) {
     const p = products.get(productId);
     if (!p?.activo || p.stock < quantity) fail('Producto no disponible o existencias insuficientes. Actualiza el carrito.', 409);
   }
-  const config = (await client.query('SELECT tasa_itbis FROM configuracion WHERE id=1 FOR SHARE')).rows[0];
+  const config = (await client.query('SELECT tasa_itbis,version FROM configuracion WHERE id=1 FOR SHARE')).rows[0];
+  if (body.versionConfiguracion !== undefined && id(body.versionConfiguracion) !== number(config.version)) fail('La configuración cambió. Actualiza la venta.', 409);
   const rate = BigInt(config.tasa_itbis.replace('.', ''));
   const lines = items.map(item => {
     const p = products.get(item.productoId);
-    const price = costUnits(p[item.nivelPrecio], 'el precio'); const total = lineCents(price, item.quantity, 10000n);
-    const divisor = 1000000n + (p.gravado ? rate : 0n); const base = (total * 1000000n + divisor / 2n) / divisor;
-    return { item, p, price, total, base, tax: total - base };
+    if (item.versionProducto !== undefined && id(item.versionProducto) !== number(p.version)) fail('El artículo cambió. Actualiza el carrito para confirmar su precio y existencia.', 409);
+    const price = costUnits(p[item.nivelPrecio], 'el precio');
+    return { item, p, price, ...saleLineAmounts(price, item.quantity, p.gravado ? rate : 0n) };
   });
   const totals = lines.reduce((sum, line) => ({ base: sum.base + line.base, tax: sum.tax + line.tax, total: sum.total + line.total }), { base: 0n, tax: 0n, total: 0n });
+  if (body.condicion === 'Credito') {
+    if (customer.es_contado || customer.limite_credito === null) fail('Configura el límite de crédito de este cliente antes de vender a crédito.');
+    const debt = (await client.query("SELECT (c.saldo_apertura + COALESCE((SELECT sum(total) FROM ventas WHERE cliente_id=c.id AND condicion='Credito'),0))::text AS deuda FROM clientes c WHERE c.id=$1", [customer.id])).rows[0].deuda;
+    const debtCents = debt.startsWith('-') ? -cents(debt.slice(1)) : cents(debt);
+    if (debtCents + totals.total > cents(customer.limite_credito)) fail('La venta supera el crédito disponible del cliente.', 409);
+  }
   const header = (await client.query(`INSERT INTO ventas(cliente_id,cliente_nombre,cliente_rnc,condicion,tipo_comprobante,base,itbis,total)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`, [customer.id, customer.nombre, customer.rnc, body.condicion, body.tipoComprobante, money(totals.base), money(totals.tax), money(totals.total)])).rows[0];
   for (const line of lines) {
@@ -198,15 +206,28 @@ async function purchase(client, body) {
   const lines = body.items.map(item => {
     const quantity = quantityUnits(item.cantidad, 'la cantidad', 0.01);
     const cost = costUnits(item.costo, 'el costo');
+    let expected;
+    if (Object.hasOwn(item, 'productoId') || Object.hasOwn(item, 'versionProducto')) {
+      expected = item.productoId === null && item.versionProducto === null ? null :
+        { id: id(item.productoId, 'el artículo'), version: id(item.versionProducto, 'la versión del artículo') };
+    }
     return { code: productCode(item.codigo), name: text(item.nombre, 'la descripción'),
-      quantity, amounts: prices(item, cost), total: lineCents(cost, quantity, 10000n) };
+      expected, quantity, amounts: prices(item, cost), total: lineCents(cost, quantity, 10000n) };
   });
   const codes = [...new Set(lines.map(line => line.code))].sort();
   for (const code of codes) await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', ['producto:' + code]);
   // Lock existing products by id (same order as sales and catalog edits).
-  const products = (await client.query('SELECT codigo,stock FROM productos WHERE codigo=ANY($1::text[]) ORDER BY id FOR UPDATE', [codes])).rows;
+  const products = (await client.query('SELECT id,version,activo,codigo,stock FROM productos WHERE codigo=ANY($1::text[]) ORDER BY id FOR UPDATE', [codes])).rows;
+  const byCode = new Map(products.map(product => [product.codigo, product]));
   const stocks = new Map(products.map(p => [p.codigo, quantityUnits(p.stock, 'las existencias')]));
   for (const line of lines) {
+    const product = byCode.get(line.code);
+    if (line.expected === null && product && !product.activo)
+      fail(`El código «${line.code}» pertenece a un artículo inactivo. Revisa esa línea en Inventario.`, 409);
+    if ((line.expected === null && product) || (line.expected &&
+        (!product?.activo || number(product.id) !== line.expected.id || number(product.version) !== line.expected.version))) {
+      fail(`El artículo «${line.code}» cambió. Revisa sus datos actuales antes de confirmar la compra.`, 409);
+    }
     const stock = (stocks.get(line.code) ?? 0n) + line.quantity;
     stocks.set(line.code, quantityUnits(quantityText(stock), 'las existencias'));
   }

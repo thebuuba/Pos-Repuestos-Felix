@@ -58,7 +58,7 @@ async function write(route, payload, method = 'POST') {
   });
 }
 async function openInventory() {
-  assert.equal((await page.goto(origin + '/')).status(), 200);
+  assert.equal((await page.goto(origin + '/inventario')).status(), 200);
   await page.getByRole('heading', { name: 'Catálogo de artículos e inventario', exact: true }).waitFor({ timeout: 6000 });
   assert.equal(new URL(page.url()).pathname, '/inventario');
   await page.getByRole('button', { name: 'Nuevo artículo', exact: true }).waitFor();
@@ -283,7 +283,7 @@ test('restoring another generation rejects an open draft without rewriting its i
   assert.equal(await confirmedProduct('UI-GENERACION'), undefined);
 });
 
-test('inventory reflows on mobile and private paths and unavailable modules remain honest', { timeout: 60_000 }, async () => {
+test('inventory reflows on mobile, private paths stay private and sales use the operational route', { timeout: 60_000 }, async () => {
   await openInventory();
   for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 844 });
@@ -293,7 +293,8 @@ test('inventory reflows on mobile and private paths and unavailable modules rema
   assert.equal((await fetch(origin + '/frontend/reference.jsx')).status, 404);
   assert.equal((await fetch(origin + '/desconocido')).status, 404);
   await page.goto(origin + '/ventas');
-  assert.equal(await page.getByRole('button', { name: /Guardar factura|Facturar|Cobrar/ }).count(), 0, 'unconnected sales must not execute demo callbacks');
+  await page.getByRole('heading', { name: /Punto de venta/ }).waitFor();
+  assert.equal(await page.getByText(/El módulo de .*está en preparación/).count(),0);
   assert.deepEqual(browserErrors, []);
   assert.deepEqual(externalRequests, []);
 });

@@ -6,13 +6,14 @@ import { SelectTrigger2 } from "../../components/ui/select.jsx";
 import { SelectValue2 } from "../../components/ui/select.jsx";
 import { SelectContent2 } from "../../components/ui/select.jsx";
 import { SelectItem2 } from "../../components/ui/select.jsx";
-import { COMPROBANTES } from "../data/pos-data.js";
-import { CONDITIONS } from "../data/pos-data.js";
+import { COMPROBANTES } from "../../data/sales-options.js";
+import { CONDITIONS } from "../../data/sales-options.js";
 import { User } from "lucide-react";
 import { formatMoney } from "../lib/format.js";
 import { CircleAlert } from "lucide-react";
 import { Fragment } from "react";
 function InvoiceSettingsCard({
+  operational = false,
   customers,
   customerId,
   onCustomerChange,
@@ -37,13 +38,13 @@ function InvoiceSettingsCard({
       <div className="grid gap-4 md:grid-cols-3">
         <div className="space-y-1.5">
           <Label3 className="text-xs text-muted-foreground">{"Cliente"}</Label3>
-          <Select2 value={customerId} onValueChange={onCustomerChange}>
-            <SelectTrigger2 className="h-11 rounded-xl bg-card">
-              <SelectValue2 />
+          <Select2 value={customer ? String(customer.id) : ""} onValueChange={value => onCustomerChange(operational ? Number(value) : value)}>
+            <SelectTrigger2 aria-label="Cliente" className="h-11 rounded-xl bg-card">
+              <SelectValue2 placeholder="Selecciona un cliente" />
             </SelectTrigger2>
             <SelectContent2>
               {customers.map((c) => (
-                <SelectItem2 value={c.id} key={c.id}>
+                <SelectItem2 value={String(c.id)} key={c.id}>
                   {c.name}
                 </SelectItem2>
               ))}
@@ -55,11 +56,11 @@ function InvoiceSettingsCard({
             {"Tipo de comprobante"}
           </Label3>
           <Select2 value={comprobante} onValueChange={onComprobanteChange}>
-            <SelectTrigger2 className="h-11 rounded-xl bg-card">
+            <SelectTrigger2 aria-label="Tipo de comprobante" className="h-11 rounded-xl bg-card">
               <SelectValue2 />
             </SelectTrigger2>
             <SelectContent2>
-              {COMPROBANTES.map((c) => (
+              {COMPROBANTES.filter(c => !operational || c.value !== "B15").map((c) => (
                 <SelectItem2 value={c.value} key={c.value}>
                   {c.label}
                 </SelectItem2>
@@ -75,13 +76,13 @@ function InvoiceSettingsCard({
             value={condition}
             onValueChange={(v) => onConditionChange(v)}
           >
-            <SelectTrigger2 className="h-11 rounded-xl bg-card">
+            <SelectTrigger2 aria-label="Condición" className="h-11 rounded-xl bg-card">
               <SelectValue2 />
             </SelectTrigger2>
             <SelectContent2>
               {CONDITIONS.map((c) => (
                 <SelectItem2 value={c.value} key={c.value}>
-                  {c.label}
+                  {operational && c.value === "credito" ? "Crédito" : c.label}
                 </SelectItem2>
               ))}
             </SelectContent2>
@@ -89,7 +90,7 @@ function InvoiceSettingsCard({
         </div>
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
-        {customer && customer.id !== "c-000" && (
+        {customer && !customer.isCashCustomer && customer.id !== "c-000" && (
           <span className="inline-flex items-center gap-1.5 rounded-lg bg-muted px-2.5 py-1.5 text-muted-foreground">
             <User className="h-3.5 w-3.5" />
             {"RNC/Cédula:"}{" "}
@@ -117,6 +118,7 @@ function InvoiceSettingsCard({
             {"Selecciona un cliente con crédito aprobado"}
           </span>
         )}
+        {operational && <span className="rounded-lg bg-muted px-2.5 py-1.5 text-muted-foreground">Sin emisión de NCF</span>}
         {nextNcf && (
           <span className="inline-flex items-center gap-1.5 rounded-lg bg-muted px-2.5 py-1.5 text-muted-foreground">
             {"NCF a asignar:"}

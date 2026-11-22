@@ -49,6 +49,7 @@ function RecentSalesTable({ sales }) {
             </tr>
           </thead>
           <tbody>
+            {!sales.length && <tr><td colSpan={6} className="px-3 py-3 text-muted-foreground">Sin ventas registradas.</td></tr>}
             {sales.map((s) => (
               <tr
                 className="bg-muted/60 transition-colors hover:bg-muted"
@@ -78,10 +79,10 @@ function RecentSalesTable({ sales }) {
                   <span
                     className={cn(
                       "inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium",
-                      STATUS[s.status].className,
+                      STATUS[s.status]?.className,
                     )}
                   >
-                    {STATUS[s.status].label}
+                    {STATUS[s.status]?.label ?? "Registrada"}
                   </span>
                 </td>
               </tr>

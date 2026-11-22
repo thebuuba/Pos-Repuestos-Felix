@@ -51,10 +51,14 @@ test('el runtime Workers sirve el frontend y protege los datos con la configurac
   assert.equal(html.status, 200);
   assert.match(await html.text(), /type="module" src="\/app\.js"/);
   assert.match(await (await call('/inventario')).text(), /<div id="root"><\/div>/);
-  assert.equal((await call('/app.js')).status, 200);
-  assert.equal((await call('/sw.js')).status, 404);
-  assert.equal((await call('/api/state', { headers: { Cookie: '' } })).status, 401);
-  assert.equal((await call('/src/worker.js')).status, 404);
+  const asset = await call('/app.js');
+  assert.equal(asset.status, 200);
+  assert.ok((await asset.arrayBuffer()).byteLength > 0);
+  for (const [path,status,options] of [['/sw.js',404],['/api/state',401,{headers:{Cookie:''}}],['/src/worker.js',404]]) {
+    const response = await call(path,options);
+    assert.equal(response.status,status);
+    await response.text();
+  }
 });
 
 test('el runtime Workers ejecuta transacciones reales por Hyperdrive local y permite reintentos', async () => {
@@ -78,7 +82,10 @@ test('dos ventas concurrentes en Workers no duplican la última unidad y calcula
   const product = await write('/api/productos', { codigo: 'ULTIMA-WORKER', nombre: 'Pieza runtime', stock: 1, costo: 50, precio1: 118, precio2: 110, precio3: 100 });
   assert.equal(product.status, 200);
   const productId = (await product.json()).result.id;
-  const sale = { clienteId: current.state.clientes[0].id, condicion: 'Credito', tipoComprobante: 'B02', total: 0,
+  const customer = await write('/api/clientes', { nombre: 'Crédito runtime', limiteCredito: 200 });
+  assert.equal(customer.status, 200);
+  const customerId = (await customer.json()).result.id;
+  const sale = { clienteId: customerId, condicion: 'Credito', tipoComprobante: 'B02', total: 0,
     items: [{ productoId: productId, cantidad: 1, nivelPrecio: 'precio1', precio: 0 }] };
   const results = await Promise.all([write('/api/ventas', sale), write('/api/ventas', sale)]);
   assert.deepEqual(results.map(r => r.status).sort(), [200, 409]);
@@ -87,5 +94,5 @@ test('dos ventas concurrentes en Workers no duplican la última unidad y calcula
   assert.equal(latest.state.facturas.length, 1);
   assert.equal(latest.state.facturas[0].total, 118);
   assert.equal(latest.state.facturas[0].itbis, 18);
-  assert.equal(latest.state.clientes[0].deuda, 118);
+  assert.equal(latest.state.clientes.find(c => c.id === customerId).deuda, 118);
 });

@@ -4,20 +4,20 @@ import { ScanBarcode } from "lucide-react";
 import { Input } from "../../components/ui/input.jsx";
 import { Search } from "lucide-react";
 import { cn } from "../../lib/utils.js";
-import { formatMoney } from "../lib/format.js";
+import { formatUnitMoney } from "../lib/format.js";
 import { Minus } from "lucide-react";
 import { Plus } from "lucide-react";
 import { Select2 } from "../../components/ui/select.jsx";
 import { SelectTrigger2 } from "../../components/ui/select.jsx";
 import { SelectValue2 } from "../../components/ui/select.jsx";
 import { SelectContent2 } from "../../components/ui/select.jsx";
-import { PRICE_LEVELS } from "../data/pos-data.js";
+import { PRICE_LEVELS } from "../../data/sales-options.js";
 import { SelectItem2 } from "../../components/ui/select.jsx";
 import { Button } from "../../components/ui/button.jsx";
 import { useMemo } from "react";
 import { useRef } from "react";
 import { useState } from "react";
-function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd }) {
+function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, operational = false }) {
   const [query, setQuery] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [open, setOpen] = useState(false);
@@ -26,6 +26,10 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd }) {
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
+    const rank = product => {
+      if (product.code === query) return 0;
+      return product.code.toLowerCase() === q ? 1 : 2;
+    };
     return products
       .filter(
         (p) =>
@@ -33,17 +37,13 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd }) {
           p.name.toLowerCase().includes(q) ||
           p.brand.toLowerCase().includes(q),
       )
-      .sort((a, b) => {
-        const aExact = a.code.toLowerCase() === q ? -1 : 0;
-        const bExact = b.code.toLowerCase() === q ? -1 : 0;
-        return aExact - bExact;
-      })
+      .sort((a, b) => rank(a) - rank(b))
       .slice(0, 6);
   }, [products, query]);
   const commit = (product) => {
     const target = product ?? results[highlight] ?? results[0];
     if (!target) return;
-    onAdd(target, Math.max(1, quantity));
+    if (onAdd(target, operational ? quantity : Math.max(1, quantity)) === false) return;
     setQuery("");
     setQuantity(1);
     setHighlight(0);
@@ -129,7 +129,7 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd }) {
                         {p.stock === 0 ? "Agotado" : `${p.stock} disp.`}
                       </span>
                       <span className="w-24 shrink-0 text-right font-semibold tabular-nums">
-                        {formatMoney(p.prices[priceLevel])}
+                        {formatUnitMoney((p.pricesExact ?? p.prices)[priceLevel])}
                       </span>
                     </button>
                   </li>
@@ -149,7 +149,7 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd }) {
         <div className="flex h-11 items-center rounded-xl border border-input bg-card">
           <button
             type="button"
-            onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+            onClick={() => setQuantity((q) => Math.max(operational ? 0.01 : 1, (Math.round(Number(q) * 100) - 100) / 100))}
             className="flex h-full w-10 items-center justify-center text-muted-foreground hover:text-foreground"
             aria-label="Restar"
           >
@@ -157,14 +157,16 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd }) {
           </button>
           <input
             type="number"
-            min={1}
+            aria-label="Cantidad"
+            min={operational ? 0.01 : 1}
+            step={operational ? 0.01 : 1}
             value={quantity}
-            onChange={(e) => setQuantity(Number(e.target.value) || 1)}
+            onChange={(e) => setQuantity(operational ? e.target.value : Number(e.target.value) || 1)}
             className="h-full w-full min-w-0 bg-transparent text-center text-sm font-semibold tabular-nums outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
           />
           <button
             type="button"
-            onClick={() => setQuantity((q) => q + 1)}
+            onClick={() => setQuantity((q) => (Math.round(Number(q) * 100) + 100) / 100)}
             className="flex h-full w-10 items-center justify-center text-muted-foreground hover:text-foreground"
             aria-label="Sumar"
           >
@@ -180,7 +182,7 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd }) {
           value={priceLevel}
           onValueChange={(v) => onPriceLevelChange(v)}
         >
-          <SelectTrigger2 className="h-11 rounded-xl bg-card">
+          <SelectTrigger2 aria-label="Nivel de precio" className="h-11 rounded-xl bg-card">
             <SelectValue2 />
           </SelectTrigger2>
           <SelectContent2>

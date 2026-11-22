@@ -3,14 +3,15 @@ import { usePosStore } from "../../data/pos-context.jsx";
 import { PageHeader } from "../components/page-header.jsx";
 import { AccountsView } from "../components/accounts-view.jsx";
 function PayablesPage() {
-  const { payables, suppliers, payPayable } = usePosStore();
+  const { runtime, payables, suppliers, payPayable } = usePosStore();
   return (
     <div className="space-y-6">
       <PageHeader
         title="Cuentas x pagar"
-        description="Facturas de compra a crédito con tus suplidores. Los pagos en efectivo salen de la caja."
+        description={runtime ? "Consulta de obligaciones con suplidores y seguimiento de sus documentos." : "Facturas de compra a crédito con tus suplidores. Los pagos en efectivo salen de la caja."}
       />
       <AccountsView
+        unavailable={!!runtime}
         docs={payables}
         parties={suppliers}
         partyLabel="Suplidor"

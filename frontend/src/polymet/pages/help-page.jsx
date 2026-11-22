@@ -16,17 +16,19 @@ import { Keyboard } from "lucide-react";
 import { Button } from "../../components/ui/button.jsx";
 import { MessageCircle } from "lucide-react";
 import { Phone } from "lucide-react";
-var GUIDES = [
+import { usePosStore } from "../../data/pos-context.jsx";
+const GUIDES = [
   {
     icon: Wallet,
     title: "1. Abre la caja",
-    text: "Cada mañana indica el fondo inicial.",
+    operationalTitle: "1. Consulta la caja",
+    text: "Consulta la disponibilidad del control de efectivo.",
     to: "/caja",
   },
   {
     icon: ShoppingCart,
     title: "2. Factura",
-    text: "Escanea o busca el código y cobra con F9.",
+    text: "Busca un artículo y registra la factura.",
     to: "/ventas",
   },
   {
@@ -38,7 +40,8 @@ var GUIDES = [
   {
     icon: HandCoins,
     title: "4. Cobra créditos",
-    text: "Abona a facturas pendientes de clientes.",
+    operationalTitle: "4. Revisa créditos",
+    text: "Consulta el saldo pendiente de cada cliente.",
     to: "/cuentas-por-cobrar",
   },
   {
@@ -50,7 +53,8 @@ var GUIDES = [
   {
     icon: Wallet,
     title: "6. Cierra la caja",
-    text: "Cuenta el efectivo y compara con lo esperado.",
+    operationalTitle: "6. Revisa los cierres",
+    text: "Consulta la disponibilidad de los cierres de turno.",
     to: "/caja",
   },
 ];
@@ -64,38 +68,44 @@ var SHORTCUTS = [
 var FAQ = [
   {
     q: "¿Cómo se calculan los precios P1, P2 y P3?",
-    a: "Al subir una compra, el costo de la factura se multiplica por el ajuste de la fórmula del suplidor (por ejemplo ×1.062) y a ese costo real se le suma el % de ganancia de cada precio. Puedes cambiar cualquier precio a mano antes de subir la factura, y editar las fórmulas en Configuración › Fórmulas de precios.",
+    a: "En Compras, el factor de costo y los porcentajes de la fórmula determinan los tres precios. Revisa el costo y los precios antes de confirmar la factura. Las fórmulas se editan en Configuración.",
   },
   {
     q: "¿Qué comprobante uso?",
-    a: "B02 (consumo final) para clientes sin RNC. B01 (crédito fiscal) cuando una empresa lo pide; el cliente debe tener RNC registrado. B15 para instituciones del gobierno y B14 para régimen especial.",
+    a: "Selecciona el tipo de documento en Punto de venta. El registro de la venta conserva su tipo. La emisión de una secuencia fiscal autorizada requiere configuración adicional.",
   },
   {
     q: "¿Cómo vendo a crédito?",
-    a: "Elige un cliente con límite de crédito y cambia la condición a Crédito. La factura pasa sola a Cuentas x cobrar con vencimiento a 30 días. El sistema no deja pasar el límite aprobado.",
+    a: "Selecciona el cliente y la condición Crédito. Una venta confirmada suma al saldo del cliente. Consulta ese saldo en Cuentas x cobrar.",
   },
   {
     q: "Me equivoqué en una factura, ¿qué hago?",
-    a: "Ve a Reportes › Facturas del período y anúlala. La mercancía regresa al inventario y, si era a crédito, se elimina la cuenta por cobrar. Luego factura de nuevo.",
+    a: "Busca el registro en Reportes y verifica los artículos e importes. La anulación de facturas todavía no está habilitada.",
   },
   {
     q: "¿Por qué la caja no cuadra?",
-    a: "El efectivo esperado suma el fondo inicial, las ventas en efectivo, las entradas y los cobros en efectivo, y resta salidas y pagos en efectivo. Las ventas con tarjeta o transferencia no entran a la caja. Registra toda salida de dinero en Caja › Entrada / salida.",
+    a: "La apertura, los movimientos y el cierre de efectivo están pendientes de habilitación. En Reportes puedes consultar las ventas registradas por condición.",
   },
   {
     q: "¿Puedo vender un artículo sin existencia?",
-    a: "Por defecto no. Si lo necesitas, actívalo en Configuración › Facturación › Permitir vender sin existencia.",
+    a: "El sistema comprueba las existencias al confirmar cada venta. Revisa la cantidad disponible en Inventario.",
   },
 ];
-function HelpPage() {
+function HelpPage({ reference }) {
+  const { settings } = usePosStore();
+  const phone = reference?.phone ?? settings.business.phone;
+  const digits = phone?.replace(/[^0-9+]/g, "") ?? "";
+  const canCall = /^\+?\d{7,15}$/.test(digits);
+  const shortcuts = reference ? SHORTCUTS : SHORTCUTS.filter(([key]) => key !== "Ctrl K");
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Centro de ayuda"
         description="Guía rápida, atajos y preguntas frecuentes."
       />
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {GUIDES.map((g) => {
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {GUIDES.map((g, index) => {
           const Icon = g.icon;
           return (
             <Link
@@ -108,28 +118,28 @@ function HelpPage() {
               </div>
               <div>
                 <p className="font-semibold group-hover:text-primary">
-                  {g.title}
+                  {reference ? g.title : g.operationalTitle ?? g.title}
                 </p>
-                <p className="text-sm text-muted-foreground">{g.text}</p>
+                <p className="text-sm text-muted-foreground">{reference?.guides[index] ?? g.text}</p>
               </div>
             </Link>
           );
         })}
       </div>
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
         <SectionCard
           title="Preguntas frecuentes"
           icon={LifeBuoy}
           bodyClassName="pt-2"
         >
           <Accordion2 type="single" collapsible={true} className="w-full">
-            {FAQ.map((f) => (
+            {FAQ.map((f, index) => (
               <AccordionItem2 value={f.q} key={f.q}>
                 <AccordionTrigger2 className="text-left text-sm font-medium hover:no-underline">
                   {f.q}
                 </AccordionTrigger2>
                 <AccordionContent2 className="text-sm leading-relaxed text-muted-foreground">
-                  {f.a}
+                  {reference?.answers[index] ?? f.a}
                 </AccordionContent2>
               </AccordionItem2>
             ))}
@@ -138,12 +148,12 @@ function HelpPage() {
         <div className="space-y-4">
           <SectionCard title="Atajos de teclado" icon={Keyboard}>
             <ul className="space-y-2.5">
-              {SHORTCUTS.map(([key, label]) => (
+              {shortcuts.map(([key, label]) => (
                 <li
                   className="flex items-center justify-between gap-3 text-sm"
                   key={key}
                 >
-                  <span className="text-muted-foreground">{label}</span>
+                  <span className="text-muted-foreground">{key === "F9" && !reference ? "Registrar la venta" : label}</span>
                   <kbd className="rounded-md border border-border bg-muted px-2 py-0.5 font-mono text-xs">
                     {key}
                   </kbd>
@@ -157,29 +167,29 @@ function HelpPage() {
               {"¿Necesitas ayuda?"}
             </p>
             <p className="relative mt-1 text-sm text-background/70">
-              {"Soporte de lunes a sábado, 8:00 a. m. – 6:00 p. m."}
+              {reference?.hours ?? (canCall ? "Teléfono de contacto del negocio." : "Configura el teléfono del negocio en Configuración.")}
             </p>
             <div className="relative mt-4 grid gap-2">
-              <Button asChild={true} className="rounded-xl">
+              {reference?.whatsapp && <Button asChild={true} className="rounded-xl">
                 <a
-                  href="https://wa.me/18297823872"
+                  href={reference.whatsapp}
                   target="_blank"
                   rel="noreferrer"
                 >
                   <MessageCircle />
                   {"Escribir por WhatsApp"}
                 </a>
-              </Button>
-              <Button
+              </Button>}
+              {canCall && <Button
                 asChild={true}
                 variant="outline"
                 className="rounded-xl border-background/20 bg-transparent text-background hover:bg-background/10 hover:text-background"
               >
-                <a href="tel:8297823872">
+                <a href={`tel:${digits}`}>
                   <Phone />
-                  {"829-782-3872"}
+                  {phone}
                 </a>
-              </Button>
+              </Button>}
             </div>
           </div>
         </div>

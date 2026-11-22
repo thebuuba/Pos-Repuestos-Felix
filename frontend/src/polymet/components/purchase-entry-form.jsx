@@ -1,6 +1,6 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
-import { pricesFromFormula } from "../lib/pricing.js";
-import { round2 } from "../lib/format.js";
+import { purchaseDecimal, purchaseLineAmounts, purchasePrices, purchaseTotals } from "../../data/operational-purchases.js";
+import { costUnits, decimalUnits, quantityUnits } from "../../../../src/pos/operation-fields.js";
 import { Field } from "./form-field.jsx";
 import { Select2 } from "../../components/ui/select.jsx";
 import { SelectTrigger2 } from "../../components/ui/select.jsx";
@@ -14,7 +14,7 @@ import { cn } from "../../lib/utils.js";
 import { Button } from "../../components/ui/button.jsx";
 import { Plus } from "lucide-react";
 import { CircleCheck } from "lucide-react";
-import { formatMoney } from "../lib/format.js";
+import { formatMoney, formatNumber, formatUnitMoney } from "../lib/format.js";
 import { CATEGORIES } from "../../data/catalog-options.js";
 import { EmptyState } from "./section-card.jsx";
 import { PackageOpen } from "lucide-react";
@@ -23,7 +23,7 @@ import { Trash2 } from "lucide-react";
 import { MoneyDisplay } from "./money-display.jsx";
 import { Upload } from "lucide-react";
 import { Fragment } from "react";
-import { useRef } from "react";
+import { useRef, useMemo } from "react";
 import { useState } from "react";
 var EMPTY_ENTRY = {
   code: "",
@@ -32,96 +32,103 @@ var EMPTY_ENTRY = {
   quantity: "1",
   cost: "",
 };
+function catalogFields(product) {
+  return {
+    productId: product?.id ?? null, productVersion: product?.version ?? null,
+    catalogPrices: product?.pricesExact ?? product?.prices,
+  };
+}
+function catalogChanged(line, product) {
+  return (line.productId ?? null) !== (product?.id ?? null) ||
+    (line.productVersion ?? null) !== (product?.version ?? null);
+}
 function PurchaseEntryForm({
   suppliers,
   formulas,
   products,
   rounding,
+  runtime,
   onSubmit,
 }) {
   const [supplierId, setSupplierId] = useState("");
   const [invoice, setInvoice] = useState("");
-  const [formulaId, setFormulaId] = useState(formulas[0]?.id ?? "");
+  const [formulaId, setFormulaId] = useState(runtime ? "manual" : String(formulas[0]?.id ?? ""));
   const [condition, setCondition] = useState("credito");
   const [entry, setEntry] = useState(EMPTY_ENTRY);
   const [lines, setLines] = useState([]);
   const [tried, setTried] = useState(false);
   const codeRef = useRef(null);
-  const formula = formulas.find((f) => f.id === formulaId);
-  const match = products.find(
-    (p) => p.code.toLowerCase() === entry.code.trim().toLowerCase(),
-  );
-  const suggestionFor = (cost) => {
-    const decimal = cost.startsWith(".") ? `0${cost}` : cost;
+  const [error, setError] = useState(null);
+  const [retryInput, setRetryInput] = useState(null);
+  const [sending, setSending] = useState(false);
+  const [databaseId, setDatabaseId] = useState(runtime?.databaseId);
+  const inFlight = useRef(false);
+  const databaseChanged = databaseId !== runtime?.databaseId;
+  const locked = sending || !!retryInput || databaseChanged;
+  const supplier = suppliers.find(s => String(s.id) === supplierId);
+  const formula = formulas.find(f => String(f.id) === formulaId);
+  const findProduct = code => products.find(p => runtime ? p.code === code : p.code.toLowerCase() === code.trim().toLowerCase());
+  const match = findProduct(entry.code);
+  const entryChanged = runtime && entry.code && catalogChanged(entry, match);
+  const suggestions = useMemo(() => {
+    const query = entry.code.toLowerCase();
+    return products.filter(p => p.code.toLowerCase().includes(query)).slice(0, 100);
+  }, [entry.code, products]);
+  const evaluate = (line, catalogPrices) => {
+    let prices = {}, amounts = {};
     try {
-      return { prices: pricesFromFormula(decimal, formula, rounding) };
+      if (formulaId !== "manual" && !formula) throw new Error("Selecciona una fórmula de precios vigente.");
+      prices = { ...purchasePrices(line.cost, formula, rounding, catalogPrices), ...line.overrides };
+      amounts = purchaseLineAmounts(line.cost, line.quantity);
+      if (line.overrides) {
+        for (const k of PRICE_KEYS) costUnits(purchaseDecimal(prices[k] ?? ""), `el precio ${k.toUpperCase()}`);
+      }
+      return { prices, ...amounts };
     } catch (cause) {
-      return { error: cause.message };
+      return { prices, ...amounts, error: cause.message };
     }
   };
-  const entrySuggestion = entry.cost === "" ? {} : suggestionFor(entry.cost);
-  const { prices: entryPrices, error: entryError } =
-    entrySuggestion.prices && Number(entry.cost) === 0
-      ? { error: "Indica un costo unitario mayor que cero." }
-      : entrySuggestion;
-  const canAddLine = Boolean(
-    entryPrices && entry.code.trim() && entry.name.trim(),
-  );
-  const pricedLines = lines.map((line) => {
-    const { prices, error } = suggestionFor(line.cost);
-    return { ...line, prices: { ...prices, ...line.overrides }, error };
+  const entryResult = entry.cost === "" ? {} : evaluate(entry, match?.pricesExact ?? match?.prices);
+  const entryError = !runtime && entryResult.prices && Number(entry.cost) === 0
+    ? "Indica un costo unitario mayor que cero." : entryResult.error;
+  const entryPrices = !entryError && entryResult.prices;
+  const canAddLine = !locked && !entryChanged && !entryError && entryResult.units && entry.code.trim() && entry.name.trim() && lines.length < 1000;
+  const productsByCode = useMemo(() => new Map(products.map(p => [p.code, p])), [products]);
+  const projectedStock = new Map();
+  const pricedLines = lines.map(line => {
+    const result = evaluate(line, line.catalogPrices);
+    const existing = productsByCode.get(line.code);
+    result.changed = runtime && catalogChanged(line, existing);
+    const stockBefore = projectedStock.get(line.code) ?? quantityUnits(existing?.stock ?? 0, "las existencias");
+    if (result.units === undefined) return { ...line, ...result, existing, stockBefore };
+    const stockAfter = stockBefore + result.units;
+    projectedStock.set(line.code, stockAfter);
+    try {
+      quantityUnits(decimalUnits(stockAfter, 2), "las existencias");
+    } catch (cause) {
+      result.error = cause.message;
+    }
+    return { ...line, ...result, existing, stockBefore, stockAfter };
   });
-  const hasInvalidLine = pricedLines.some((line) => line.error);
-  const total = hasInvalidLine
-    ? null
-    : round2(
-        lines.reduce((sum, line) => sum + Number(line.cost) * line.quantity, 0),
-      );
-  const units = lines.reduce((s, l) => s + l.quantity, 0);
+  const { total, units, error: totalError } = purchaseTotals(pricedLines);
+  const hasInvalidLine = !!totalError || pricedLines.some(line => line.error || line.changed);
   const onCodeChange = (code) => {
-    const found = products.find(
-      (p) => p.code.toLowerCase() === code.trim().toLowerCase(),
-    );
-    setEntry((e) => ({
-      ...e,
-      code,
-      name: found ? found.name : e.name,
+    const found = findProduct(code);
+    setEntry(e => ({
+      ...e, code, ...catalogFields(found),
+      name: found ? found.name : match ? "" : e.name,
       category: found ? found.category : e.category,
-      cost: found && !e.cost ? String(found.cost) : e.cost,
+      cost: found ? (found.costExact ?? String(found.cost)) : match ? "" : e.cost,
     }));
   };
   const addLine = () => {
     if (!canAddLine) return;
-    const qty = Math.max(1, Number(entry.quantity) || 1);
-    setLines((prev) => {
-      const existing = prev.find(
-        (l) => l.code.toLowerCase() === entry.code.trim().toLowerCase(),
-      );
-      if (existing) {
-        return prev.map((l) =>
-          l === existing
-            ? {
-                ...l,
-                quantity: l.quantity + qty,
-                cost: entry.cost,
-              }
-            : l,
-        );
-      }
-      return [
-        ...prev,
-        {
-          key: `${Date.now()}`,
-          productId: match?.id,
-          code: entry.code.trim().toUpperCase(),
-          name: entry.name.trim(),
-          category: entry.category,
-          quantity: qty,
-          cost: entry.cost,
-          overrides: {},
-        },
-      ];
-    });
+    // Each receipt line keeps its own unit cost and rounded subtotal.
+    setLines(prev => [...prev, {
+      key: crypto.randomUUID(), ...catalogFields(match), code: runtime ? entry.code : entry.code.trim().toUpperCase(),
+      name: entry.name.trim(), category: entry.category, quantity: purchaseDecimal(entry.quantity), cost: purchaseDecimal(entry.cost),
+      overrides: {},
+    }]);
     setEntry(EMPTY_ENTRY);
     codeRef.current?.focus();
   };
@@ -136,59 +143,80 @@ function PurchaseEntryForm({
           : l,
       ),
     );
-  const submit = () => {
+  const submit = async () => {
+    if (inFlight.current || databaseChanged) return;
     setTried(true);
-    if (!supplierId || lines.length === 0 || hasInvalidLine) return;
-    onSubmit({
-      supplierId,
-      supplierInvoice: invoice.trim(),
-      formulaId,
-      condition,
-      lines: pricedLines.map((l) => ({
-        productId: l.productId,
-        code: l.code,
-        name: l.name,
-        category: l.category,
-        quantity: l.quantity,
-        cost: Number(l.cost),
-        prices: l.prices,
+    if (!retryInput && (!supplier || (runtime && !invoice.trim()) || !lines.length || hasInvalidLine)) return;
+    const input = retryInput ?? {
+      databaseId, supplierId: supplier.id, supplierInvoice: invoice.trim(), formulaId: formula?.id, condition,
+      lines: pricedLines.map(l => ({
+        productId: l.productId, productVersion: l.productVersion, code: l.code, name: l.name, category: l.category,
+        quantity: runtime ? l.quantity : Number(l.quantity),
+        cost: runtime ? l.cost : Number(l.cost),
+        prices: runtime ? l.prices : Object.fromEntries(PRICE_KEYS.map(k => [k, Number(l.prices[k])])),
       })),
-    });
-    setLines([]);
+    };
+    setError(null);
+    inFlight.current = true;
+    setSending(true);
+    try {
+      await onSubmit(input);
+      setLines([]);
+      setInvoice("");
+      setTried(false);
+      setRetryInput(null);
+    } catch (cause) {
+      setError(cause.message || "No se pudo confirmar la compra.");
+      if (cause.uncertain) setRetryInput(input);
+      else if (cause.definitive) setRetryInput(null);
+    } finally {
+      inFlight.current = false;
+      setSending(false);
+    }
+  };
+  const restart = () => {
+    setDatabaseId(runtime.databaseId);
+    setSupplierId("");
     setInvoice("");
+    setFormulaId("manual");
+    setEntry(EMPTY_ENTRY);
+    setLines([]);
+    setError(null);
+    setRetryInput(null);
     setTried(false);
   };
   return (
     <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-      <div className="min-w-0 space-y-5 rounded-2xl border border-border bg-card p-5">
+      <fieldset disabled={locked} className="min-w-0 space-y-5 rounded-2xl border border-border bg-card p-5">
         <div className="grid gap-4 md:grid-cols-4">
           <Field
             label="Suplidor"
             className="md:col-span-2"
-            error={tried && !supplierId ? "Selecciona el suplidor" : undefined}
+            error={tried && !supplier ? "Selecciona el suplidor" : undefined}
           >
             <Select2
-              value={supplierId}
+              disabled={locked} value={supplierId}
               onValueChange={(id) => {
                 setSupplierId(id);
-                const s = suppliers.find((x) => x.id === id);
-                if (s) setFormulaId(s.formulaId);
+                const s = suppliers.find((x) => String(x.id) === id);
+                setFormulaId(String(s?.formulaId ?? "manual"));
               }}
             >
-              <SelectTrigger2 className={inputClass}>
+              <SelectTrigger2 aria-label="Suplidor" className={inputClass}>
                 <SelectValue2 placeholder="Selecciona un suplidor" />
               </SelectTrigger2>
               <SelectContent2>
                 {suppliers.map((s) => (
-                  <SelectItem2 value={s.id} key={s.id}>
+                  <SelectItem2 value={String(s.id)} key={s.id}>
                     {s.name}
                   </SelectItem2>
                 ))}
               </SelectContent2>
             </Select2>
           </Field>
-          <Field label="No. factura del suplidor">
+          <Field label="No. factura del suplidor" htmlFor="purchase-invoice" error={tried && runtime && !invoice.trim() ? "Escribe el número de factura" : undefined}>
             <Input
+              id="purchase-invoice" maxLength={2000}
               value={invoice}
               onChange={(e) => setInvoice(e.target.value)}
               placeholder="Ej. FAC-4589"
@@ -196,11 +224,12 @@ function PurchaseEntryForm({
             />
           </Field>
           <Field label="Condición">
-            <Select2 value={condition} onValueChange={(v) => setCondition(v)}>
+            <Select2 disabled={!!runtime || locked} value={runtime ? "unavailable" : condition} onValueChange={(v) => setCondition(v)}>
               <SelectTrigger2 className={inputClass}>
                 <SelectValue2 />
               </SelectTrigger2>
               <SelectContent2>
+                {runtime && <SelectItem2 value="unavailable">Sin registrar</SelectItem2>}
                 <SelectItem2 value="credito">{"A crédito"}</SelectItem2>
                 <SelectItem2 value="contado">{"Pagada (contado)"}</SelectItem2>
               </SelectContent2>
@@ -211,13 +240,14 @@ function PurchaseEntryForm({
             className="md:col-span-4"
             hint="Se elige sola según el suplidor. Los precios se recalculan al cambiarla."
           >
-            <Select2 value={formulaId} onValueChange={setFormulaId}>
-              <SelectTrigger2 className={inputClass}>
+            <Select2 disabled={locked} value={formulaId} onValueChange={setFormulaId}>
+              <SelectTrigger2 aria-label="Fórmula de precios" className={inputClass}>
                 <SelectValue2 />
               </SelectTrigger2>
               <SelectContent2>
+                {runtime && <SelectItem2 value="manual">Precios manuales</SelectItem2>}
                 {formulas.map((f) => (
-                  <SelectItem2 value={f.id} key={f.id}>
+                  <SelectItem2 value={String(f.id)} key={f.id}>
                     {f.name}
                     {" ("}
                     {formulaSummary(f)}
@@ -232,15 +262,15 @@ function PurchaseEntryForm({
           <div className="grid gap-3 md:grid-cols-[150px_minmax(0,1fr)_90px_120px_auto] md:items-end">
             <Field label="Código">
               <Input
-                ref={codeRef}
+                maxLength={2000} ref={codeRef} aria-label="Código"
                 value={entry.code}
                 onChange={(e) => onCodeChange(e.target.value)}
                 placeholder="Código"
                 list="purchase-codes"
-                className={cn(inputClass, "font-mono uppercase")}
+                className={cn(inputClass, "font-mono", !runtime && "uppercase")}
               />
               <datalist id="purchase-codes">
-                {products.map((p) => (
+                {suggestions.map((p) => (
                   <option value={p.code} key={p.id}>
                     {p.name}
                   </option>
@@ -249,7 +279,7 @@ function PurchaseEntryForm({
             </Field>
             <Field label="Descripción">
               <Input
-                value={entry.name}
+                maxLength={2000} aria-label="Descripción" value={entry.name}
                 onChange={(e) =>
                   setEntry({
                     ...entry,
@@ -263,7 +293,7 @@ function PurchaseEntryForm({
             <Field label="Cant.">
               <Input
                 type="number"
-                min={1}
+                min="0.01" step="0.01" aria-label="Cantidad"
                 value={entry.quantity}
                 onChange={(e) =>
                   setEntry({
@@ -277,7 +307,7 @@ function PurchaseEntryForm({
             <Field label="Costo unit.">
               <Input
                 type="number"
-                inputMode="decimal"
+                inputMode="decimal" step="0.0001" min="0" aria-label="Costo unitario"
                 aria-invalid={Boolean(entryError)}
                 value={entry.cost}
                 onChange={(e) =>
@@ -308,14 +338,14 @@ function PurchaseEntryForm({
                   {"Ya existe · stock "}
                   {match.stock}
                   {" · costo anterior "}
-                  {formatMoney(match.cost)}
+                  {formatUnitMoney(match.costExact ?? match.cost)}
                 </span>
               ) : (
                 <Fragment>
                   <span className="rounded-md bg-accent px-2 py-1 font-medium text-accent-foreground">
                     {"Artículo nuevo"}
                   </span>
-                  <Select2
+                  {!runtime && <Select2
                     value={entry.category}
                     onValueChange={(v) =>
                       setEntry({
@@ -334,7 +364,7 @@ function PurchaseEntryForm({
                         </SelectItem2>
                       ))}
                     </SelectContent2>
-                  </Select2>
+                  </Select2>}
                 </Fragment>
               ))}
             {entryError && (
@@ -342,15 +372,21 @@ function PurchaseEntryForm({
                 {entryError}
               </span>
             )}
-            {entryPrices && (
+            {entryChanged && <span role="alert" className="text-primary">
+              {match ? "El artículo cambió." : "El código ya no está disponible. Selecciona un artículo vigente."}
+              {match && <Button variant="outline" size="sm" className="ml-2" onClick={() => onCodeChange(entry.code)}>
+                Revisar artículo
+              </Button>}
+            </span>}
+            {entryPrices?.p1 !== undefined && (
               <span>
                 {"Precios sugeridos:"}{" "}
                 <span className="font-medium text-foreground">
                   {"P1 "}
-                  {formatMoney(entryPrices.p1)}
+                  {formatUnitMoney(entryPrices.p1)}
                   {" · P2 "}
-                  {formatMoney(entryPrices.p2)}
-                  {" · P3"} {formatMoney(entryPrices.p3)}
+                  {formatUnitMoney(entryPrices.p2)}
+                  {" · P3"} {formatUnitMoney(entryPrices.p3)}
                 </span>
               </span>
             )}
@@ -387,7 +423,7 @@ function PurchaseEntryForm({
               </thead>
               <tbody>
                 {pricedLines.map((l) => {
-                  const existing = products.find((p) => p.id === l.productId);
+                  const existing = l.existing;
                   return (
                     <tr
                       className="border-b border-border last:border-0"
@@ -396,15 +432,15 @@ function PurchaseEntryForm({
                       <td className="px-3 py-2.5">
                         <p className="font-medium">{l.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          <span className="font-mono">{l.code}</span>
+                          <span className="font-mono whitespace-pre-wrap">{l.code}</span>
                           {" ·"}{" "}
                           {existing ? (
                             <span>
                               {"stock "}
-                              {existing.stock}
+                              {formatNumber(decimalUnits(l.stockBefore, 2))}
                               {" →"}{" "}
                               <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                                {existing.stock + l.quantity}
+                                {l.stockAfter !== undefined ? formatNumber(decimalUnits(l.stockAfter, 2)) : "—"}
                               </span>
                             </span>
                           ) : (
@@ -413,18 +449,31 @@ function PurchaseEntryForm({
                             </span>
                           )}
                         </p>
+                        {l.changed && !locked && <div className="mt-2 space-y-1 text-xs">
+                          <p role="alert" className="text-primary">{existing
+                            ? `Datos actuales: ${existing.name}, costo ${formatUnitMoney(existing.costExact ?? existing.cost)}.`
+                            : "El código ya no está disponible. Quita la línea y selecciona el artículo vigente."}</p>
+                          {existing && <>
+                            <p className="text-muted-foreground">
+                              {PRICE_KEYS.map(k => `${k.toUpperCase()} ${formatUnitMoney(existing.pricesExact?.[k] ?? existing.prices[k])}`).join(" · ")}
+                            </p>
+                            <p className="text-muted-foreground">Al aceptar se reemplazan la descripción, el costo y los precios de esta línea.</p>
+                            <Button variant="outline" size="sm" onClick={() => {
+                              updateLine(l.key, { ...catalogFields(existing), name: existing.name, category: existing.category,
+                                cost: existing.costExact ?? String(existing.cost), overrides: {} });
+                              setError(null);
+                            }}>Usar datos actuales</Button>
+                          </>}
+                        </div>}
                       </td>
                       <td className="px-2 py-2.5">
                         <Input
                           type="number"
-                          min={1}
+                          min="0.01" step="0.01" aria-label="Cantidad de la línea"
                           value={l.quantity}
                           onChange={(e) =>
                             updateLine(l.key, {
-                              quantity: Math.max(
-                                1,
-                                Number(e.target.value) || 1,
-                              ),
+                              quantity: e.target.value,
                             })
                           }
                           className="mx-auto h-8 w-16 rounded-lg text-center"
@@ -433,6 +482,7 @@ function PurchaseEntryForm({
                       <td className="px-2 py-2.5">
                         <Input
                           type="number"
+                          step="0.0001" min="0" aria-label="Costo de la línea"
                           value={l.cost}
                           aria-invalid={Boolean(l.error)}
                           onChange={(e) =>
@@ -452,12 +502,13 @@ function PurchaseEntryForm({
                         <td className="px-2 py-2.5" key={k}>
                           <Input
                             type="number"
+                            step="0.0001" min="0" aria-label={k.toUpperCase()}
                             value={l.prices[k] ?? ""}
                             onChange={(e) =>
                               updateLine(l.key, {
                                 overrides: {
                                   ...l.overrides,
-                                  [k]: Number(e.target.value) || 0,
+                                  [k]: e.target.value,
                                 },
                               })
                             }
@@ -470,7 +521,7 @@ function PurchaseEntryForm({
                         </td>
                       ))}
                       <td className="px-3 py-2.5 text-right font-semibold tabular-nums">
-                        {l.error ? "—" : formatMoney(Number(l.cost) * l.quantity)}
+                        {l.subtotal === undefined ? "—" : formatMoney(l.subtotal)}
                       </td>
                       <td className="px-2 py-2.5">
                         <Button
@@ -494,14 +545,14 @@ function PurchaseEntryForm({
             </table>
           </div>
         )}
-      </div>
+      </fieldset>
       <div className="space-y-4 rounded-2xl border border-border bg-card p-5 lg:sticky lg:top-24">
         <div>
           <p className="text-xs text-muted-foreground">
             {"Resumen de la compra"}
           </p>
           <p className="mt-0.5 truncate font-semibold">
-            {suppliers.find((s) => s.id === supplierId)?.name ?? "Sin suplidor"}
+            {supplier?.name ?? "Sin suplidor"}
           </p>
         </div>
         <div className="space-y-2 text-sm">
@@ -511,14 +562,14 @@ function PurchaseEntryForm({
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">{"Unidades"}</span>
-            <span className="font-medium tabular-nums">{units}</span>
+            <span className="font-medium tabular-nums">{units === "—" ? units : formatNumber(units)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">
               {"Nuevos en catálogo"}
             </span>
             <span className="font-medium">
-              {lines.filter((l) => !l.productId).length}
+              {new Set(pricedLines.filter(l => !l.existing).map(l => l.code)).size}
             </span>
           </div>
         </div>
@@ -538,7 +589,7 @@ function PurchaseEntryForm({
           )}
         </div>
         <p className="text-xs text-muted-foreground">
-          {condition === "credito"
+          {runtime ? "La condición de pago no está disponible para esta entrada." : condition === "credito"
             ? "Se creará una cuenta por pagar al suplidor."
             : "Se registra como compra pagada."}{" "}
           {"Las existencias, costos y precios se actualizan al subir."}
@@ -548,13 +599,18 @@ function PurchaseEntryForm({
             {"Agrega al menos un artículo."}
           </p>
         )}
+        {(error || totalError) && <p role="alert" className="text-xs font-medium text-primary">{error || totalError}</p>}
+        {databaseChanged && <div role="alert" className="space-y-2 text-sm">
+          <p>La base de datos cambió. Revisa esta compra antes de iniciar otra.</p>
+          <Button variant="outline" onClick={restart}>Iniciar otra compra</Button>
+        </div>}
         <Button
           className="h-12 w-full rounded-xl text-[15px] font-semibold shadow-md shadow-primary/20"
           onClick={submit}
-          disabled={hasInvalidLine}
+          disabled={sending || databaseChanged || (!retryInput && (hasInvalidLine || !!runtime?.pending || runtime?.connection === "unavailable"))}
         >
           <Upload />
-          {"Subir factura al inventario"}
+          {sending ? "Confirmando compra…" : retryInput ? "Reintentar compra" : "Subir factura al inventario"}
         </Button>
       </div>
     </div>

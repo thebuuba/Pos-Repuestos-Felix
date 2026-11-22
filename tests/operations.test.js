@@ -23,6 +23,7 @@ after(async () => {
   await pool?.end(); await database?.stop();
 });
 const get = async () => (await fetch(base + '/api/state')).json();
+
 async function write(path, body, key = randomUUID(), method = 'POST') {
   const snapshot = await get();
   return fetch(base + '/api/' + path, { method, headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key }, body: JSON.stringify({ databaseId: snapshot.databaseId, ...body }) });
@@ -31,8 +32,11 @@ async function write(path, body, key = randomUUID(), method = 'POST') {
 test('sale is computed by server, transactional, and concurrent retry creates one document', async () => {
   let response = await write('productos', { codigo: 'LAST', nombre: 'Última unidad', costo: '0.10', stock: 1, precio1: '0.30', precio2: '0.20', precio3: '0.10' });
   assert.equal(response.status, 200, await response.text());
+  const customer = await write('clientes', { nombre: 'Cliente con crédito', limiteCredito: 100 });
+  assert.equal(customer.status, 200);
+  const customerId = (await customer.json()).result.id;
   let snapshot = await get(); const product = snapshot.state.productos.find(p => p.codigo === 'LAST');
-  const sale = { clienteId: snapshot.state.clientes[0].id, condicion: 'Credito', tipoComprobante: 'B02', items: [{ productoId: product.id, cantidad: 1, nivelPrecio: 'precio1', precio: 0 }], total: 0 };
+  const sale = { clienteId: customerId, condicion: 'Credito', tipoComprobante: 'B02', items: [{ productoId: product.id, cantidad: 1, nivelPrecio: 'precio1', precio: 0 }], total: 0 };
   const key = randomUUID();
   const results = await Promise.all([write('ventas', sale, key), write('ventas', sale, key)]);
   assert.deepEqual(results.map(r => r.status), [200, 200]);
@@ -46,7 +50,7 @@ test('sale is computed by server, transactional, and concurrent retry creates on
   assert.equal(snapshot.state.facturas.length, 1);
   assert.equal(snapshot.state.facturas[0].total, 0.3);
   assert.equal(snapshot.state.facturas[0].ncf, null);
-  assert.equal(snapshot.state.clientes[0].deuda, 0.3);
+  assert.equal(snapshot.state.clientes.find(c => c.id === customerId).deuda, 0.3);
   assert.equal(snapshot.state.productos.find(p => p.id === product.id).stock, 0);
   assert.equal((await write('ventas', sale)).status, 409);
   assert.equal((await write('ventas', { ...sale, condicion: 'Contado' }, key)).status, 409);
@@ -225,4 +229,28 @@ test('idempotent replay is a coherent snapshot while another sale commits', asyn
     assert.equal(stock + sold, 2);
     assert.equal(replay.revision, created.revision);
   } finally { await writerPool.end(); }
+});
+
+test('la venta operativa verifica versiones y arbitra el crédito concurrente', async () => {
+  const clientResponse = await write('clientes', { nombre:'Cliente crédito concurrente', limiteCredito:10 });
+  assert.equal(clientResponse.status,200);
+  const clienteId = (await clientResponse.json()).result.id;
+  const created = await write('productos', {codigo:'CREDITO-CHECK',nombre:'Pieza crédito',stock:4,costo:1,precio1:7,precio2:7,precio3:7});
+  assert.equal(created.status,200);
+  const initial=await created.json(), product=initial.state.productos.find(p=>p.codigo==='CREDITO-CHECK');
+  const payload={clienteId,condicion:'Credito',tipoComprobante:'B02',versionConfiguracion:initial.state.configuracion.version,
+    items:[{productoId:product.id,versionProducto:product.version,cantidad:'1',nivelPrecio:'precio1'}]};
+  assert.equal((await write('ventas',{...payload,versionConfiguracion:payload.versionConfiguracion+1})).status,409);
+  assert.equal((await write('ventas',{...payload,items:[{...payload.items[0],versionProducto:product.version+1}]})).status,409);
+  const results=await Promise.all([write('ventas',payload),write('ventas',payload)]);
+  assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);
+  const current=await get();
+  const next={...payload,items:[{...payload.items[0],versionProducto:current.state.productos.find(p=>p.id===product.id).version}]};
+  assert.equal((await write('ventas',next)).status,409);
+  const {versionConfiguracion, ...withoutVersion} = next;
+  assert.equal((await write('ventas',withoutVersion)).status,409,'omitir la versión no evita el límite de crédito');
+  const noLimit = await write('clientes',{nombre:'Sin crédito configurado'});
+  const noLimitId = (await noLimit.json()).result.id;
+  assert.equal((await write('ventas',{...withoutVersion,clienteId:noLimitId})).status,400);
+  assert.equal((await get()).state.clientes.find(c=>c.id===clienteId).deuda,7);
 });

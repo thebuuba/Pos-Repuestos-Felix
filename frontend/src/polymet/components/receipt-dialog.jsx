@@ -1,16 +1,17 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
-import { STORE_INFO } from "../data/pos-data.js";
 import { Dialog2 } from "../../components/ui/dialog.jsx";
 import { DialogContent2 } from "../../components/ui/dialog.jsx";
 import { DialogHeader } from "../../components/ui/dialog.jsx";
 import { CircleCheck } from "lucide-react";
 import { DialogTitle2 } from "../../components/ui/dialog.jsx";
 import { DialogDescription2 } from "../../components/ui/dialog.jsx";
-import { formatMoney } from "../lib/format.js";
+import { formatMoney, formatUnitMoney } from "../lib/format.js";
 import { Button } from "../../components/ui/button.jsx";
 import { Printer } from "lucide-react";
 import { Fragment } from "react";
+import "./receipt-print.css";
 var dateFmt2 = new Intl.DateTimeFormat("es-DO", {
+  timeZone: "America/Santo_Domingo",
   dateStyle: "short",
   timeStyle: "short",
 });
@@ -19,13 +20,14 @@ function ReceiptDialog({
   open,
   onOpenChange,
   onNewSale,
-  business = STORE_INFO,
+  business,
+  printFormat = "Térmica 80 mm",
   footer = "¡Gracias por su compra!",
   title = "Venta registrada",
 }) {
   return (
     <Dialog2 open={open} onOpenChange={onOpenChange}>
-      <DialogContent2 className="max-w-md gap-0 rounded-2xl p-0">
+      <DialogContent2 data-print-format={printFormat} className="pos-receipt-dialog max-w-md gap-0 rounded-2xl p-0">
         <DialogHeader className="items-center space-y-2 px-6 pb-4 pt-6 text-center">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/10">
             <CircleCheck className="h-6 w-6 text-emerald-600" />
@@ -38,18 +40,18 @@ function ReceiptDialog({
           </DialogDescription2>
         </DialogHeader>
         {sale && (
-          <div className="mx-6 max-h-[46vh] overflow-y-auto rounded-xl border border-dashed border-border bg-muted/40 p-4 font-mono text-xs">
+          <div className="pos-receipt-document mx-6 max-h-[46vh] overflow-y-auto rounded-xl border border-dashed border-border bg-muted/40 p-4 font-mono text-xs">
             <div className="text-center">
               <p className="text-sm font-bold uppercase">{business.name}</p>
-              <p className="text-muted-foreground">
+              {business.rnc && <p className="text-muted-foreground">
                 {"RNC "}
                 {business.rnc}
-              </p>
+              </p>}
               <p className="text-muted-foreground">{business.address}</p>
-              <p className="text-muted-foreground">
+              {business.phone && <p className="text-muted-foreground">
                 {"Tel. "}
                 {business.phone}
-              </p>
+              </p>}
             </div>
             <div className="my-3 border-t border-dashed border-border" />
             <div className="space-y-0.5">
@@ -59,7 +61,7 @@ function ReceiptDialog({
               </div>
               <div className="flex justify-between">
                 <span>{"Fecha"}</span>
-                <span>{dateFmt2.format(sale.date)}</span>
+                <span>{sale.dateOnly ? sale.dateOnly.split("-").reverse().join("/") : dateFmt2.format(sale.date)}</span>
               </div>
               <div className="flex justify-between gap-3">
                 <span>{"Cliente"}</span>
@@ -85,6 +87,7 @@ function ReceiptDialog({
                   <span className="font-semibold">{sale.ncf}</span>
                 </div>
               )}
+              {sale.dateOnly && !sale.ncf && <p className="text-muted-foreground">Sin emisión de NCF</p>}
             </div>
             <div className="my-3 border-t border-dashed border-border" />
             <div className="space-y-2">
@@ -95,7 +98,7 @@ function ReceiptDialog({
                     <span>
                       {l.quantity}
                       {" x "}
-                      {formatMoney(l.unitPrice, false)}
+                      {sale.dateOnly ? formatUnitMoney(l.unitPrice) : formatMoney(l.unitPrice, false)}
                     </span>
                     <span className="text-foreground">
                       {formatMoney(l.subtotal, false)}
@@ -121,9 +124,7 @@ function ReceiptDialog({
               )}
               <div className="flex justify-between">
                 <span>
-                  {"ITBIS "}
-                  {sale.itbisRate ?? 18}
-                  {"%"}
+                  {"ITBIS"}{sale.itbisRate !== null && " " + (sale.itbisRate ?? 18) + "%"}
                 </span>
                 <span>{formatMoney(sale.totals.itbis)}</span>
               </div>
@@ -131,10 +132,10 @@ function ReceiptDialog({
                 <span>{"TOTAL"}</span>
                 <span>{formatMoney(sale.totals.total)}</span>
               </div>
-              <div className="flex justify-between pt-1">
+              {sale.paymentLabel && <div className="flex justify-between pt-1">
                 <span>{"Pago"}</span>
                 <span>{sale.paymentLabel}</span>
-              </div>
+              </div>}
               {sale.received !== undefined && (
                 <Fragment>
                   <div className="flex justify-between">
@@ -160,7 +161,7 @@ function ReceiptDialog({
             onClick={() => window.print()}
           >
             <Printer />
-            {"Reimprimir"}
+            {sale?.dateOnly ? "Imprimir" : "Reimprimir"}
           </Button>
           <Button className="h-11 rounded-xl" onClick={onNewSale}>
             {"Nueva venta"}

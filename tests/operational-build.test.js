@@ -39,7 +39,7 @@ test('the operational build has local public assets and no prototype store or fi
   }
 });
 
-test('the root without an API opens inventory without presenting fake empty data', async () => {
+test('the root without an API waits for confirmed data before showing the dashboard', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'felix-inventory-entry-'));
   let server, browser;
   try {
@@ -50,7 +50,6 @@ test('the root without an API opens inventory without presenting fake empty data
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     assert.equal((await page.goto(server.origin + '/')).status(), 200);
-    await page.waitForURL('**/inventario', { timeout: 6000 });
     await page.getByRole('main').getByRole('button', { name: 'Actualizar datos', exact: true }).waitFor();
     assert.equal((await fetch(server.origin + '/api/state')).status, 404);
     assert.equal(await page.getByRole('heading', { name: 'Catálogo de artículos e inventario', exact: true }).count(), 0);
