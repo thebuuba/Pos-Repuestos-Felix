@@ -47,6 +47,12 @@ test('inventario conectado pagina todo el catálogo, filtra existencias y conser
     const result = text => page.getByText(text, { exact: true }).waitFor({ timeout: 5500 });
     await table.waitFor();
     assert.equal(await rows.count(), 50);
+    const quantityCell = rows.nth(2).getByRole('cell').nth(3);
+    const quantity = await quantityCell.getByText('1,234,567.25', { exact: true }).boundingBox();
+    const minimum = await quantityCell.getByText('mín. 9,876,543.5', { exact: true }).boundingBox();
+    const cell = await quantityCell.boundingBox();
+    assert.ok(quantity.x + quantity.width < minimum.x && minimum.x + minimum.width <= cell.x + cell.width,
+      'las cantidades grandes conservan su separación y se quedan dentro de la celda');
     await result('Mostrando 1–50 de 123 productos');
     assert.equal(await previous.isDisabled(), true);
     await next.press('Enter');

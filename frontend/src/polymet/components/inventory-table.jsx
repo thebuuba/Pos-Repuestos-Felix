@@ -227,8 +227,8 @@ function InventoryTable({ products, categories, connected, onEdit, onDelete }) {
                           />
                           {ui.label}
                         </span>
-                        <div className="w-24">
-                          <div className="flex justify-between text-xs tabular-nums">
+                        <div className="w-24" style={{ minWidth: "max-content" }}>
+                          <div className="flex justify-between gap-2 whitespace-nowrap text-xs tabular-nums">
                             <span className="font-semibold">{formatNumber(p.stock)}</span>
                             <span className="text-muted-foreground">
                               {"mín. "}
