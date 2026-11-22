@@ -102,3 +102,62 @@ test('purchase suggestions guard entry and editable rows against invalid and ove
   assert.equal(await firstPrice.inputValue(), '135');
   assert.equal(await upload.isEnabled(), true);
 });
+
+test('a purchase row accepts explicit zero and rejects a blank cost', async (t) => {
+  const page = await open(t, '/compras');
+  const main = page.getByRole('main');
+  const cost = main.getByPlaceholder('0.00', { exact: true });
+  const add = main.getByRole('button', { name: 'Agregar', exact: true });
+  const upload = main.getByRole('button', { name: 'Subir factura al inventario' });
+  const name = 'Artículo de costo cero';
+
+  await main.getByRole('combobox').filter({ hasText: 'Selecciona un suplidor' }).click();
+  await page.getByRole('option', { name: 'Arias Piezas y Gomas', exact: true }).click();
+  await main.getByPlaceholder('Ej. FAC-4589').fill('CERO-PRUEBA');
+  await main.getByPlaceholder('Código', { exact: true }).fill('COSTO-CERO');
+  await main.getByPlaceholder('Descripción', { exact: true }).fill(name);
+  await cost.fill('0');
+  assert.equal(await add.isDisabled(), true);
+  await cost.fill('100');
+  await add.click();
+
+  const row = main.getByRole('row').filter({ hasText: name });
+  const rowCost = row.getByRole('spinbutton').nth(1);
+  const firstPrice = row.getByRole('spinbutton').nth(2);
+  await rowCost.fill('');
+  await row.getByRole('alert').getByText(/costo/).waitFor();
+  assert.equal(await firstPrice.inputValue(), '');
+  assert.equal(await upload.isDisabled(), true);
+
+  await rowCost.fill('0');
+  assert.equal(await firstPrice.inputValue(), '0');
+  assert.equal(await upload.isEnabled(), true);
+  await upload.click();
+  const history = main.getByRole('row').filter({ hasText: 'CERO-PRUEBA' });
+  await history.getByText('RD$ 0.00', { exact: true }).waitFor();
+});
+
+test('the formula editor reports invalid or overflowing previews and recovers on correction', async (t) => {
+  const page = await open(t, '/configuracion');
+  await page.getByRole('tab', { name: 'Fórmulas de precios', exact: true }).click();
+  const panel = page.getByRole('tabpanel', { name: 'Fórmulas de precios', exact: true });
+  const standard = panel.locator('div.rounded-2xl').filter({ has: page.locator('input[value="Estándar"]') });
+  const factor = standard.getByRole('spinbutton').nth(0);
+  const firstMargin = standard.getByRole('spinbutton').nth(1);
+  const originalPrice = standard.getByText('RD$ 1,350.00', { exact: true });
+  await originalPrice.waitFor();
+
+  await factor.fill('1.0001');
+  await standard.getByRole('alert').getByText(/factor de costo/).waitFor();
+  assert.equal(await originalPrice.count(), 0);
+  await factor.fill('1');
+  await originalPrice.waitFor();
+
+  await factor.fill('999999.999');
+  await firstMargin.fill('99999.9999');
+  await standard.getByRole('alert').getByText(/límite permitido/).waitFor();
+  await firstMargin.fill('35');
+  await factor.fill('1');
+  await originalPrice.waitFor();
+  assert.equal(await standard.getByRole('alert').count(), 0);
+});

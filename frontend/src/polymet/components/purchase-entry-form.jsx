@@ -54,16 +54,16 @@ function PurchaseEntryForm({
   const suggestionFor = (cost) => {
     const decimal = cost.startsWith(".") ? `0${cost}` : cost;
     try {
-      const prices = pricesFromFormula(decimal, formula, rounding);
-      return Number(decimal) > 0
-        ? { prices }
-        : { error: "Indica un costo unitario mayor que cero." };
+      return { prices: pricesFromFormula(decimal, formula, rounding) };
     } catch (cause) {
       return { error: cause.message };
     }
   };
+  const entrySuggestion = entry.cost === "" ? {} : suggestionFor(entry.cost);
   const { prices: entryPrices, error: entryError } =
-    entry.cost === "" ? {} : suggestionFor(entry.cost);
+    entrySuggestion.prices && Number(entry.cost) === 0
+      ? { error: "Indica un costo unitario mayor que cero." }
+      : entrySuggestion;
   const canAddLine = Boolean(
     entryPrices && entry.code.trim() && entry.name.trim(),
   );

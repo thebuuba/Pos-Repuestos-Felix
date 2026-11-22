@@ -57,7 +57,15 @@ function PriceFormulasEditor({ formulas, rounding, usage, onSave, onDelete }) {
       </div>
       <div className="space-y-3">
         {formulas.map((f) => {
-          const sample = pricesFromFormula(SAMPLE_COST, f, rounding);
+          let sample, previewError;
+          try {
+            sample = {
+              prices: pricesFromFormula(SAMPLE_COST, f, rounding),
+              cost: adjustedCost(SAMPLE_COST, f),
+            };
+          } catch (cause) {
+            previewError = cause.message;
+          }
           return (
             <div className="rounded-2xl border border-border p-4" key={f.id}>
               <div className="flex flex-wrap items-end gap-3">
@@ -127,31 +135,39 @@ function PriceFormulasEditor({ formulas, rounding, usage, onSave, onDelete }) {
                 </Button>
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                <span className="inline-flex items-center gap-1.5">
-                  <Calculator className="h-3.5 w-3.5 text-primary" />
-                  {"Costo real "}
-                  <span className="font-medium text-foreground">
-                    {formatMoney(adjustedCost(SAMPLE_COST, f))}
+                {sample ? (
+                  <>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Calculator className="h-3.5 w-3.5 text-primary" />
+                      {"Costo real "}
+                      <span className="font-medium text-foreground">
+                        {formatMoney(sample.cost)}
+                      </span>
+                    </span>
+                    <span>
+                      {"P1 "}
+                      <span className="font-medium text-foreground">
+                        {formatMoney(sample.prices.p1)}
+                      </span>
+                    </span>
+                    <span>
+                      {"P2 "}
+                      <span className="font-medium text-foreground">
+                        {formatMoney(sample.prices.p2)}
+                      </span>
+                    </span>
+                    <span>
+                      {"P3 "}
+                      <span className="font-medium text-foreground">
+                        {formatMoney(sample.prices.p3)}
+                      </span>
+                    </span>
+                  </>
+                ) : (
+                  <span role="alert" className="font-medium text-primary">
+                    {previewError}
                   </span>
-                </span>
-                <span>
-                  {"P1 "}
-                  <span className="font-medium text-foreground">
-                    {formatMoney(sample.p1)}
-                  </span>
-                </span>
-                <span>
-                  {"P2 "}
-                  <span className="font-medium text-foreground">
-                    {formatMoney(sample.p2)}
-                  </span>
-                </span>
-                <span>
-                  {"P3 "}
-                  <span className="font-medium text-foreground">
-                    {formatMoney(sample.p3)}
-                  </span>
-                </span>
+                )}
                 {usage[f.id] ? (
                   <span className="ml-auto">
                     {"Usada por "}
