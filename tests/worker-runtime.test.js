@@ -49,12 +49,12 @@ const call = (path, options = {}) => harness.getWorker().fetch('https://pos.exam
 test('el runtime Workers sirve el frontend y protege los datos con la configuración de producción', async () => {
   const html = await call('/');
   assert.equal(html.status, 200);
-  assert.match(await html.text(), /type="module" src="\/app\.js"/);
+  assert.match(await html.text(), /type="module" src="\/assets\/pwa\/app-[a-f0-9]{16}\.js"/);
   assert.match(await (await call('/inventario')).text(), /<div id="root"><\/div>/);
   const asset = await call('/app.js');
   assert.equal(asset.status, 200);
   assert.ok((await asset.arrayBuffer()).byteLength > 0);
-  for (const [path,status,options] of [['/sw.js',404],['/api/state',401,{headers:{Cookie:''}}],['/src/worker.js',404]]) {
+  for (const [path,status,options] of [['/sw.js',200],['/manifest.webmanifest',200],['/api/state',401,{headers:{Cookie:''}}],['/src/worker.js',404]]) {
     const response = await call(path,options);
     assert.equal(response.status,status);
     await response.text();

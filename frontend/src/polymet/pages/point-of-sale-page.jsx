@@ -373,6 +373,8 @@ export function OperationalPointOfSalePage() {
     settings.defaultPriceLevel ?? "p1",
   );
   const [items, setItems] = useState([]);
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
   const [receipt, setReceipt] = useState(null);
   const [failure, setFailure] = useState(null);
   const [sending, setSending] = useState(false);
@@ -393,7 +395,7 @@ export function OperationalPointOfSalePage() {
         ((cartQuantities[item.product.id] ?? 0) + item.quantity) * 100,
       ) / 100;
   }
-  const locked = sending || !!failure?.retry;
+  const locked = sending || !!failure?.retry || !!runtime.pending || runtime.busy;
   let disabledReason;
   if (runtime.connection !== "connected")
     disabledReason = "Conecta con el servicio para registrar la venta.";
@@ -426,6 +428,7 @@ export function OperationalPointOfSalePage() {
       "El catálogo cambió. Retira los artículos actualizados y agrégalos de nuevo.";
 
   function resetSale() {
+    itemsRef.current = [];
     setItems([]);
     setCustomerId(cashCustomer?.id ?? null);
     setComprobante("B02");
@@ -435,10 +438,11 @@ export function OperationalPointOfSalePage() {
     setFailure(null);
   }
   function editQuantity(product, level, quantity, replace = false) {
-    if (locked) return false;
+    if (locked || inFlight.current || receipt) return false;
     try {
-      const updated = updateSaleLine(items, product, level, quantity, replace);
+      const updated = updateSaleLine(itemsRef.current, product, level, quantity, replace);
       quoteSale(updated, settings.itbisRate);
+      itemsRef.current = updated;
       setItems(updated);
       setFailure(null);
       return true;
@@ -578,6 +582,7 @@ export function OperationalPointOfSalePage() {
           <>
             <ProductSearchBar
               operational
+              disabled={locked || !!receipt}
               products={products}
               priceLevel={priceLevel}
               onPriceLevelChange={setPriceLevel}

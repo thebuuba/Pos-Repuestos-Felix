@@ -89,10 +89,10 @@ test('ambas entradas sirven solo Polymet y conservan códigos literales tras res
     for (const path of ['/', '/inventario']) {
       const html = await (await fetch(child.origin + path)).text();
       assert.match(html, /<div id="root"><\/div>/);
-      assert.match(html, /type="module" src="\/app\.js"/);
+      assert.match(html, /type="module" src="\/assets\/pwa\/app-[a-f0-9]{16}\.js"/);
     }
     assert.equal((await fetch(child.origin + '/app.js')).status, 200);
-    assert.equal((await fetch(child.origin + '/sw.js')).status, 404);
+    assert.equal((await fetch(child.origin + '/sw.js')).status, 200);
     if (args.length) continue;
     const get = async path => (await fetch(child.origin + path)).json();
     const post = async (path, body, key = randomUUID()) => {

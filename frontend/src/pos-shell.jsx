@@ -4,6 +4,8 @@ import { Button } from './components/ui/button.jsx';
 import { usePosStore } from './data/pos-context.jsx';
 import { ModulePlaceholderPage } from './polymet/pages/module-placeholder-page.jsx';
 import { PosLayout } from './polymet/layouts/pos-layout.jsx';
+import { PwaProvider, PwaNotice } from './pwa.jsx';
+import { DesktopNotice } from './desktop-status.jsx';
 
 const syncTime = new Intl.DateTimeFormat('es-DO', { timeZone: 'America/Santo_Domingo', dateStyle: 'short', timeStyle: 'short' });
 
@@ -15,6 +17,7 @@ function ServiceNotice({ runtime }) {
     <div role="status" className="mb-4 space-y-2 rounded-xl border border-border bg-card p-4 text-sm">
       {runtime.pending && <p className="font-semibold">{changed ? 'La solicitud pendiente pertenece a otra base. Requiere revisión.' : 'Solicitud pendiente de confirmación'}</p>}
       {runtime.error && <p>{runtime.error}</p>}
+      {runtime.connection === 'unavailable' && <p>Sin conexión al servicio. {runtime.mode === 'online' && 'La web y la PWA requieren conexión para confirmar operaciones.'}</p>}
       {runtime.connection === 'unavailable' && runtime.lastSync && <p>Datos desactualizados. Última sincronización el {syncTime.format(new Date(runtime.lastSync))}.</p>}
       <Button variant="outline" disabled={runtime.busy} onClick={() => action().catch(() => {})}>
         {runtime.pending && !changed ? 'Reintentar solicitud' : 'Actualizar datos'}
@@ -32,8 +35,10 @@ export function PosShell({ pages, homePath }) {
     </main>
   );
   return (
-    <BrowserRouter>
+    <PwaProvider enabled={!!runtime}><BrowserRouter>
       <PosLayout>
+        <PwaNotice runtime={runtime} />
+        <DesktopNotice onSync={() => runtime?.reload?.()} />
         <ServiceNotice runtime={runtime} />
         <Routes>
           {homePath && <Route path="/" element={<Navigate to={homePath} replace />} />}
@@ -48,6 +53,6 @@ export function PosShell({ pages, homePath }) {
         </Routes>
       </PosLayout>
       <Toaster position="top-center" richColors={true} />
-    </BrowserRouter>
+    </BrowserRouter></PwaProvider>
   );
 }

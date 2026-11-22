@@ -32,11 +32,10 @@ function ReceiptDialog({
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/10">
             <CircleCheck className="h-6 w-6 text-emerald-600" />
           </div>
-          <DialogTitle2 className="text-lg">{title}</DialogTitle2>
+          <DialogTitle2 className="text-lg">{sale?.localReference ? "Venta guardada en este equipo" : title}</DialogTitle2>
           <DialogDescription2>
-            {"La factura "}
-            {sale?.invoiceNumber}
-            {" se guardó correctamente."}
+            {sale?.localReference ? "Registro local durable. Consulta las operaciones locales para verificar su confirmación en el servidor."
+              : <>La factura {sale?.invoiceNumber} se guardó correctamente.</>}
           </DialogDescription2>
         </DialogHeader>
         {sale && (
@@ -88,6 +87,10 @@ function ReceiptDialog({
                 </div>
               )}
               {sale.dateOnly && !sale.ncf && <p className="text-muted-foreground">Sin emisión de NCF</p>}
+              {sale.localReference && <div className="space-y-1 pt-1">
+                <p className="font-semibold">Guardado en este equipo. Confirmación del servidor por verificar.</p>
+                <p style={{ overflowWrap: 'anywhere' }}>Referencia local: {sale.localReference}</p>
+              </div>}
             </div>
             <div className="my-3 border-t border-dashed border-border" />
             <div className="space-y-2">

@@ -7,7 +7,7 @@ import { backupLayout, exportBackup, rows, tables } from './relational-backup.js
 import { cashOperation, cashPresentation, lockCash, validateCashRestore } from './cash-operations.js';
 export { fail } from './operation-fields.js';
 
-const maintenanceLock = 74198232;
+export const maintenanceLock = 74198232;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function prices(body, cost = costUnits(body.costo, 'el costo')) {
   return [decimalUnits(cost, 4), ...['precio1', 'precio2', 'precio3'].map(key => decimalUnits(costUnits(body[key], key), 4))];
@@ -15,7 +15,7 @@ function prices(body, cost = costUnits(body.costo, 'el costo')) {
 const exactPrices = row => ({ p1: row.precio1, p2: row.precio2, p3: row.precio3 });
 const quantityText = value => decimalUnits(value, 2);
 const lineCents = (price, quantity, divisor) => (price * quantity + divisor / 2n) / divisor;
-function canonical(value) {
+export function canonical(value) {
   if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']';
   if (value && typeof value === 'object') return '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + canonical(value[key])).join(',') + '}';
   return JSON.stringify(value);
@@ -45,7 +45,7 @@ async function snapshotVersion(client, databaseLabel) {
   if (!system) fail('Ejecuta las migraciones de la base antes de iniciar.', 503);
   return { databaseId: system.database_id, revision: number(system.revision), databaseLabel };
 }
-async function snapshot(client, databaseLabel) {
+export async function snapshot(client, databaseLabel) {
   const version = await snapshotVersion(client, databaseLabel);
   const data = {};
   for (const table of Object.keys(tables)) data[table] = await rows(client, table);
@@ -106,12 +106,12 @@ export async function readSnapshot(pool, databaseLabel, backup = false, matchesV
     } catch (error) { discardReason = await rollbackFailure(client); throw error; }
   } finally { client.release(discardReason); }
 }
-async function movement(client, productId, quantity, stock, type, detailId = null, reason = '') {
+async function movement(client, productId, quantity, stock, type, detailId = null, reason = '', occurredAt = null) {
   if (!quantity) return;
-  await client.query(`INSERT INTO movimientos_inventario(producto_id,cantidad,existencia_posterior,tipo,venta_detalle_id,compra_detalle_id,motivo)
-    VALUES($1,$2,$3,$4,$5,$6,$7)`, [productId, quantityText(quantity), quantityText(stock), type, type === 'venta' ? detailId : null, type === 'compra' ? detailId : null, reason]);
+  await client.query(`INSERT INTO movimientos_inventario(producto_id,cantidad,existencia_posterior,tipo,venta_detalle_id,compra_detalle_id,motivo,creado_en)
+    VALUES($1,$2,$3,$4,$5,$6,$7,COALESCE($8::timestamptz,clock_timestamp()))`, [productId, quantityText(quantity), quantityText(stock), type, type === 'venta' ? detailId : null, type === 'compra' ? detailId : null, reason, occurredAt]);
 }
-async function productOperation(client, method, productId, body) {
+async function productOperation(client, method, productId, body, occurredAt) {
   let code, stock, amounts;
   if (method !== 'DELETE') {
     code = productCode(body.codigo);
@@ -149,10 +149,10 @@ async function productOperation(client, method, productId, body) {
     ? await client.query(`UPDATE productos SET codigo=$2,nombre=$3,costo=$4,precio1=$5,precio2=$6,precio3=$7,stock=$8,marca=$9,categoria=$10,stock_minimo=$11,gravado=$12,ubicacion=$13,notificar_minimo=$14,version=version+1,actualizado_en=now() WHERE id=$1 RETURNING id`, [productId, code, name, ...amounts, quantityText(stock), ...metadata])
     : await client.query(`INSERT INTO productos(codigo,nombre,costo,precio1,precio2,precio3,stock,marca,categoria,stock_minimo,gravado,ubicacion,notificar_minimo) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`, [code, name, ...amounts, quantityText(stock), ...metadata]);
   const savedId = number(result.rows[0].id);
-  await movement(client, savedId, stock - quantityUnits(previous?.stock ?? 0, 'las existencias'), stock, previous ? 'ajuste' : 'apertura', null, previous ? 'Ajuste desde catálogo' : 'Existencia inicial');
+  await movement(client, savedId, stock - quantityUnits(previous?.stock ?? 0, 'las existencias'), stock, previous ? 'ajuste' : 'apertura', null, previous ? 'Ajuste desde catálogo' : 'Existencia inicial', occurredAt);
   return { id: savedId };
 }
-async function sale(client, body) {
+async function sale(client, body, occurredAt) {
   const turn = await lockCash(client, body.cajaId);
   if (body.condicion === 'Credito' ? body.metodoPago !== 'credito' : !['efectivo','tarjeta','transferencia'].includes(body.metodoPago)) fail('Selecciona un método de pago válido para la venta.');
   const customer = (await client.query('SELECT * FROM clientes WHERE id=$1 AND activo FOR UPDATE', [id(body.clienteId)])).rows[0];
@@ -190,20 +190,22 @@ async function sale(client, body) {
     const debtCents = debt.startsWith('-') ? -cents(debt.slice(1)) : cents(debt);
     if (debtCents + totals.total > cents(customer.limite_credito)) fail('La venta supera el crédito disponible del cliente.', 409);
   }
-  const header = (await client.query(`INSERT INTO ventas(cliente_id,cliente_nombre,cliente_rnc,condicion,tipo_comprobante,base,itbis,total,caja_id,metodo_pago,creado_en)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,clock_timestamp()) RETURNING id`, [customer.id, customer.nombre, customer.rnc, body.condicion, body.tipoComprobante, money(totals.base), money(totals.tax), money(totals.total), turn.id, body.metodoPago])).rows[0];
+  const header = (await client.query(`INSERT INTO ventas(cliente_id,cliente_nombre,cliente_rnc,condicion,tipo_comprobante,base,itbis,total,caja_id,metodo_pago,creado_en,fecha)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,COALESCE($11::timestamptz,clock_timestamp()),
+      (COALESCE($11::timestamptz,clock_timestamp()) AT TIME ZONE 'America/Santo_Domingo')::date) RETURNING id`,
+    [customer.id, customer.nombre, customer.rnc, body.condicion, body.tipoComprobante, money(totals.base), money(totals.tax), money(totals.total), turn.id, body.metodoPago, occurredAt ?? null])).rows[0];
   for (const line of lines) {
     const { item, p } = line;
     const detail = (await client.query(`INSERT INTO venta_detalles(venta_id,producto_id,codigo,nombre,cantidad,nivel_precio,precio,base,itbis,total)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`, [header.id, p.id, p.codigo, p.nombre, quantityText(item.quantity), item.nivelPrecio, decimalUnits(line.price, 4), money(line.base), money(line.tax), money(line.total)])).rows[0];
     p.stock -= item.quantity;
     await client.query('UPDATE productos SET stock=$2,version=version+1,actualizado_en=now() WHERE id=$1', [p.id, quantityText(p.stock)]);
-    await movement(client, p.id, -item.quantity, p.stock, 'venta', detail.id);
+    await movement(client, p.id, -item.quantity, p.stock, 'venta', detail.id, '', occurredAt);
   }
   await client.query('UPDATE turnos_caja SET version=version+1 WHERE id=$1', [turn.id]);
   return { id: number(header.id) };
 }
-async function purchase(client, body) {
+async function purchase(client, body, occurredAt) {
   const supplier = (await client.query('SELECT * FROM suplidores WHERE id=$1 AND activo FOR SHARE', [id(body.suplidorId)])).rows[0];
   if (!supplier) fail('Selecciona un suplidor activo.');
   const invoice = text(body.numero, 'la factura del suplidor');
@@ -237,8 +239,9 @@ async function purchase(client, body) {
     stocks.set(line.code, quantityUnits(quantityText(stock), 'las existencias'));
   }
   const total = lines.reduce((sum, line) => sum + line.total, 0n);
-  const header = (await client.query(`INSERT INTO compras(suplidor_id,suplidor_nombre,numero,fecha,total)
-    VALUES($1,$2,$3,(now() AT TIME ZONE 'America/Santo_Domingo')::date,$4) RETURNING id`, [supplier.id, supplier.nombre, invoice, money(total)])).rows[0];
+  const header = (await client.query(`INSERT INTO compras(suplidor_id,suplidor_nombre,numero,fecha,total,creado_en)
+    VALUES($1,$2,$3,(COALESCE($5::timestamptz,clock_timestamp()) AT TIME ZONE 'America/Santo_Domingo')::date,$4,
+      COALESCE($5::timestamptz,clock_timestamp())) RETURNING id`, [supplier.id, supplier.nombre, invoice, money(total), occurredAt ?? null])).rows[0];
   for (const line of lines) {
     const product = (await client.query(`INSERT INTO productos(codigo,nombre,costo,precio1,precio2,precio3,stock)
       VALUES($1,$2,$3,$4,$5,$6,$7)
@@ -246,7 +249,7 @@ async function purchase(client, body) {
       stock=productos.stock+EXCLUDED.stock,activo=true,version=productos.version+1,actualizado_en=now() RETURNING id,stock`, [line.code, line.name, ...line.amounts, quantityText(line.quantity)])).rows[0];
     const detail = (await client.query(`INSERT INTO compra_detalles(compra_id,producto_id,codigo,nombre,cantidad,costo,precio1,precio2,precio3,total)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`, [header.id, product.id, line.code, line.name, quantityText(line.quantity), ...line.amounts, money(line.total)])).rows[0];
-    await movement(client, product.id, line.quantity, quantityUnits(product.stock, 'las existencias'), 'compra', detail.id);
+    await movement(client, product.id, line.quantity, quantityUnits(product.stock, 'las existencias'), 'compra', detail.id, '', occurredAt);
   }
   return { id: number(header.id) };
 }
@@ -288,23 +291,27 @@ async function restore(client, body) {
   return { id: databaseId };
 }
 
-async function execute(client, method, path, body, actor) {
-  if (method === 'POST' && ['/api/caja/abrir','/api/caja/cerrar','/api/caja/movimiento'].includes(path)) return cashOperation(client, path, body, actor);
+async function execute(client, method, path, body, actor, occurredAt) {
+  if (method === 'POST' && ['/api/caja/abrir','/api/caja/cerrar','/api/caja/movimiento'].includes(path)) return cashOperation(client, path, body, actor, occurredAt);
   const productMatch = path.match(/^\/api\/productos\/(\d+)$/);
-  if ((path === '/api/productos' && method === 'POST') || (productMatch && ['PUT', 'DELETE'].includes(method))) return productOperation(client, method, productMatch ? id(Number(productMatch[1])) : null, body);
+  if ((path === '/api/productos' && method === 'POST') || (productMatch && ['PUT', 'DELETE'].includes(method))) return productOperation(client, method, productMatch ? id(Number(productMatch[1])) : null, body, occurredAt);
   const contactMatch = path.match(/^\/api\/(clientes|suplidores|formulas)(?:\/(\d+))?$/);
   if (contactMatch && (contactMatch[2] ? ['PUT', 'DELETE'].includes(method) : method === 'POST'))
     return contactOperation(client, contactMatch[1], method, contactMatch[2] ? id(Number(contactMatch[2])) : null, body);
   if (method === 'PUT' && path === '/api/configuracion') return settingsOperation(client, body);
-  if (method === 'POST' && path === '/api/ventas') return sale(client, body);
-  if (method === 'POST' && path === '/api/compras') return purchase(client, body);
+  if (method === 'POST' && path === '/api/ventas') return sale(client, body, occurredAt);
+  if (method === 'POST' && path === '/api/compras') return purchase(client, body, occurredAt);
   if (method === 'POST' && path === '/api/restore') return restore(client, body);
   fail('Ruta de operación no encontrada.', 404);
 }
-export async function writeOperation(pool, method, path, body, key, databaseLabel, actor = { id: 'local', name: 'Usuario local' }) {
+// Context is supplied only by trusted in-process callers; ordinary HTTP bodies never set it.
+export async function writeOperation(pool, method, path, body, key, databaseLabel, actor = { id: 'local', name: 'Usuario local' }, context = {}) {
   if (!body || typeof body !== 'object' || Array.isArray(body) || !uuid.test(body.databaseId) || !uuid.test(key || '')) fail('Se requiere databaseId e Idempotency-Key UUID válidos.');
-  const type = method + ' ' + path;
-  const fingerprint = createHash('sha256').update(canonical(body)).digest('hex');
+  if (context.occurredAt !== undefined && (typeof context.occurredAt !== 'string' ||
+      !Number.isFinite(Date.parse(context.occurredAt)) || new Date(context.occurredAt).toISOString() !== context.occurredAt)) fail('La fecha de la operación no es válida.');
+  const type = context.requestType ?? method + ' ' + path;
+  const fingerprint = createHash('sha256').update(canonical(context.fingerprintPayload ??
+    (context.occurredAt ? { body, occurredAt: context.occurredAt } : body))).digest('hex');
   const client = await pool.connect();
   let executingNewOperation = false;
   let discardReason;
@@ -314,7 +321,7 @@ export async function writeOperation(pool, method, path, body, key, databaseLabe
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', ['solicitud:' + key]);
     const system = (await client.query('SELECT database_id FROM pos_privado.sistema WHERE id=1')).rows[0];
     const previous = (await client.query('SELECT tipo,huella,resultado FROM pos_privado.solicitudes WHERE clave=$1', [key])).rows[0];
-    let result;
+    let result, metadata;
     if (previous) {
       if (previous.tipo !== type || previous.huella !== fingerprint) fail('Esta clave ya se usó para otra operación.', 409);
       // Ordinary writes hold this row through COMMIT. A replay must likewise
@@ -322,17 +329,21 @@ export async function writeOperation(pool, method, path, body, key, databaseLabe
       const replaySystem = (await client.query('SELECT database_id FROM pos_privado.sistema WHERE id=1 FOR SHARE')).rows[0];
       if (previous.resultado.databaseId !== replaySystem.database_id) fail('La base fue restaurada. Actualiza antes de continuar.', 409);
       result = previous.resultado.result;
+      metadata = previous.resultado.metadata;
     } else {
       if (body.databaseId !== system.database_id) fail('La base cambió. Actualiza los datos antes de guardar.', 409);
       // Only this call can reject a new operation after the guarded key miss.
       executingNewOperation = true;
-      result = await execute(client, method, path, body, actor);
+      await context.beforeExecute?.(client);
+      result = await execute(client, method, path, body, actor, context.occurredAt);
+      metadata = await context.afterExecute?.(client, result);
       executingNewOperation = false;
       await client.query('UPDATE pos_privado.sistema SET revision=revision+1 WHERE id=1');
       const identity = (await client.query('SELECT database_id FROM pos_privado.sistema WHERE id=1')).rows[0].database_id;
-      await client.query('INSERT INTO pos_privado.solicitudes(clave,tipo,huella,resultado) VALUES($1,$2,$3,$4)', [key, type, fingerprint, { result, databaseId: identity }]);
+      await client.query('INSERT INTO pos_privado.solicitudes(clave,tipo,huella,resultado) VALUES($1,$2,$3,$4)', [key, type, fingerprint, { result, databaseId: identity, ...(metadata && { metadata }) }]);
     }
-    const response = { ...await snapshot(client, databaseLabel), result };
+    let response = { ...await snapshot(client, databaseLabel), result };
+    if (context.represent) response = await context.represent(client, response, metadata, Boolean(previous));
     await client.query('COMMIT');
     return { ...response, confirmation: { operationId: key, databaseId: body.databaseId, method, path, replayed: Boolean(previous) } };
   } catch (cause) {

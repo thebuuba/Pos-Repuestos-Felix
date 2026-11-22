@@ -22,7 +22,7 @@ async function worker() {
   };
   const context = {
     self: { location: { origin }, clients: { claim: async () => {} }, addEventListener: (name, callback) => handlers.set(name, callback) },
-    caches, URL, Response,
+    caches, URL, Response, Request: class extends Request { constructor(url, options) { super(new URL(url, origin), options); } },
     fetch: async () => { throw new TypeError('Sin conexión'); },
   };
   vm.runInNewContext(await readFile(new URL('../public/sw.js', import.meta.url), 'utf8'), context);
@@ -36,10 +36,19 @@ test('la interfaz instalada se puede abrir sin conexión', async () => {
   const { handlers, origin } = await worker();
   let result;
   handlers.get('fetch')({
-    request: { method: 'GET', mode: 'navigate', url: `${origin}/` },
+    request: { method: 'GET', mode: 'navigate', url: `${origin}/ventas` },
     respondWith: (response) => { result = response; },
   });
-  assert.equal(await (await result).text(), 'shell:/');
+  assert.ok(result, 'La ruta de ventas debe abrir la interfaz pública sin conexión');
+  assert.equal(await (await result).text(), 'shell:/pwa-shell.html');
+});
+
+test('la fuente local está disponible sin conexión', async () => {
+  const { handlers, origin } = await worker();
+  let result;
+  handlers.get('fetch')({ request: { method: 'GET', url: `${origin}/assets/fonts/inter-latin-wght-normal.woff2` }, respondWith: value => { result = value; } });
+  assert.ok(result, 'La interfaz sin conexión debe conservar Inter');
+  assert.equal(await (await result).text(), 'shell:/assets/fonts/inter-latin-wght-normal.woff2');
 });
 
 test('la imagen del negocio está disponible sin conexión junto a la interfaz', async () => {
@@ -52,7 +61,7 @@ test('la imagen del negocio está disponible sin conexión junto a la interfaz',
 
 test('el service worker no intercepta API, escrituras ni inicio de sesión', async () => {
   const { handlers, origin } = await worker();
-  for (const [method, path] of [['GET', '/api/state'], ['PUT', '/api/state'], ['POST', '/login'], ['GET', '/login'], ['GET', '/respaldo.json']]) {
+  for (const [method, path] of [['GET', '/api/state'], ['GET', '/api/backup'], ['POST', '/api/facturas'], ['PUT', '/api/state'], ['POST', '/login'], ['GET', '/login'], ['POST', '/logout'], ['POST', '/cuenta/clave'], ['GET', '/respaldo.json']]) {
     let intercepted = false;
     handlers.get('fetch')({ request: { method, url: origin + path }, respondWith: () => { intercepted = true; } });
     assert.equal(intercepted, false, `${method} ${path}`);

@@ -2,13 +2,18 @@
   "id": "/",
   "name": "Repuestos Félix · Punto de venta",
   "short_name": "Félix POS",
-  "description": "Ventas, compras e inventario de Repuestos Félix.",
+  "description": "Ventas, inventario, compras, caja y cuentas de Repuestos Félix.",
   "lang": "es-DO",
-  "start_url": "/",
+  "start_url": "/ventas",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f0f4f9",
-  "theme_color": "#bd0c18",
+  "background_color": "#f5f5f7",
+  "theme_color": "#c3131f",
+  "shortcuts": [
+    { "name": "Punto de venta", "short_name": "Ventas", "url": "/ventas" },
+    { "name": "Inventario", "url": "/inventario" },
+    { "name": "Caja", "url": "/caja" }
+  ],
   "icons": [
     { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },

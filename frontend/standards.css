@@ -10,3 +10,19 @@ label {
   margin-inline-end: -1.25rem;
   overflow-x: auto;
 }
+
+.pwa-install-dialog {
+  max-height: 90dvh;
+  overflow-y: auto;
+}
+
+/* Keep the approved layout clear of installed-app notches and gesture bars. */
+@media (display-mode: standalone) {
+  .pos-layout {
+    min-height: 100dvh;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  .pos-layout header {
+    top: env(safe-area-inset-top);
+  }
+}

@@ -17,12 +17,22 @@ import { Button } from "../../components/ui/button.jsx";
 import { useMemo } from "react";
 import { useRef } from "react";
 import { useState } from "react";
-function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, operational = false }) {
+import { useId } from "react";
+import { useEffect } from "react";
+import { Camera } from "lucide-react";
+import { BarcodeCameraDialog } from "./barcode-camera-dialog.jsx";
+import { productForBarcode } from "../../data/barcode-scanner.js";
+function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, operational = false, disabled = false }) {
   const [query, setQuery] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
+  const [selected, setSelected] = useState(false);
+  const [error, setError] = useState("");
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const inputId = useId();
   const inputRef = useRef(null);
+  useEffect(() => { if (disabled) setCameraOpen(false); }, [disabled]);
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
@@ -41,25 +51,49 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, ope
       .slice(0, 6);
   }, [products, query]);
   const commit = (product) => {
+    if (disabled) return false;
     const target = product ?? results[highlight] ?? results[0];
-    if (!target) return;
-    if (onAdd(target, operational ? quantity : Math.max(1, quantity)) === false) return;
+    if (!target) return false;
+    if (onAdd(target, operational ? quantity : Math.max(1, quantity)) === false) return false;
     setQuery("");
     setQuantity(1);
     setHighlight(0);
     setOpen(false);
+    setSelected(false);
+    setError("");
+    inputRef.current?.focus();
+    return true;
+  };
+  const scanCode = (code, format) => {
+    if (disabled) return;
+    try {
+      commit(productForBarcode(products, code, format));
+    } catch (failure) {
+      setError(failure.message);
+    }
+    // Always consume the reader's text, including rejected scans, so the next
+    // physical read cannot be appended to an old barcode.
+    setQuery("");
+    setOpen(false);
+    setSelected(false);
     inputRef.current?.focus();
   };
   const handleKeyDown = (e) => {
+    if (disabled || e.nativeEvent.isComposing) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
+      setSelected(true);
       setHighlight((h) => Math.min(h + 1, results.length - 1));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
+      setSelected(true);
       setHighlight((h) => Math.max(h - 1, 0));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      commit();
+      if (e.repeat) return;
+      if (operational && !selected) {
+        if (e.currentTarget.value) scanCode(e.currentTarget.value);
+      } else commit();
     } else if (e.key === "Escape") {
       setOpen(false);
     }
@@ -67,17 +101,27 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, ope
   return (
     <div className="grid gap-3 rounded-xl bg-muted/60 p-3 md:grid-cols-[minmax(0,1fr)_140px_190px_auto] md:items-end">
       <div className="relative space-y-1.5">
-        <Label3 className="text-xs text-muted-foreground">
+        <Label3 htmlFor={inputId} className="text-xs text-muted-foreground">
           {"Código o nombre del producto"}
         </Label3>
         <div className="relative">
           <ScanBarcode className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
+            id={inputId}
             ref={inputRef}
+            disabled={disabled}
+            autoComplete="off"
+            spellCheck={false}
+            autoCapitalize="none"
+            autoCorrect="off"
+            aria-invalid={!!error}
+            aria-describedby={error ? `${inputId}-error` : undefined}
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
               setHighlight(0);
+              setSelected(false);
+              setError("");
               setOpen(true);
             }}
             onFocus={() => setOpen(true)}
@@ -85,8 +129,16 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, ope
             onKeyDown={handleKeyDown}
             placeholder="Escanea o escribe… ej. BUJ-C7HSA"
             className="h-11 rounded-xl bg-card pl-9"
+            style={operational ? { paddingRight: "3rem" } : undefined}
           />
+          {operational && <Button type="button" variant="ghost" size="icon" disabled={disabled}
+            aria-label="Escanear con cámara" title="Escanear con cámara"
+            className="absolute right-0 top-0 h-11 w-11 rounded-xl text-muted-foreground"
+            onClick={() => { setOpen(false); setError(""); setCameraOpen(true); }}>
+            <Camera className="h-4 w-4" />
+          </Button>}
         </div>
+        {error && <p id={`${inputId}-error`} role="alert" className="text-xs text-destructive">{error}</p>}
         {open && query.trim() && (
           <div className="absolute left-0 right-0 top-full z-20 mt-1.5 overflow-hidden rounded-xl border border-border bg-popover shadow-lg">
             {results.length === 0 ? (
@@ -196,12 +248,16 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, ope
       </div>
       <Button
         onClick={() => commit()}
-        disabled={results.length === 0}
+        disabled={disabled || results.length === 0}
         className="h-11 rounded-xl px-6 font-semibold"
       >
         <Plus />
         {"Agregar"}
       </Button>
+      {cameraOpen && !disabled && <BarcodeCameraDialog
+        onClose={() => { setCameraOpen(false); inputRef.current?.focus(); }}
+        onCode={(code, format) => { setCameraOpen(false); scanCode(code, format); }}
+      />}
     </div>
   );
 }

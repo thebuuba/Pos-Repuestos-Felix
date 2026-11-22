@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { useEffect } from "react";
 import { useState } from "react";
 import { usePosStore } from "../../data/pos-context.jsx";
+import { usePwa } from "../../pwa.jsx";
 var dateFormatter = new Intl.DateTimeFormat("es-DO", {
   timeZone: "America/Santo_Domingo",
   weekday: "long",
@@ -31,12 +32,13 @@ var timeFormatter = new Intl.DateTimeFormat("es-DO", {
 });
 function TopBar({ onOpenMenu }) {
   const { runtime } = usePosStore();
+  const pwa = usePwa();
   const [now, setNow] = useState(() => new Date());
   const [dark, setDark] = useState(false);
   const [demoSyncing, setSyncing] = useState(false);
   const syncing = runtime ? runtime.busy : demoSyncing;
   const connected = !runtime || runtime.connection === "connected";
-  const serviceStatus = connected ? "Conectado" : runtime.connection === "checking" ? "Verificando…" : "Sin conexión al servicio";
+  const serviceStatus = connected ? (window.__FELIX_DESKTOP__ ? "Equipo disponible" : "Conectado") : runtime.connection === "checking" ? "Verificando…" : "Sin conexión al servicio";
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 30000);
     return () => window.clearInterval(id);
@@ -105,20 +107,20 @@ function TopBar({ onOpenMenu }) {
               {syncing ? "Actualizando…" : "Actualizar datos"}
             </span>
           </Button>
-          <Tooltip2>
+          {(!runtime || (pwa && !pwa.installed)) && <Tooltip2>
             <TooltipTrigger2 asChild={true}>
               <Button
                 variant="outline"
                 size="icon"
-                className="hidden h-10 w-10 rounded-xl bg-card sm:inline-flex"
+                className={cn("h-10 w-10 rounded-xl bg-card", !runtime && "hidden sm:inline-flex")}
                 aria-label="Instalar app"
-                disabled={!!runtime}
+                onClick={pwa?.openHelp}
               >
                 <Download />
               </Button>
             </TooltipTrigger2>
             <TooltipContent2>{"Instalar app"}</TooltipContent2>
-          </Tooltip2>
+          </Tooltip2>}
           <Tooltip2>
             <TooltipTrigger2 asChild={true}>
               <Button

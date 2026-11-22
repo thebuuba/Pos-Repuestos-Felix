@@ -61,3 +61,15 @@ test('el recibo usa el registro confirmado por el servidor, sin inventar tiempo,
   assert.equal(receipt.paymentLabel, undefined);
   assert.equal(receiptFromConfirmation({ ...snapshot, state: { facturas: [{ ...doc, metodoPago: 'tarjeta' }] } }).paymentLabel, 'Tarjeta');
 });
+
+test('el recibo durable local conserva su referencia y no se presenta como confirmación fiscal remota', () => {
+  const reference = '1a2b3c4d-0000-4000-8000-123456789abc';
+  const receipt = receiptFromConfirmation({ localReceipt: reference, result: { id: 7 }, state: { facturas: [{
+    id: 7, fechaISO: '2026-11-22', cliente: 'Contado', clienteRnc: '', condicion: 'Contado',
+    tipoComprobante: 'B02', ncf: 'B0200000001', base: 10, itbis: 0, total: 10,
+    items: [{ id: 1, nombre: 'Repuesto', cant: 1, precio: 10, subtotal: 10 }],
+  }] } });
+  assert.equal(receipt.invoiceNumber, 'Local 1a2b3c4d');
+  assert.equal(receipt.localReference, reference);
+  assert.equal(receipt.ncf, null);
+});

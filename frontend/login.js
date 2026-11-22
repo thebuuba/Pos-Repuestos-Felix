@@ -26,7 +26,7 @@ form.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (button.disabled) return;
   button.disabled = true;
-  button.textContent = "Verificando…";
+  button.textContent = window.__FELIX_DESKTOP__ ? "Preparando el equipo…" : "Verificando…";
   error.hidden = true;
   try {
     const response = await fetch(change ? "/cuenta/clave" : "/login", {
@@ -35,7 +35,7 @@ form.addEventListener("submit", async (event) => {
       mode: "same-origin",
       redirect: "error",
       headers: { "Content-Type": "application/json" },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(window.__FELIX_DESKTOP__ ? 120000 : 15000),
       body: JSON.stringify({
         username: form.elements.username.value,
         password: form.elements.password.value,

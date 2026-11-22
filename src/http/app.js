@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readSnapshot, writeOperation } from '../pos/store.js';
+import { readSyncBootstrap, writeSyncOperation } from '../pos/sync-operations.js';
 import { hostingConfig, authorized, validCredentials, sessionCookie, clearSessionCookie } from '../hosting.js';
 import { accountSession } from '../supabase-auth.js';
 
@@ -9,6 +10,13 @@ const pageRoutes = new Set([
 ]);
 const pageAsset = ['index.html', 'text/html'];
 const publicFiles = {
+  '/pwa-shell.html': ['pwa-shell.html', 'text/html'],
+  '/sw.js': ['sw.js', 'text/javascript'],
+  '/manifest.webmanifest': ['manifest.webmanifest', 'application/manifest+json'],
+  '/icons/icon-192.png': ['icons/icon-192.png', 'image/png'],
+  '/icons/icon-512.png': ['icons/icon-512.png', 'image/png'],
+  '/icons/maskable-512.png': ['icons/maskable-512.png', 'image/png'],
+  '/icons/apple-touch-icon.png': ['icons/apple-touch-icon.png', 'image/png'],
   '/app.js': ['app.js', 'text/javascript'],
   '/styles.css': ['styles.css', 'text/css'],
   '/login.js': ['login.js', 'text/javascript'],
@@ -16,7 +24,8 @@ const publicFiles = {
   '/assets/fonts/inter-latin-wght-normal.woff2': ['assets/fonts/inter-latin-wght-normal.woff2', 'font/woff2'],
   '/assets/Inter-OFL.txt': ['assets/Inter-OFL.txt', 'text/plain'],
 };
-const securityHeaders = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY' };
+const securityHeaders = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY',
+  'Permissions-Policy': 'camera=(self), microphone=(), geolocation=()' };
 const maxBodyBytes = 10 * 1024 * 1024;
 const snapshotRepresentationVersion = 4;
 
@@ -142,12 +151,14 @@ async function route(request, { pool, hosting, databaseLabel = 'PostgreSQL', rea
         return json(200, await readSnapshot(pool, databaseLabel, true));
       }
       const isStateRead = request.method === 'GET' && pathname === '/api/state';
-      if (!isStateRead && !['POST', 'PUT', 'DELETE'].includes(request.method)) return json(405, { error: 'Método no permitido.' });
+      const isSyncBootstrap = request.method === 'GET' && pathname === '/api/sync/bootstrap';
+      if (!isStateRead && !isSyncBootstrap && !['POST', 'PUT', 'DELETE'].includes(request.method)) return json(405, { error: 'Método no permitido.' });
       const expectedOrigin = hosting.origin || url.origin;
       const origin = request.headers.get('origin');
       if ((origin && origin !== expectedOrigin) || request.headers.get('sec-fetch-site') === 'cross-site') {
         return json(403, { error: 'Origen no permitido.' });
       }
+      if (isSyncBootstrap) return json(200, await readSyncBootstrap(pool, databaseLabel));
       if (isStateRead) {
         const condition = request.headers.get('if-none-match');
         const state = await readSnapshot(pool, databaseLabel, false, condition ? version => matchesStateTag(condition, stateTag(version)) : undefined);
@@ -161,9 +172,15 @@ async function route(request, { pool, hosting, databaseLabel = 'PostgreSQL', rea
       const body = await readBody(request);
       const actor = account?.user ? { id: account.user.id, name: account.user.email.split('@')[0] } :
         { id: 'local', name: hosting.username || 'Usuario local' };
+      if (pathname === '/api/sync/operations') {
+        if (request.method !== 'POST') return json(405, { error: 'Método no permitido.' });
+        if (request.headers.get('idempotency-key') !== body?.operationId) return json(400, { error: 'La clave de envío no coincide con la operación local.' });
+        return json(200, await writeSyncOperation(pool, body, databaseLabel, actor));
+      }
       return json(200, await writeOperation(pool, request.method, pathname, body, request.headers.get('idempotency-key'), databaseLabel, actor));
     }
-    const asset = isPage ? pageAsset : publicFiles[pathname];
+    const immutableAsset = /^\/assets\/pwa\/(app-[a-f0-9]{16}\.js|styles-[a-f0-9]{16}\.css)$/.exec(pathname);
+    const asset = isPage ? pageAsset : publicFiles[pathname] || (immutableAsset && [pathname.slice(1), pathname.endsWith('.js') ? 'text/javascript' : 'text/css']);
     if (!asset || !['GET', 'HEAD'].includes(request.method)) return json(404, { error: 'No encontrado.' });
     const content = await readAsset(asset[0]);
     const headers = new Headers(content instanceof Response ? content.headers : undefined);
@@ -172,7 +189,7 @@ async function route(request, { pool, hosting, databaseLabel = 'PostgreSQL', rea
     headers.set('Content-Type', /^(text\/|application\/)/.test(type) ? `${type}; charset=utf-8` : type);
     if (!isPage && (!(content instanceof Response) || content.status === 200)) {
       const tag = content instanceof Response ? content.headers.get('etag') : `"${createHash('sha256').update(content).digest('hex')}"`;
-      headers.set('Cache-Control', 'public, max-age=0, must-revalidate');
+      headers.set('Cache-Control', immutableAsset ? 'public, max-age=31536000, immutable' : 'public, max-age=0, must-revalidate');
       if (tag) {
         headers.set('ETag', tag);
         if (matchesStateTag(request.headers.get('if-none-match') || '', tag.replace(/^W\//, ''))) return new Response(null, { status: 304, headers });

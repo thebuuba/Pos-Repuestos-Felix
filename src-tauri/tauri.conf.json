@@ -1,0 +1,39 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Repuestos Felix",
+  "version": "1.0.0",
+  "identifier": "com.repuestosfelix.pos",
+  "build": {
+    "frontendDist": "../dist/operational"
+  },
+  "app": {
+    "windows": [],
+    "withGlobalTauri": false,
+    "security": {
+      "capabilities": [],
+      "csp": "default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "category": "Business",
+    "shortDescription": "Punto de venta Repuestos Félix",
+    "icon": ["icons/icon.ico"],
+    "resources": {
+      "../dist/windows-payload/app/": "app/",
+      "../dist/windows-payload/runtime/": "runtime/",
+      "../dist/windows-payload/payload-manifest.json": "payload-manifest.json"
+    },
+    "windows": {
+      "webviewInstallMode": { "type": "offlineInstaller", "silent": true },
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["Spanish"],
+        "displayLanguageSelector": false,
+        "startMenuFolder": "Repuestos Felix",
+        "compression": "lzma"
+      }
+    }
+  }
+}

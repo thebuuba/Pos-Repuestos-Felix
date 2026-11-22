@@ -11,6 +11,16 @@ const request = (path, options = {}) => new Request(origin + path, {
 });
 const forbiddenPool = { connect() { throw new Error('La ruta no debe consultar PostgreSQL'); } };
 
+test('los recursos instalables son públicos y la cámara propia está permitida', async () => {
+  for (const path of ['/manifest.webmanifest', '/sw.js', '/pwa-shell.html', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/maskable-512.png', '/icons/apple-touch-icon.png']) {
+    const response = await handleRequest(request(path), { pool: forbiddenPool, hosting, readAsset: () => 'public asset' });
+    assert.equal(response.status, 200, path);
+    assert.equal(response.headers.get('set-cookie'), null);
+    assert.match(response.headers.get('permissions-policy'), /camera=\(self\)/);
+    assert.equal(response.headers.get('cache-control'), 'public, max-age=0, must-revalidate');
+  }
+});
+
 test('Fetch protege entrada y API antes de usar recursos; health es independiente de PostgreSQL', async () => {
   const options = { pool: forbiddenPool, hosting, readAsset() { throw new Error('No debe leer assets'); } };
   for (const path of ['/', '/index.html', '/api/state']) {

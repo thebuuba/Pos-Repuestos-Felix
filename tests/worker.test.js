@@ -31,7 +31,7 @@ test('Worker sirve la interfaz operativa y conserva la imagen original y protege
   const bindings = { ...env, HYPERDRIVE: undefined };
   const response = await call('/', {}, bindings);
   assert.equal(response.status, 200);
-  assert.match(await response.text(), /type="module" src="\/app\.js"/);
+  assert.match(await response.text(), /type="module" src="\/assets\/pwa\/app-[a-f0-9]{16}\.js"/);
   const image = await call('/assets/brand/repuestos-felix.jpg', {}, bindings);
   assert.equal(image.status, 200);
   assert.match(image.headers.get('content-type'), /image\/jpeg/);

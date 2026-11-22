@@ -8,7 +8,7 @@ import { useState } from "react";
 function PosLayout({ children }) {
   const [menuOpen, setMenuOpen] = useState(false);
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="pos-layout flex min-h-screen bg-background">
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 border-r border-sidebar-border lg:block">
         <AppSidebar />
       </aside>

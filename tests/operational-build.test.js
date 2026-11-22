@@ -23,8 +23,8 @@ test('the operational build has local public assets and no prototype store or fi
     const html = await readFile(path.join(directory, 'index.html'), 'utf8');
     assert.match(html, /<!doctype html>/i);
     assert.match(html, /lang="es"/);
-    assert.match(html, /src="\/app\.js"/);
-    assert.match(html, /href="\/styles\.css"/);
+    assert.match(html, /src="\/assets\/pwa\/app-[a-f0-9]{16}\.js"/);
+    assert.match(html, /href="\/assets\/pwa\/styles-[a-f0-9]{16}\.css"/);
     const css = await readFile(path.join(directory, 'styles.css'), 'utf8');
     assert.match(css, /assets\/fonts\/inter-latin-wght-normal\.woff2/);
     const font = await readFile(path.join(directory, 'assets/fonts/inter-latin-wght-normal.woff2'));

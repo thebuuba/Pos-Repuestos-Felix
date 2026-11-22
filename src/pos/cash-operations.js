@@ -45,14 +45,14 @@ export async function lockCash(client, cajaId, version) {
   if (version !== undefined && Number(turn.version) !== id(version, 'la versión de caja')) fail('La caja cambió. Revisa los movimientos y el efectivo esperado antes de continuar.', 409);
   return turn;
 }
-export async function cashOperation(client, path, body, actor) {
+export async function cashOperation(client, path, body, actor, occurredAt = null) {
   const user = text(actor.id, 'el usuario de caja');
   if (path === '/api/caja/abrir') {
     const amount = money(cents(body.monto, 'el fondo inicial'));
     await client.query('SELECT pg_advisory_xact_lock(74198233)');
     if ((await client.query('SELECT 1 FROM turnos_caja WHERE cerrado_en IS NULL')).rowCount) fail('Ya hay un turno de caja abierto. Actualiza los datos.', 409);
-    const row = (await client.query('INSERT INTO turnos_caja(usuario,cajero,fondo,abierto_en) VALUES($1,$2,$3,clock_timestamp()) RETURNING id',
-      [user, text(actor.name, 'el cajero'), amount])).rows[0];
+    const row = (await client.query('INSERT INTO turnos_caja(usuario,cajero,fondo,abierto_en) VALUES($1,$2,$3,COALESCE($4::timestamptz,clock_timestamp())) RETURNING id',
+      [user, text(actor.name, 'el cajero'), amount, occurredAt])).rows[0];
     return { id: Number(row.id) };
   }
   const turn = await lockCash(client, body.cajaId, id(body.version, 'la versión de caja'));
@@ -64,13 +64,13 @@ export async function cashOperation(client, path, body, actor) {
     if (body.tipo === 'salida' && amount > summary.expected) fail('La salida supera el efectivo esperado en caja.', 409);
     // Validate resulting balance before committing, including the numeric upper bound.
     money(summary.expected + (body.tipo === 'entrada' ? amount : -amount));
-    const row = (await client.query('INSERT INTO movimientos_caja(caja_id,tipo,monto,concepto,usuario,creado_en) VALUES($1,$2,$3,$4,$5,clock_timestamp()) RETURNING id',
-      [turn.id, body.tipo, money(amount), text(body.concepto, 'el concepto'), user])).rows[0];
+    const row = (await client.query('INSERT INTO movimientos_caja(caja_id,tipo,monto,concepto,usuario,creado_en) VALUES($1,$2,$3,$4,$5,COALESCE($6::timestamptz,clock_timestamp())) RETURNING id',
+      [turn.id, body.tipo, money(amount), text(body.concepto, 'el concepto'), user, occurredAt])).rows[0];
     await client.query('UPDATE turnos_caja SET version=version+1 WHERE id=$1', [turn.id]);
     return { id: Number(row.id) };
   }
-  const row = (await client.query(`UPDATE turnos_caja SET cerrado_en=clock_timestamp(),cerrado_por=$2,esperado=$3,contado=$4,ventas=$5,version=version+1
-    WHERE id=$1 RETURNING *`, [turn.id, user, money(summary.expected), money(cents(body.conteo, 'el conteo')), money(summary.sales)])).rows[0];
+  const row = (await client.query(`UPDATE turnos_caja SET cerrado_en=COALESCE($6::timestamptz,clock_timestamp()),cerrado_por=$2,esperado=$3,contado=$4,ventas=$5,version=version+1
+    WHERE id=$1 RETURNING *`, [turn.id, user, money(summary.expected), money(cents(body.conteo, 'el conteo')), money(summary.sales), occurredAt])).rows[0];
   return closure(row);
 }
 

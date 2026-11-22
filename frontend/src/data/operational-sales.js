@@ -59,8 +59,10 @@ export function saleRequest(items, settings, customerId, condition, comprobante,
 export function receiptFromConfirmation(snapshot) {
   const doc = snapshot.state.facturas.find(row => row.id === snapshot.result.id);
   if (!doc) throw new Error('Falta la factura en la confirmación del servidor.');
-  return { invoiceNumber: 'Registro ' + doc.id, dateOnly: doc.fechaISO, customerName: doc.cliente,
-    customerRnc: doc.clienteRnc, ncf: doc.ncf, comprobante: doc.tipoComprobante, itbisRate: null,
+  const localReference = typeof snapshot.localReceipt === 'string' ? snapshot.localReceipt : null;
+  return { invoiceNumber: localReference ? 'Local ' + localReference.slice(0, 8) : 'Registro ' + doc.id,
+    ...(localReference ? { localReference } : {}), dateOnly: doc.fechaISO, customerName: doc.cliente,
+    customerRnc: doc.clienteRnc, ncf: localReference ? null : doc.ncf, comprobante: doc.tipoComprobante, itbisRate: null,
     conditionLabel: doc.condicion === 'Credito' ? 'Crédito' : 'Contado',
     paymentLabel: { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia', credito: 'Crédito' }[doc.metodoPago],
     totals: { subtotal: doc.base, itbis: doc.itbis, total: doc.total },
