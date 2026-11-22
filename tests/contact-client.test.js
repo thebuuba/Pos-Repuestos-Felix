@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
 import { build } from 'esbuild';
+import { acknowledged } from './pos-response-fixture.js';
 import { chromium } from 'playwright-core';
 
 const databaseId = randomUUID();
@@ -100,12 +101,27 @@ test('failed initial load exposes complete unloaded settings without a writable 
 test('all provider writes produce finite flat per-resource packets', async t => {
   const page = await open(t);
   const packets = [];
+  const snapshot = structuredClone(initial);
   await page.route('**/api/**', route => {
     const req = route.request(), path = new URL(req.url()).pathname;
     if (path === '/api/state') return route.fallback();
     packets.push([req.method(), path, req.postDataJSON()]);
-    const id = path === '/api/configuracion' ? 1 : Number(path.split('/').pop()) || 15;
-    return route.fulfill({ json: { ...initial, result: { id } } });
+    const { databaseId, version, ...fields } = req.postDataJSON();
+    const [, , resource, record] = path.split('/');
+    const id = resource === 'configuracion' ? 1 : Number(record) || 15;
+    snapshot.revision++;
+    if (resource === 'configuracion') {
+      const config = snapshot.state.configuracion;
+      Object.assign(config, fields, { version: version + 1 });
+      Object.assign(snapshot.state, { configuracionVersion: config.version, empresa: config.empresa,
+        itbisRate: Number((config.itbisPorcentaje / 100).toFixed(6)) });
+    } else {
+      const rows = snapshot.state[resource];
+      if (req.method() === 'POST') rows.push({ ...fields, id, version: 1, ...(resource === 'clientes' ? { esContado: false, deuda: 0 } : {}) });
+      else if (req.method() === 'PUT') Object.assign(rows.find(row => row.id === id), fields, { version: version + 1 });
+      else snapshot.state[resource] = rows.filter(row => row.id !== id);
+    }
+    return route.fulfill({ json: acknowledged(route, snapshot, id) });
   });
   const cases = [
     ['Customer','clientes', { name: 'Ana', rnc: '', phone: '', email: 'a@ej.test', address: '', creditLimit: null },
@@ -118,13 +134,13 @@ test('all provider writes produce finite flat per-resource packets', async t => 
   for (const [kind, resource, fields, payload] of cases) {
     await page.evaluate(async ({ kind, fields, databaseId }) => {
       await store['save' + kind]({ id: crypto.randomUUID(), databaseId, ...fields });
-      await store['save' + kind]({ id: 15, version: 2, databaseId, ...fields });
-      await store['delete' + kind]({ id: 15, version: 3, databaseId });
+      await store['save' + kind]({ id: 15, version: 1, databaseId, ...fields });
+      await store['delete' + kind]({ id: 15, version: 2, databaseId });
     }, { kind, fields, databaseId });
     assert.deepEqual(packets.splice(0), [
       ['POST', '/api/' + resource, { ...payload, databaseId }],
-      ['PUT', '/api/' + resource + '/15', { ...payload, databaseId, version: 2 }],
-      ['DELETE', '/api/' + resource + '/15', { databaseId, version: 3 }],
+      ['PUT', '/api/' + resource + '/15', { ...payload, databaseId, version: 1 }],
+      ['DELETE', '/api/' + resource + '/15', { databaseId, version: 2 }],
     ]);
   }
   await page.evaluate(async databaseId => {
@@ -166,7 +182,7 @@ test('malformed contact or settings snapshots on read and replay preserve the la
   const page = await open(t);
   let ack;
   await page.route('**/api/state', route => route.fulfill({ json: ack }));
-  await page.route('**/api/configuracion', route => route.fulfill({ json: ack }));
+  await page.route('**/api/configuracion', route => route.fulfill({ json: acknowledged(route, ack, ack.result.id) }));
   const variants = [
     { configuracion: { ...config, permitirStockNegativo: true } }, { configuracion: { ...config, redondeo: 4 } },
     { configuracion: { ...config, formatoImpresion: 'Fake' } }, { configuracion: { ...config, itbisPorcentaje: 101 } },
@@ -198,7 +214,10 @@ test('the original form object retries its exact packet after a second tab reloa
   await page.context().route('**/api/suplidores/7', route => {
     const req = route.request();
     packets.push({ id: req.headers()['idempotency-key'], body: req.postData() });
-    return packets.length === 1 ? route.abort() : route.fulfill({ json: { ...initial, result: { id: 7 } } });
+    if (packets.length === 1) return route.abort();
+    const snapshot = { ...initial, revision: 8, state: { ...initial.state,
+      suplidores: initial.state.suplidores.map(s => s.id === 7 ? { ...s, nombre: 'Original', version: 2 } : s) } };
+    return route.fulfill({ json: acknowledged(route, snapshot, 7, packets.length > 2) });
   });
   assert.equal(await page.evaluate(async () => {
     window.dto = { ...store.suppliers[0], name: 'Original' };
@@ -224,7 +243,9 @@ test('a proven same-generation rejection unlocks the original DTO for a correcte
     if (packets.length === 1) return route.abort();
     if (packets.length === 2) return route.fulfill({ status: 409, json: { error: 'Versión vencida',
       rejection: { operationId, databaseId, method: 'PUT', path: '/api/configuracion' } } });
-    return route.fulfill({ json: { ...initial, result: { id: 1 } } });
+    const snapshot = { ...initial, revision: 8, state: { ...initial.state, configuracionVersion: 3,
+      configuracion: { ...config, version: 3, redondeo: 5 } } };
+    return route.fulfill({ json: acknowledged(route, snapshot, 1) });
   });
   await page.evaluate(async () => {
     window.dto = { databaseId: store.settings.databaseId, version: 1, rounding: 5 };
@@ -236,4 +257,36 @@ test('a proven same-generation rejection unlocks the original DTO for a correcte
   assert.deepEqual(packets[0], packets[1]);
   assert.notEqual(packets[1].operationId, packets[2].operationId);
   assert.equal(packets[2].body.version, 2);
+});
+
+test('an unchanged revision, a missing active target, wrong version or unbound confirmation retains the original packet', async t => {
+  const page = await open(t);
+  const id = 15;
+  const newCustomer = { ...customer, id, nombre: 'Prueba', version: 1, deuda: 0 };
+  const advanced = { ...initial, revision: initial.revision + 1,
+    state: { ...initial.state, clientes: [...initial.state.clientes, newCustomer] } };
+  const corrupt = [
+    response => ({ ...response, revision: initial.revision }),
+    response => ({ ...response, state: initial.state }),
+    response => ({ ...response, state: { ...advanced.state, clientes: [{ ...newCustomer, version: 2 }] } }),
+    response => ({ ...response, confirmation: null }),
+    ...[{ operationId: randomUUID() }, { method: 'DELETE' }, { databaseId: randomUUID() }, { path: '/api/suplidores' },
+      { replayed: 'false' }].map(fields => response => ({ ...response, confirmation: { ...response.confirmation, ...fields } })),
+  ];
+  let index = 0, pending;
+  await page.route('**/api/clientes', route => {
+    const ack = acknowledged(route, advanced, id);
+    return route.fulfill({ json: index < corrupt.length ? corrupt[index](ack) : ack });
+  });
+  for (; index < corrupt.length; index++) {
+    await assert.rejects(page.evaluate(first => first ? client.writeOperation({ method: 'POST', path: '/api/clientes',
+      databaseId: store.settings.databaseId, payload: { nombre: 'Prueba' } }) : client.retryPending(), index === 0));
+    const state = await page.evaluate(() => client.getState());
+    assert.deepEqual(state.snapshot, initial);
+    assert.equal(state.pending.baseRevision, initial.revision);
+    pending ??= state.pending;
+    assert.deepEqual(state.pending, pending);
+  }
+  await page.evaluate(() => client.retryPending());
+  assert.equal(await page.evaluate(() => client.getState().pending), null);
 });

@@ -139,9 +139,26 @@ async function serviceError(response) {
   return typeof body?.error === 'string' && body.error.trim() ? body : null;
 }
 
-function matchesRejection(proof, packet) {
+function matchesPacket(proof, packet) {
   return proof?.operationId === packet.id && proof.databaseId === packet.databaseId &&
     proof.method === packet.method && proof.path === packet.path;
+}
+
+function checkConfirmation(snapshot, packet, resource, expected, payload) {
+  const proof = snapshot.confirmation;
+  const target = snapshot.result?.id;
+  if (!matchesPacket(proof, packet) || typeof proof.replayed !== 'boolean' ||
+      !id(target) || (expected !== null && target !== expected)) throw new Error(unconfirmed);
+
+  // Older journals have no baseline. Their exact operation can still be confirmed by the server.
+  if (Object.hasOwn(packet, 'baseRevision') && (!Number.isSafeInteger(packet.baseRevision) ||
+      packet.baseRevision < 0 || snapshot.revision <= packet.baseRevision)) throw new Error(unconfirmed);
+  // The current snapshot on a replay can reflect subsequent edits and deactivations.
+  if (proof.replayed) return;
+  const row = resource === 'configuracion' ? snapshot.state.configuracion : snapshot.state[resource].find(item => item.id === target);
+  if (packet.method === 'DELETE') {
+    if (row) throw new Error(unconfirmed);
+  } else if (row?.version !== (packet.method === 'POST' ? 1 : payload.version + 1)) throw new Error(unconfirmed);
 }
 
 export function createPosClient() {
@@ -269,7 +286,7 @@ export function createPosClient() {
         checkGeneration(packet.databaseId);
         if (!current && exactRetry) return packet;
         if (current?.id !== packet.id || current.databaseId !== packet.databaseId ||
-            current.method !== packet.method || current.path !== packet.path || current.body !== packet.body) {
+            current.method !== packet.method || current.path !== packet.path || current.body !== packet.body || current.baseRevision !== packet.baseRevision) {
           throw uncertainError(new Error('La solicitud pendiente cambió. Revisa las operaciones antes de reintentar.'), packet);
         }
         return { ...current, status: 'sending' };
@@ -286,7 +303,7 @@ export function createPosClient() {
         });
         if (received.status !== 200) {
           const body = await serviceError(received);
-          const proven = [400, 409].includes(received.status) && matchesRejection(body?.rejection, sending);
+          const proven = [400, 409].includes(received.status) && matchesPacket(body?.rejection, sending);
           // Even an unproven conflict may announce a restored generation.
           if (proven || received.status === 409) {
             const observed = await readSnapshot({ fresh: true }).catch(() => null);
@@ -301,9 +318,8 @@ export function createPosClient() {
           throw new Error(body?.error || unconfirmed);
         }
         const snapshot = checkSnapshot(await received.json());
-        const target = snapshot.result?.id;
-        if (!id(target) || (expected !== null && target !== expected)) throw new Error(unconfirmed);
         if (snapshot.databaseId !== sending.databaseId) throw new Error(changedDatabase);
+        checkConfirmation(snapshot, sending, resource, expected, payload);
         checkGeneration(sending.databaseId);
         apply(snapshot, null, request);
         await updatePending(current => current?.id === sending.id ? null : current);
@@ -328,7 +344,8 @@ export function createPosClient() {
       checkPayload(method, resource, payload);
       const body = JSON.stringify({ ...payload, databaseId });
       const packet = await updatePending(current => {
-        if (!current) return { id: crypto.randomUUID(), method, path, body, databaseId, status: 'prepared' };
+        checkGeneration(databaseId);
+        if (!current) return { id: crypto.randomUUID(), method, path, body, databaseId, baseRevision: state.snapshot.revision, status: 'prepared' };
         if (current.method === method && current.path === path && current.databaseId === databaseId && current.body === body) return current;
         throw new Error('Resuelve la solicitud pendiente antes de guardar otra operación.');
       });

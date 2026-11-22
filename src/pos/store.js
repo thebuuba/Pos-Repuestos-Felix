@@ -259,7 +259,8 @@ export async function writeOperation(pool, method, path, body, key, databaseLabe
       await client.query('INSERT INTO pos_privado.solicitudes(clave,tipo,huella,resultado) VALUES($1,$2,$3,$4)', [key, type, fingerprint, { result, databaseId: identity }]);
     }
     const response = { ...await snapshot(client, databaseLabel), result };
-    await client.query('COMMIT'); return response;
+    await client.query('COMMIT');
+    return { ...response, confirmation: { operationId: key, databaseId: body.databaseId, method, path, replayed: Boolean(previous) } };
   } catch (cause) {
     discardReason = await rollbackFailure(client);
     if (['40P01', '40001'].includes(cause.code)) throw new OperationError('Otra caja está usando estos datos. Reintenta la misma operación.', 409, cause);

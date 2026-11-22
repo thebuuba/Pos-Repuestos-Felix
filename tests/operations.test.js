@@ -38,6 +38,10 @@ test('sale is computed by server, transactional, and concurrent retry creates on
   assert.deepEqual(results.map(r => r.status), [200, 200]);
   const docs = await Promise.all(results.map(r => r.json()));
   assert.equal(docs[0].result.id, docs[1].result.id);
+  assert.deepEqual(docs.map(d => d.confirmation?.replayed).sort(), [false, true]);
+  for (const doc of docs) assert.deepEqual(doc.confirmation, {
+    operationId: key, databaseId: snapshot.databaseId, method: 'POST', path: '/api/ventas', replayed: doc.confirmation.replayed,
+  });
   snapshot = await get();
   assert.equal(snapshot.state.facturas.length, 1);
   assert.equal(snapshot.state.facturas[0].total, 0.3);

@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
+import { acknowledged } from './pos-response-fixture.js';
 import { chromium } from 'playwright-core';
 import pg from 'pg';
 import { migrateDatabase } from '../src/db/migrations.js';
@@ -310,7 +311,7 @@ test('GET and write acknowledgements reject impossible products without changing
     stock: 0, stockMinimo: 0, costo: 0, precio1: 999999999999.99, precio2: 0, precio3: 0, gravado: false, activo: true };
   const ack = { ...initial, revision: initial.revision + 1, state: { ...initial.state, productos: [product] }, result: { id: product.id } };
   await page.route('**/api/state', route => route.fulfill({ json: ack }));
-  await page.route('**/api/productos', route => route.fulfill({ json: ack }));
+  await page.route('**/api/productos', route => route.fulfill({ json: acknowledged(route, ack, product.id) }));
   const variants = [{ stock: 1.5 }, { stockMinimo: -1 }, { stock: 2147483648 }, { costo: -5.001 }, { precio1: 1.005 }, { precio2: 1e12 },
     { precio3: '0.20' }, { id: 0 }, { version: -1 }, { nombre: ' ' }, { codigo: '' }, { marca: 'x'.repeat(2001) },
     { categoria: 'x'.repeat(2001) }, { ubicacion: 'x'.repeat(2001) }, { gravado: 'false' }, { activo: 1 },
@@ -405,7 +406,7 @@ for (const method of ['PUT', 'DELETE']) {
     await page.route('**/api/productos/7', async route => {
       const request = route.request();
       packet = { id: request.headers()['idempotency-key'], body: request.postData() };
-      await route.fulfill({ json: { ...snapshot, revision: snapshot.revision + 1, result: { id: 8 } } });
+      await route.fulfill({ json: acknowledged(route, { ...snapshot, revision: snapshot.revision + 1 }, 8) });
     });
     const uncertain = await page.evaluate(async method => {
       try {
@@ -534,10 +535,12 @@ test('a contact creation committed before disconnection is replayed once across 
     assert.equal(response.status(), 200);
     return packets.length === 1 ? route.abort() : route.fulfill({ response });
   });
-  await assert.rejects(first.evaluate(() => client.writeOperation({
-    method: 'POST', path: '/api/clientes', databaseId: client.getState().snapshot.databaseId,
-    payload: { nombre: 'Alta durable de prueba', correo: 'durable@ejemplo.test', limiteCredito: null },
-  })));
+  await assert.rejects(first.evaluate(async () => {
+    try {
+      await client.writeOperation({ method: 'POST', path: '/api/clientes', databaseId: client.getState().snapshot.databaseId,
+        payload: { nombre: 'Alta durable de prueba', correo: 'durable@ejemplo.test', limiteCredito: null } });
+    } catch (error) { window.retryOriginal = error.retry; throw error; }
+  }));
   const second = await open(first.context());
   const replay = await second.evaluate(() => client.retryPending());
   assert.deepEqual(packets, [packets[0], packets[0]]);
@@ -548,4 +551,68 @@ test('a contact creation committed before disconnection is replayed once across 
   const [after] = (await pool.query('SELECT count(*)::int AS count FROM clientes WHERE nombre=$1', [matches[0].nombre])).rows;
   assert.equal(after.count, 1);
   await first.waitForFunction(() => client.getState().pending === null);
+  await second.evaluate(({ databaseId, id, version }) => client.writeOperation({ method: 'DELETE',
+    path: '/api/clientes/' + id, databaseId, payload: { version } }), { databaseId: replay.databaseId, ...matches[0] });
+  const observed = await first.evaluate(() => client.reload());
+  const recovered = await first.evaluate(() => retryOriginal());
+  assert.equal(recovered.confirmation.replayed, true);
+  assert.equal(recovered.revision, observed.revision);
+  assert.equal(recovered.state.clientes.some(c => c.id === matches[0].id), false);
+  assert.deepEqual(packets, Array(3).fill(packets[0]));
 });
+
+test('a legacy journal entry without a base revision recovers a committed write at the already observed revision', async t => {
+  const page = await tab(t);
+  const packets = [];
+  await page.route('**/api/productos', async route => {
+    const req = route.request();
+    packets.push({ id: req.headers()['idempotency-key'], body: req.postData() });
+    const response = await route.fetch();
+    assert.equal(response.status(), 200);
+    return packets.length === 1 ? route.abort() : route.fulfill({ response });
+  });
+  await assert.rejects(createProduct(page, 'LEGACY-DIARIO'));
+  const oldPacket = await page.evaluate(async () => {
+    const { baseRevision, ...legacy } = client.getState().pending;
+    const db = await new Promise(resolve => { const open = indexedDB.open('repuestos-felix-operaciones', 1); open.onsuccess = () => resolve(open.result); });
+    try {
+      await new Promise((resolve, reject) => {
+        const transaction = db.transaction('operaciones', 'readwrite');
+        transaction.oncomplete = resolve;
+        transaction.onabort = reject;
+        transaction.objectStore('operaciones').put(legacy, 'pendiente');
+      });
+    } finally { db.close(); }
+    return legacy;
+  });
+  await page.reload();
+  await initialize(page);
+  const before = await page.evaluate(() => client.getState());
+  assert.deepEqual(before.pending, oldPacket);
+  const confirmed = await page.evaluate(() => client.retryPending());
+  assert.equal(confirmed.revision, before.snapshot.revision);
+  assert.equal(confirmed.confirmation.replayed, true);
+  assert.deepEqual(packets, [packets[0], packets[0]]);
+  assert.equal(await page.evaluate(() => client.getState().pending), null);
+  assert.equal((await pool.query("SELECT id FROM productos WHERE codigo='LEGACY-DIARIO'")).rowCount, 1);
+});
+
+for (const method of ['PUT', 'DELETE']) {
+  test(method + ' retains inventory work if the bound new-write confirmation still contains the original active row', async t => {
+    const page = await tab(t);
+    const saved = await createProduct(page, 'CONFIRMACION-' + method);
+    const product = saved.state.productos.find(p => p.id === saved.result.id);
+    const path = '/api/productos/' + product.id;
+    await page.route('**' + path, route => route.fulfill({
+      json: acknowledged(route, { ...saved, revision: saved.revision + 1 }, product.id),
+    }));
+    const payload = method === 'DELETE' ? { version: product.version } : {
+      codigo: product.codigo, nombre: 'Descripción nueva', costo: product.costo, stock: product.stock,
+      precio1: product.precio1, precio2: product.precio2, precio3: product.precio3, version: product.version,
+    };
+    await assert.rejects(page.evaluate(op => client.writeOperation(op), { method, path, databaseId: saved.databaseId, payload }));
+    const state = await page.evaluate(() => client.getState());
+    assert.equal(state.pending.baseRevision, saved.revision);
+    assert.deepEqual(state.snapshot, saved);
+  });
+}

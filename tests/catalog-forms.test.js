@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { acknowledged } from "./pos-response-fixture.js";
 import { chromium } from "playwright-core";
 import { buildOperational } from "../scripts/build-operational.mjs";
 import { serveDesign } from "../scripts/serve-design.mjs";
@@ -27,6 +28,13 @@ const product = {
   gravado: true,
   activo: true,
 };
+
+function confirmNewProduct(route, snapshot, id = product.id) {
+  const { databaseId, ...fields } = route.request().postDataJSON();
+  snapshot.revision++;
+  snapshot.state.productos.push({ ...fields, id, version: 1, activo: true });
+  return route.fulfill({ json: acknowledged(route, snapshot, id) });
+}
 
 function rejected(route, status, error) {
   const request = route.request();
@@ -157,14 +165,7 @@ test(
     await page.route("**/api/productos", async (route) => {
       packets.push(route.request().postDataJSON());
       await gate.promise;
-      await route.fulfill({
-        json: {
-          ...state,
-          revision: 2,
-          result: { id: product.id },
-          state: { ...state.state, productos: [product] },
-        },
-      });
+      await confirmNewProduct(route, state);
     });
     const sheet = await newDraft(page);
     try {
@@ -201,7 +202,7 @@ test(
     await page.route("**/api/productos/7", (route) => {
       state.revision++;
       state.state.productos = [];
-      return route.fulfill({ json: { ...state, result: { id: product.id } } });
+      return route.fulfill({ json: acknowledged(route, state, product.id) });
     });
     const row = page.getByRole("row").filter({ hasText: product.codigo });
     await row.getByRole("button", { name: "Eliminar", exact: true }).focus();
@@ -259,9 +260,7 @@ test(
     const packets = [];
     await page.route("**/api/productos", (route) => {
       packets.push(route.request().postDataJSON());
-      return route.fulfill({
-        json: { ...state, revision: 2, result: { id: product.id } },
-      });
+      return confirmNewProduct(route, state);
     });
     const sheet = await newDraft(page);
     const numbers = sheet.getByRole("spinbutton");
@@ -320,14 +319,7 @@ test(
         key: route.request().headers()["idempotency-key"],
       });
       if (packets.length === 1) return route.abort("failed");
-      return route.fulfill({
-        json: {
-          ...state,
-          revision: 2,
-          result: { id: product.id },
-          state: { ...state.state, productos: [product] },
-        },
-      });
+      return confirmNewProduct(route, state);
     });
     const sheet = await newDraft(page);
     await sheet
@@ -388,13 +380,7 @@ test(
           state.state.productos = [product];
           return rejected(route, 409, duplicate);
         default:
-          state.revision = 3;
-          state.state.productos.push({
-            ...product,
-            id: 8,
-            codigo: "CORREGIDO",
-          });
-          return route.fulfill({ json: { ...state, result: { id: 8 } } });
+          return confirmNewProduct(route, state, 8);
       }
     });
     const sheet = await newDraft(page);
@@ -471,9 +457,7 @@ test(
     await peer.route("**/api/state", (route) => route.fulfill({ json: state }));
     await peer.route("**/api/productos", (route) => {
       if (++peerRequests > 1) return route.abort("failed");
-      state.revision = 2;
-      state.state.productos = [product];
-      return route.fulfill({ json: { ...state, result: { id: product.id } } });
+      return confirmNewProduct(route, state);
     });
     await peer.goto(server.origin + "/inventario");
     await peer
