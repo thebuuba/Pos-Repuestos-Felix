@@ -1,9 +1,6 @@
+import { normalizeFormula } from '../../../src/domain/pricing.js';
 import { journalTransaction } from './operation-journal.js';
 
-const productFields = new Set([
-  'codigo', 'nombre', 'marca', 'categoria', 'ubicacion', 'stockMinimo', 'gravado',
-  'stock', 'costo', 'precio1', 'precio2', 'precio3', 'version',
-]);
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const changedDatabase = 'La base cambió. Revisa la solicitud y los datos antes de continuar.';
 const unconfirmed = 'No se confirmó la operación. Reintenta la solicitud pendiente.';
@@ -15,27 +12,120 @@ function sameVersionTag(first, second) {
   return tag !== undefined && tag === opaque(second);
 }
 
+const id = value => Number.isSafeInteger(value) && value > 0;
+const quantity = value => Number.isInteger(value) && value >= 0 && value <= 2147483647;
+const text = value => typeof value === 'string' && value.length <= 2000;
+const name = value => text(value) && value.trim().length > 0;
+const nullable = check => value => value === null || check(value);
+const oneOf = (...values) => value => values.includes(value);
+const money = value => typeof value === 'number' && /^\d{1,12}(?:\.\d{1,2})?$/.test(String(value));
+const decimal = pattern => value => (typeof value === 'string' || Number.isFinite(value)) && pattern.test(String(value));
+const rate = decimal(/^\d{1,3}(?:\.\d{1,4})?$/);
+const percentage = value => rate(value) && Number(value) <= 100;
+const string = value => typeof value === 'string';
+const amount = decimal(/^\d{1,12}(?:\.\d{1,2})?$/);
+const productFields = { codigo: string, nombre: string, marca: string, categoria: string, ubicacion: string,
+  stockMinimo: quantity, gravado: value => typeof value === 'boolean', stock: quantity,
+  costo: amount, precio1: amount, precio2: amount, precio3: amount };
+const contactFields = { nombre: name, rnc: text, tel: text, correo: text };
+const customerFields = { ...contactFields, direccion: text, limiteCredito: nullable(amount) };
+const supplierFields = { ...contactFields, contacto: text, diasCredito: nullable(quantity), formulaId: nullable(id) };
+const formulaValue = value => typeof value === 'string' || Number.isFinite(value);
+const formulaFields = { nombre: name, factorCosto: formulaValue, recargo1: formulaValue, recargo2: formulaValue, recargo3: formulaValue };
+function validFormula(row) {
+  try {
+    normalizeFormula({ costFactor: row.factorCosto, margins: { p1: row.recargo1, p2: row.recargo2, p3: row.recargo3 } });
+    return true;
+  } catch (error) {
+    if (error instanceof RangeError) return false;
+    throw error;
+  }
+}
+const settingsFields = { empresa: name, rnc: text, tel: text, correo: text, direccion: text, itbisPorcentaje: percentage,
+  redondeo: oneOf(0, 1, 5, 10, 25), nivelPrecioPredeterminado: oneOf(null, 'p1', 'p2', 'p3'),
+  formatoImpresion: oneOf(null, 'Térmica 80 mm', 'Térmica 58 mm', 'Carta (8.5 x 11)'), pieTicket: text,
+  permitirStockNegativo: oneOf(false) };
+const resourceFields = { productos: productFields, clientes: customerFields, suplidores: supplierFields, formulas: formulaFields,
+  configuracion: settingsFields };
+
 function checkTarget(method, path) {
-  if (method === 'POST' && path === '/api/productos') return;
-  if (['PUT', 'DELETE'].includes(method) && /^\/api\/productos\/[1-9]\d*$/.test(path)) return;
+  if (method === 'PUT' && path === '/api/configuracion') return { resource: 'configuracion', target: 1 };
+  const match = typeof path === 'string' && /^\/api\/(productos|clientes|suplidores|formulas)(?:\/([1-9]\d*))?$/.exec(path);
+  if (match && (match[2] ? ['PUT', 'DELETE'].includes(method) && id(Number(match[2])) : method === 'POST')) {
+    return { resource: match[1], target: match[2] ? Number(match[2]) : null };
+  }
   throw new Error('La operación de catálogo no es válida.');
 }
 
+function checkPayload(method, resource, payload) {
+  const mutable = resourceFields[resource];
+  const invalid = () => { throw new Error('Los campos de la solicitud no son válidos.'); };
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) invalid();
+  if (method !== 'POST' && !id(payload.version)) invalid();
+  const entries = Object.entries(payload);
+  if (resource === 'configuracion' && entries.length < 2) invalid();
+  if (method !== 'DELETE') {
+    if (['clientes', 'suplidores', 'formulas'].includes(resource) && !name(payload.nombre)) invalid();
+    if (resource === 'formulas' && !validFormula(payload)) invalid();
+  }
+  for (const [key, value] of entries) {
+    if (key === 'version' && method !== 'POST') continue;
+    if (method === 'DELETE' || !Object.hasOwn(mutable, key)) invalid();
+    const legacyEmpty = method === 'POST' && ['clientes', 'suplidores'].includes(resource) && ['rnc', 'tel'].includes(key) && value === null;
+    if (!legacyEmpty && !mutable[key](value)) invalid();
+  }
+}
+
 function validProduct(p) {
-  return p && Number.isSafeInteger(p.id) && p.id > 0 && Number.isSafeInteger(p.version) && p.version > 0 &&
-    ['codigo', 'nombre', 'marca', 'categoria', 'ubicacion'].every(key => typeof p[key] === 'string' && p[key].length <= 2000) &&
-    p.codigo.trim() && p.nombre.trim() &&
-    ['stock', 'stockMinimo'].every(key => Number.isInteger(p[key]) && p[key] >= 0 && p[key] <= 2147483647) &&
+  return p && id(p.id) && id(p.version) && name(p.codigo) && name(p.nombre) &&
+    ['marca', 'categoria', 'ubicacion'].every(key => text(p[key])) &&
+    quantity(p.stock) && quantity(p.stockMinimo) &&
     (!Object.hasOwn(p, 'stock_minimo') || p.stock_minimo === p.stockMinimo) &&
-    ['costo', 'precio1', 'precio2', 'precio3'].every(key => typeof p[key] === 'number' && /^\d{1,12}(?:\.\d{1,2})?$/.test(String(p[key]))) &&
+    ['costo', 'precio1', 'precio2', 'precio3'].every(key => money(p[key])) &&
     typeof p.gravado === 'boolean' && p.activo === true;
+}
+
+function complete(row, fields) {
+  return row && Object.entries(fields).every(([key, validate]) => validate(row[key]));
+}
+function records(rows, validate) {
+  return Array.isArray(rows) && rows.every(row => row && id(row.id) && validate(row)) &&
+    new Set(rows.map(row => row.id)).size === rows.length;
+}
+function documentDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(value + 'T00:00:00Z');
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+const lineFields = { productoId: id, codigo: name, nombre: name, cant: value => quantity(value) && value > 0, subtotal: money };
+function validDocument(row, sale) {
+  const header = sale ? { clienteId: id, cliente: name, clienteRnc: text, ncf: nullable(name),
+    tipoComprobante: oneOf('B01','B02','B14'), condicion: oneOf('Credito','Contado'), base: money, itbis: money }
+    : { suplidorId: id, suplidor: name, numero: name };
+  const amounts = sale ? { precio: money, base: money, itbis: money } : { costo: money, p1: money, p2: money, p3: money };
+  return complete(row, header) && documentDate(row.fechaISO) && money(row.total) && row.items?.length > 0 &&
+    records(row.items, line => complete(line, lineFields) && complete(line, amounts));
+}
+function validOperationalState(state) {
+  const config = state.configuracion;
+  if (!complete(config, settingsFields) || !id(config.version) || typeof config.itbisPorcentaje !== 'number' ||
+      state.empresa !== config.empresa || state.configuracionVersion !== config.version || !Number.isFinite(state.itbisRate) ||
+      Number((config.itbisPorcentaje / 100).toFixed(6)) !== state.itbisRate) return false;
+  if (!records(state.formulas, row => id(row.version) && name(row.nombre) && validFormula(row) &&
+      ['factorCosto','recargo1','recargo2','recargo3'].every(key => typeof row[key] === 'number'))) return false;
+  const formulas = new Set(state.formulas.map(row => row.id));
+  return Array.isArray(state.movimientos) && records(state.clientes, row => id(row.version) && complete(row, customerFields) && nullable(money)(row.limiteCredito) &&
+      typeof row.esContado === 'boolean' && Number.isFinite(row.deuda) && /^-?\d+(?:\.\d{1,2})?$/.test(String(row.deuda))) &&
+    state.clientes.filter(row => row.esContado).length <= 1 &&
+    records(state.suplidores, row => id(row.version) && complete(row, supplierFields) && (row.formulaId === null || formulas.has(row.formulaId))) &&
+    records(state.facturas, row => validDocument(row, true)) && records(state.compras, row => validDocument(row, false));
 }
 
 function checkSnapshot(snapshot) {
   const products = snapshot?.state?.productos;
   if (typeof snapshot?.databaseId !== 'string' || !uuid.test(snapshot.databaseId) || !Number.isSafeInteger(snapshot.revision) ||
       snapshot.revision < 0 || typeof snapshot.databaseLabel !== 'string' ||
-      !Array.isArray(products) || !products.every(validProduct) ||
+      !Array.isArray(products) || !products.every(validProduct) || !validOperationalState(snapshot.state) ||
       new Set(products.map(p => p.id)).size !== products.length ||
       // PostgreSQL's case folding for non-ASCII SKU characters depends on its collation.
       new Set(products.map(p => p.codigo.replace(/[A-Z]/g, letter => letter.toLowerCase()))).size !== products.length) {
@@ -166,7 +256,10 @@ export function createPosClient() {
   }
 
   async function send(packet, exactRetry = false) {
-    checkTarget(packet.method, packet.path);
+    const { resource, target: expected } = checkTarget(packet.method, packet.path);
+    const { databaseId, ...payload } = JSON.parse(packet.body);
+    if (packet.databaseId !== databaseId || !uuid.test(packet.id)) throw new Error(unconfirmed);
+    checkPayload(packet.method, resource, payload);
     checkGeneration(packet.databaseId);
     // A crashed tab releases its lock. Its durable "sending" marker still
     // records that the previous attempt could have committed.
@@ -209,8 +302,7 @@ export function createPosClient() {
         }
         const snapshot = checkSnapshot(await received.json());
         const target = snapshot.result?.id;
-        if (!Number.isSafeInteger(target) || target < 1 ||
-            (sending.method !== 'POST' && sending.path !== '/api/productos/' + target)) throw new Error(unconfirmed);
+        if (!id(target) || (expected !== null && target !== expected)) throw new Error(unconfirmed);
         if (snapshot.databaseId !== sending.databaseId) throw new Error(changedDatabase);
         checkGeneration(sending.databaseId);
         apply(snapshot, null, request);
@@ -231,13 +323,9 @@ export function createPosClient() {
 
   function writeOperation({ method, path, payload, databaseId }) {
     return working(async () => {
-      checkTarget(method, path);
+      const { resource } = checkTarget(method, path);
       checkGeneration(databaseId);
-      if (!payload || typeof payload !== 'object' || Array.isArray(payload) ||
-          Object.entries(payload).some(([key, value]) => !productFields.has(key) ||
-            !['boolean','number','string'].includes(typeof value))) {
-        throw new Error('Los campos de la solicitud no son válidos.');
-      }
+      checkPayload(method, resource, payload);
       const body = JSON.stringify({ ...payload, databaseId });
       const packet = await updatePending(current => {
         if (!current) return { id: crypto.randomUUID(), method, path, body, databaseId, status: 'prepared' };

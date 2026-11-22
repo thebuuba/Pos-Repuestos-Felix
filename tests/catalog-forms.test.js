@@ -62,7 +62,7 @@ after(async () => {
   }
 });
 
-async function openInventory(t, products = []) {
+async function openInventory(t, products = [], formulas = []) {
   const context = await browser.newContext({
     viewport: { width: 1440, height: 1000 },
     locale: "es-DO",
@@ -75,7 +75,13 @@ async function openInventory(t, products = []) {
     databaseId,
     databaseLabel: "Prueba aislada",
     revision: 1,
-    state: { productos: products },
+    state: {
+      empresa: "Negocio", itbisRate: 0.18, configuracionVersion: 1,
+      configuracion: { version: 1, empresa: "Negocio", rnc: "", tel: "", correo: "", direccion: "",
+        itbisPorcentaje: 18, redondeo: 0, nivelPrecioPredeterminado: null, formatoImpresion: null,
+        pieTicket: "", permitirStockNegativo: false },
+      productos: products, clientes: [], suplidores: [], formulas, facturas: [], compras: [], movimientos: [],
+    },
   };
   await page.route("**/api/state", (route) => route.fulfill({ json: state }));
   await page.goto(server.origin + "/inventario");
@@ -156,7 +162,7 @@ test(
           ...state,
           revision: 2,
           result: { id: product.id },
-          state: { productos: [product] },
+          state: { ...state.state, productos: [product] },
         },
       });
     });
@@ -319,7 +325,7 @@ test(
           ...state,
           revision: 2,
           result: { id: product.id },
-          state: { productos: [product] },
+          state: { ...state.state, productos: [product] },
         },
       });
     });
@@ -653,3 +659,21 @@ test(
     );
   },
 );
+
+test("keyboard selection uses the server's numeric formula ID to calculate product prices", async t => {
+  const makeFormula = (id, factorCosto) => ({ id, version: 1, nombre: "Tarifa " + id, factorCosto, recargo1: 0, recargo2: 0, recargo3: 0 });
+  const { page } = await openInventory(t, [], [makeFormula(4, 1), makeFormula(7, 2)]);
+  const sheet = await newDraft(page);
+  const select = sheet.getByRole("combobox", { name: "Fórmula de precios" });
+  await select.press("Enter");
+  const second = page.getByRole("option", { name: /Tarifa 7/ });
+  await second.waitFor({ timeout: 2000 });
+  await page.waitForFunction(() => document.activeElement?.getAttribute("role") === "option");
+  await page.keyboard.press("End");
+  await page.waitForFunction(() => document.activeElement?.textContent.includes("Tarifa 7"));
+  await page.keyboard.press("Enter");
+  await second.waitFor({ state: "hidden" });
+  assert.match(await select.innerText(), /Tarifa 7/);
+  await sheet.getByRole("button", { name: "Calcular" }).click();
+  assert.equal(await sheet.getByRole("spinbutton").nth(3).inputValue(), "20.5");
+});

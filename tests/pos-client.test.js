@@ -523,3 +523,29 @@ test('a restore blocks an old committed response and its replay without rewritin
   assert.equal(requests, 1);
   assert.deepEqual(await page.evaluate(() => client.getState().pending), pending);
 });
+
+test('a contact creation committed before disconnection is replayed once across tabs on the disposable database', async t => {
+  const first = await tab(t);
+  const packets = [];
+  await first.context().route('**/api/clientes', async route => {
+    const request = route.request();
+    packets.push({ key: request.headers()['idempotency-key'], body: request.postData() });
+    const response = await route.fetch();
+    assert.equal(response.status(), 200);
+    return packets.length === 1 ? route.abort() : route.fulfill({ response });
+  });
+  await assert.rejects(first.evaluate(() => client.writeOperation({
+    method: 'POST', path: '/api/clientes', databaseId: client.getState().snapshot.databaseId,
+    payload: { nombre: 'Alta durable de prueba', correo: 'durable@ejemplo.test', limiteCredito: null },
+  })));
+  const second = await open(first.context());
+  const replay = await second.evaluate(() => client.retryPending());
+  assert.deepEqual(packets, [packets[0], packets[0]]);
+  const matches = replay.state.clientes.filter(c => c.nombre === 'Alta durable de prueba');
+  assert.equal(matches.length, 1);
+  assert.deepEqual(matches[0], { id: replay.result.id, version: 1, nombre: 'Alta durable de prueba',
+    correo: 'durable@ejemplo.test', rnc: '', tel: '', direccion: '', esContado: false, limiteCredito: null, deuda: 0 });
+  const [after] = (await pool.query('SELECT count(*)::int AS count FROM clientes WHERE nombre=$1', [matches[0].nombre])).rows;
+  assert.equal(after.count, 1);
+  await first.waitForFunction(() => client.getState().pending === null);
+});

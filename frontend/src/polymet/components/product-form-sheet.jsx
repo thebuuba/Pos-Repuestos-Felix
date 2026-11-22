@@ -81,7 +81,7 @@ function ProductFormSheet({
 }) {
   const product = draft?.product;
   const [form, setForm] = useState(EMPTY);
-  const [formulaId, setFormulaId] = useState(formulas[0]?.id ?? "");
+  const [formulaId, setFormulaId] = useState(String(formulas[0]?.id ?? ""));
   const [submitted, setSubmitted] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
@@ -107,7 +107,7 @@ function ProductFormSheet({
   const moneyError = "Usa un importe válido con hasta dos decimales";
   const validCost = validMoney(form.cost);
   const cost = validCost ? Number(form.cost) : 0;
-  const formula = formulas.find((f) => f.id === formulaId) ?? formulas[0];
+  const formula = formulas.find((f) => String(f.id) === formulaId) ?? formulas[0];
   let suggested, suggestionError;
   if (formula && form.cost !== "") {
     if (!validCost) suggestionError = moneyError;
@@ -378,7 +378,7 @@ function ProductFormSheet({
                 className="min-w-0 flex-1"
               >
                 <Select2
-                  value={formula?.id ?? ""}
+                  value={String(formula?.id ?? "")}
                   onValueChange={setFormulaId}
                   disabled={locked || !formula}
                 >
@@ -390,7 +390,7 @@ function ProductFormSheet({
                   </SelectTrigger2>
                   <SelectContent2>
                     {formulas.map((f) => (
-                      <SelectItem2 value={f.id} key={f.id}>
+                      <SelectItem2 value={String(f.id)} key={f.id}>
                         {f.name}
                         {" ("}
                         {formulaSummary(f)}
