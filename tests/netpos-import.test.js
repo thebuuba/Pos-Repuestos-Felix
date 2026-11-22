@@ -13,7 +13,7 @@ import { readSnapshot, writeOperation } from '../src/pos/store.js';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const run = (cmd, args, env = process.env) => spawnSync(cmd, args, { encoding: 'utf8', env, windowsHide: true });
-const empty = { categorias: [], marcas: [], ubicaciones: [], unidades: [] };
+const empty = { importada:false, categorias: [], marcas: [], ubicaciones: [], unidades: [] };
 
 test('carga NetPOS atómica, privada, repetible y ligada a la generación', async t => {
   const root = await mkdtemp(join(tmpdir(), 'felix-netpos-test-'));
@@ -67,7 +67,7 @@ test('carga NetPOS atómica, privada, repetible y ligada a la generación', asyn
   assert.equal(replay.status, 0, replay.stderr);
   assert.deepEqual(await readSnapshot(app, 'Prueba'), state);
   assert.deepEqual(await counts(), { productos: 5, lotes: 1 });
-  assert.deepEqual(state.state.catalogo, { categorias: ['Opción CATEGORIA'], marcas: ['Opción MARCA'], ubicaciones: ['Opción UBICACION'], unidades: ['Opción UNIDAD'] });
+  assert.deepEqual(state.state.catalogo, { importada:true, categorias: ['Opción CATEGORIA'], marcas: ['Opción MARCA'], ubicaciones: ['Opción UBICACION'], unidades: ['Opción UNIDAD'] });
   assert.equal(state.state.movimientos.length, 1);
   assert.equal(state.state.movimientos[0].cantidad, 0.25);
   const product = state.state.productos.find(p => p.codigo === '0012');

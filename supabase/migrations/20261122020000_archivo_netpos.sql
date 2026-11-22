@@ -26,7 +26,7 @@ CREATE TABLE pos_privado.netpos_contactos (
 
 CREATE FUNCTION pos_privado.netpos_opciones() RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog AS $$
-  SELECT jsonb_build_object('categorias',COALESCE(i.categorias,'{}'::text[]),'marcas',COALESCE(i.marcas,'{}'::text[]),
+  SELECT jsonb_build_object('importada',i.huella IS NOT NULL,'categorias',COALESCE(i.categorias,'{}'::text[]),'marcas',COALESCE(i.marcas,'{}'::text[]),
     'ubicaciones',COALESCE(i.ubicaciones,'{}'::text[]),'unidades',COALESCE(i.unidades,'{}'::text[]))
   FROM pos_privado.sistema s LEFT JOIN pos_privado.netpos_importaciones i ON i.database_id=s.database_id WHERE s.id=1
 $$;
