@@ -210,7 +210,7 @@ async function restore(client, body) {
     for (const table of Object.keys(tables).filter(table => table !== 'configuracion')) await client.query(`SELECT setval(pg_get_serial_sequence('public.${table}','id'),COALESCE((SELECT max(id) FROM public.${table}),1),(SELECT count(*)>0 FROM public.${table}))`);
   }
   const databaseId = randomUUID();
-  if (legacy || backup.version < 4) await client.query('SELECT pos_privado.marcar_contado_historico()');
+  if (legacy || backup.version < 4) await client.query('SELECT pos_privado.marcar_contado_historico($1::jsonb)', [legacy ? backup : null]);
   await client.query('UPDATE pos_privado.sistema SET database_id=$1 WHERE id=1', [databaseId]);
   return { id: databaseId };
 }

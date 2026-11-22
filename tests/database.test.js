@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import pg from 'pg';
 import { temporaryPostgres } from './postgres.js';
+import { contactOperation } from '../src/pos/contact-operations.js';
 
 let database, pool, legacyMigration, migration, schema;
 const tables = ['clientes','compra_detalles','compras','configuracion','movimientos_inventario','productos','suplidores','venta_detalles','ventas'];
@@ -53,7 +54,7 @@ test('schema.sql crea toda la estructura en una base sin esquema previo', async 
     for (const role of ['anon','authenticated','service_role']) {
       const { rows } = await client.query(`SELECT has_table_privilege($1,'public.formulas_precios','SELECT') AS tabla,
         has_sequence_privilege($1,'public.formulas_precios_id_seq','USAGE') AS secuencia,
-        has_function_privilege($1,'pos_privado.marcar_contado_historico()','EXECUTE') AS funcion`, [role]);
+        has_function_privilege($1,'pos_privado.marcar_contado_historico(jsonb)','EXECUTE') AS funcion`, [role]);
       assert.deepEqual(rows[0], { tabla: false, secuencia: false, funcion: false });
     }
     await client.query("INSERT INTO pos_privado.estado(id,datos) VALUES(1,'{}')").then(
@@ -70,6 +71,33 @@ test('crea tablas relacionadas visibles y una base limpia sin demostración', as
   assert.equal((await client.query('SELECT count(*) FROM productos')).rows[0].count, '0');
   assert.equal((await client.query('SELECT nombre FROM clientes')).rows[0].nombre, 'Cliente Contado');
 }));
+
+test('contact migration uses the raw contact from the same generation before protecting it', async () => {
+  const sql = await readFile(new URL('../supabase/migrations/20261122000000_contactos_configuracion.sql', import.meta.url), 'utf8');
+  const exact = { nombre: 'Cliente Contado', rnc: '', tel: '', deuda: 0 };
+  for (const [source, restoredPreviously, protect] of [
+    [{ ...exact, nombre: ' Cliente Contado ', rnc: ' ', tel: ' ' }, false, false],
+    [exact, false, true], [null, false, true], [exact, true, false],
+  ]) {
+    await migrated(async client => {
+      if (restoredPreviously) {
+        await client.query("INSERT INTO pos_privado.respaldos(motivo,datos) VALUES('Antes de restaurar','{}')");
+        await client.query('UPDATE pos_privado.sistema SET database_id=gen_random_uuid()');
+      }
+      await client.query(sql);
+      await client.query('SET LOCAL ROLE pos_app');
+      const [contact] = (await client.query('SELECT * FROM clientes')).rows;
+      assert.equal(contact.nombre, 'Cliente Contado');
+      assert.equal(contact.es_contado, protect);
+      const change = () => contactOperation(client, 'clientes', 'PUT', Number(contact.id), { nombre: 'Editable', version: 1 });
+      if (protect) await assert.rejects(change(), { status: 409 });
+      else {
+        await change();
+        assert.equal((await client.query('SELECT nombre FROM clientes')).rows[0].nombre, 'Editable');
+      }
+    }, { empresa: 'Archivo', itbisRate: 0.18, clientes: source ? [source] : [] });
+  }
+});
 
 test('convierte históricos preservando documentos, saldos y existencias al corte', async () => migrated(async client => {
   const sale = (await client.query('SELECT * FROM ventas')).rows[0];

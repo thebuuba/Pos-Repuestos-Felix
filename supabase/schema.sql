@@ -391,21 +391,32 @@ ALTER TABLE public.configuracion
 
 -- Solo para migrar datos anteriores al marcador. Un homónimo, incluso inactivo o
 -- con otra capitalización, impide decidir cuál corresponde al inicializador.
-CREATE FUNCTION pos_privado.marcar_contado_historico() RETURNS void
+-- Los respaldos relacionales ya conservan los textos exactos en las filas.
+-- En legacy, verificar también la fuente previa al btrim del importador.
+CREATE FUNCTION pos_privado.marcar_contado_historico(fuente_legacy jsonb) RETURNS void
 LANGUAGE sql SET search_path=pg_catalog AS $$
   UPDATE public.clientes c SET es_contado=true
   WHERE c.nombre='Cliente Contado' AND c.activo AND c.rnc='' AND c.tel='' AND c.saldo_apertura=0
     AND NOT EXISTS(SELECT FROM public.ventas v WHERE v.cliente_id=c.id AND v.condicion='Credito')
     AND NOT EXISTS(SELECT FROM public.clientes otro WHERE otro.id<>c.id AND lower(btrim(otro.nombre))='cliente contado')
-    AND NOT EXISTS(SELECT FROM public.clientes marcado WHERE marcado.es_contado);
+    AND NOT EXISTS(SELECT FROM public.clientes marcado WHERE marcado.es_contado)
+    AND (fuente_legacy IS NULL OR EXISTS(
+      SELECT FROM jsonb_array_elements(pos_privado.legacy_array(fuente_legacy,'clientes')) cliente
+      WHERE cliente->>'nombre'='Cliente Contado' AND COALESCE(cliente->>'rnc','')=''
+        AND COALESCE(cliente->>'tel','')='' AND cliente->'deuda'='0'::jsonb
+    ) OR (pos_privado.legacy_array(fuente_legacy,'clientes')='[]'::jsonb
+          AND pos_privado.legacy_array(fuente_legacy,'facturas')='[]'::jsonb));
 $$;
-SELECT pos_privado.marcar_contado_historico();
+-- El archivo inicial solo identifica a los clientes de la generación inicial.
+-- Un respaldo «Antes de restaurar» conserva los datos salientes, no los entrantes.
+SELECT pos_privado.marcar_contado_historico(e.datos) FROM pos_privado.estado e
+WHERE e.id=1 AND NOT EXISTS(SELECT FROM pos_privado.respaldos WHERE motivo='Antes de restaurar');
 
 ALTER TABLE public.formulas_precios ENABLE ROW LEVEL SECURITY;
 CREATE POLICY pos_servidor ON public.formulas_precios TO pos_app USING(true) WITH CHECK(true);
 REVOKE ALL ON public.formulas_precios FROM PUBLIC;
 REVOKE ALL ON SEQUENCE public.formulas_precios_id_seq FROM PUBLIC;
-REVOKE ALL ON FUNCTION pos_privado.marcar_contado_historico() FROM PUBLIC;
+REVOKE ALL ON FUNCTION pos_privado.marcar_contado_historico(jsonb) FROM PUBLIC;
 DO $$
 DECLARE rol text;
 BEGIN
@@ -413,10 +424,10 @@ BEGIN
     IF EXISTS(SELECT FROM pg_roles WHERE rolname=rol) THEN
       EXECUTE format('REVOKE ALL ON public.formulas_precios FROM %I',rol);
       EXECUTE format('REVOKE ALL ON SEQUENCE public.formulas_precios_id_seq FROM %I',rol);
-      EXECUTE format('REVOKE ALL ON FUNCTION pos_privado.marcar_contado_historico() FROM %I',rol);
+      EXECUTE format('REVOKE ALL ON FUNCTION pos_privado.marcar_contado_historico(jsonb) FROM %I',rol);
     END IF;
   END LOOP;
 END $$;
 GRANT SELECT,INSERT,UPDATE,DELETE ON public.formulas_precios TO pos_app;
 GRANT USAGE,SELECT,UPDATE ON SEQUENCE public.formulas_precios_id_seq TO pos_app;
-GRANT EXECUTE ON FUNCTION pos_privado.marcar_contado_historico() TO pos_app;
+GRANT EXECUTE ON FUNCTION pos_privado.marcar_contado_historico(jsonb) TO pos_app;

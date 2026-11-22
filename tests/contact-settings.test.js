@@ -226,3 +226,26 @@ test('restricted application role can maintain formulas and cannot alter their s
   assert.equal((await lookup('formulas', id)).factorCosto, 1.234);
   await assert.rejects(pool.query('ALTER TABLE public.formulas_precios ADD COLUMN no_autorizada integer'), { code: '42501' });
 });
+
+test('legacy restore uses the raw contact before trimming to protect an initializer', async () => {
+  for (const [source, protect] of [
+    [{ nombre: ' Cliente Contado ', rnc: ' ', tel: ' ', deuda: 0 }, false],
+    [{ nombre: ' Cliente Contado ', rnc: '', tel: '', deuda: 0 }, false],
+    [{ nombre: 'Cliente Contado', rnc: ' ', tel: '', deuda: 0 }, false],
+    [{ nombre: 'Cliente Contado', rnc: '', tel: ' ', deuda: 0 }, false],
+    [{ nombre: 'Cliente Contado', rnc: '', tel: '', deuda: 0 }, true],
+    [{ nombre: 'Cliente Contado', tel: null, deuda: 0 }, true],
+    [null, true], // El importador crea el contacto si no hay clientes ni facturas.
+  ]) {
+    const { state } = await restore({ empresa: 'Original', itbisRate: 0.18, clientes: source ? [source] : [] });
+    const [contact] = state.clientes;
+    assert.equal(contact.nombre, 'Cliente Contado');
+    assert.equal(contact.esContado, protect, JSON.stringify(source));
+    const args = ['clientes/' + contact.id, { nombre: 'Nombre corregido', version: contact.version }, 'PUT'];
+    if (protect) await rejected(409, ...args);
+    else {
+      await confirmed(...args);
+      assert.equal((await lookup('clientes', contact.id)).nombre, 'Nombre corregido');
+    }
+  }
+});
