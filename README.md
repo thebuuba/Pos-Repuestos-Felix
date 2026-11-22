@@ -92,7 +92,7 @@ El proyecto usa **pnpm 10.8.0**, fijado en `packageManager`, y `pnpm-lock.yaml` 
 
 4. La primera vez, abre `psql -h 127.0.0.1 -U postgres -d pos_repuestos_felix`, ejecuta `ALTER ROLE pos_app LOGIN;` y después `\password pos_app`. Escribe una contraseña exclusiva y completa esa misma contraseña, codificada para URL, en `.env.local`. La contraseña administrativa permanece en el archivo de migraciones.
 
-5. Ejecuta `pnpm build`, después `pnpm start:local`, y abre **http://127.0.0.1:3000**. Una base nueva contiene la configuración y Cliente Contado, sin mercancía ni ventas de ejemplo. El servidor comprueba la estructura al arrancar; las migraciones se ejecutan explícitamente con una cuenta administrativa.
+5. Ejecuta `pnpm start:local` y abre **http://127.0.0.1:3000** para la interfaz existente. Una base nueva contiene la configuración y Cliente Contado, sin mercancía ni ventas de ejemplo. El servidor comprueba la estructura al arrancar; las migraciones se ejecutan explícitamente con una cuenta administrativa.
 
 ## Usar Supabase
 
