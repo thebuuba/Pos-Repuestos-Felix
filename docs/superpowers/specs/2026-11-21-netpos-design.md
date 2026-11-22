@@ -10,7 +10,7 @@ La base real queda intacta durante las pruebas. Aplicar allí las migraciones ex
 
 ## Inventario y precisión
 
-- Conservar cantidades y mínimos con dos decimales, costos con cuatro y precios de venta con dos. Aceptar cero donde la fuente lo contiene. Aritmética de operaciones mediante enteros escalados; redondeo comercial por línea al importe de dos decimales. Las compras y ventas continúan siendo transaccionales e idempotentes.
+- Conservar cantidades y mínimos con dos decimales y costos/precios unitarios con cuatro. La preparación confirmó once precios de la segunda tarifa con tres decimales genuinos; no redondearlos a centavos. Aceptar cero donde la fuente lo contiene. Aritmética de operaciones mediante enteros escalados; redondeo comercial por línea al importe final de dos decimales. Las compras y ventas continúan siendo transaccionales e idempotentes.
 - Los códigos son texto sensible a mayúsculas. No transformar a mayúsculas ni deduplicar por minúsculas. Eliminar únicamente el relleno ASCII al final al relacionar claves históricas; el archivo original permanece íntegro.
 - Excel convirtió identificadores en números y una fecha. Recuperar únicamente candidatos existentes en los históricos que sean únicos después de contrastar el orden ordinal del catálogo, sin violaciones entre anclas. La identidad de claves textuales se mantiene literal.
 - Cuando solo el orden sugiere añadir ceros y no hay evidencia histórica, conservar el valor observado y registrar la sugerencia pendiente de revisión. Nunca inventar un código histórico para completar un enlace. Los grupos que sigan siendo ambiguos detienen la preparación.
