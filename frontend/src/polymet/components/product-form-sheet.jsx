@@ -104,10 +104,21 @@ function ProductFormSheet({
       ...f,
       [key]: value,
     }));
-  const cost = validMoney(form.cost) ? Number(form.cost) : 0;
+  const moneyError = "Usa un importe válido con hasta dos decimales";
+  const validCost = validMoney(form.cost);
+  const cost = validCost ? Number(form.cost) : 0;
   const formula = formulas.find((f) => f.id === formulaId) ?? formulas[0];
-  const suggested =
-    formula && cost > 0 ? pricesFromFormula(cost, formula, rounding) : null;
+  let suggested, suggestionError;
+  if (formula && form.cost !== "") {
+    if (!validCost) suggestionError = moneyError;
+    else if (cost > 0) {
+      try {
+        suggested = pricesFromFormula(cost, formula, rounding);
+      } catch (cause) {
+        suggestionError = cause.message;
+      }
+    }
+  }
   const applyFormula = () => {
     if (!suggested) return;
     set("prices", {
@@ -123,7 +134,6 @@ function ProductFormSheet({
         c.toLowerCase() === form.code.trim().toLowerCase() &&
         c.toLowerCase() !== product?.code.toLowerCase(),
     );
-  const moneyError = "Usa un importe válido con hasta dos decimales";
   const quantityError = "Usa un entero entre 0 y 2147483647";
   const textError = (value) =>
     value.length > 2000 ? "Usa hasta 2000 caracteres" : undefined;
@@ -139,7 +149,7 @@ function ProductFormSheet({
     cost:
       form.cost === ""
         ? "Indica el costo"
-        : !validMoney(form.cost)
+        : !validCost
           ? moneyError
           : undefined,
     stock: validQuantity(form.stock) ? undefined : quantityError,
@@ -401,6 +411,11 @@ function ProductFormSheet({
                 {"Calcular"}
               </Button>
             </div>
+            {suggestionError && (!submitted || validCost) && (
+              <p role="alert" className="text-xs font-medium text-primary">
+                {suggestionError}
+              </p>
+            )}
             <div className="grid grid-cols-3 gap-3">
               {PRICE_KEYS.map((k) => {
                 const price = validMoney(form.prices[k])

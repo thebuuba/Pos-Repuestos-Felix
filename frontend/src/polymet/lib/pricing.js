@@ -1,25 +1,26 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
-import { round2 } from "./format.js";
-var PRICE_KEYS = ["p1", "p2", "p3"];
-function roundPrice(value, step) {
-  if (!step || step <= 0) return round2(value);
-  return Math.ceil(value / step) * step;
-}
+import { calculateFormula } from "../../../../src/domain/pricing.js";
+const PRICE_KEYS = ["p1", "p2", "p3"];
+const DEFAULT_MARGINS = { p1: 35, p2: 25, p3: 15 };
+const NO_MARGINS = { p1: 0, p2: 0, p3: 0 };
 function adjustedCost(cost, formula) {
-  return round2(cost * (formula?.costFactor ?? 1));
+  const result = calculateFormula(
+    cost,
+    { costFactor: formula?.costFactor ?? 1, margins: NO_MARGINS },
+    0,
+  );
+  return Number(result.adjustedCost);
 }
-function pricesFromFormula(cost, formula, rounding) {
-  const base = adjustedCost(cost, formula);
-  const m = formula?.margins ?? {
-    p1: 35,
-    p2: 25,
-    p3: 15,
-  };
-  return {
-    p1: roundPrice(base * (1 + m.p1 / 100), rounding),
-    p2: roundPrice(base * (1 + m.p2 / 100), rounding),
-    p3: roundPrice(base * (1 + m.p3 / 100), rounding),
-  };
+function pricesFromFormula(cost, formula, rounding = 0) {
+  const { prices } = calculateFormula(
+    cost,
+    {
+      costFactor: formula?.costFactor ?? 1,
+      margins: formula?.margins ?? DEFAULT_MARGINS,
+    },
+    rounding,
+  );
+  return Object.fromEntries(PRICE_KEYS.map((key) => [key, Number(prices[key])]));
 }
 function marginPct(price, cost) {
   if (!price) return 0;

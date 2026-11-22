@@ -23,7 +23,6 @@ import { Trash2 } from "lucide-react";
 import { MoneyDisplay } from "./money-display.jsx";
 import { Upload } from "lucide-react";
 import { Fragment } from "react";
-import { useMemo } from "react";
 import { useRef } from "react";
 import { useState } from "react";
 var EMPTY_ENTRY = {
@@ -52,20 +51,32 @@ function PurchaseEntryForm({
   const match = products.find(
     (p) => p.code.toLowerCase() === entry.code.trim().toLowerCase(),
   );
-  const entryCost = Number(entry.cost) || 0;
-  const entryPrices = pricesFromFormula(entryCost, formula, rounding);
-  const priceOf = (l) => {
-    const auto = pricesFromFormula(l.cost, formula, rounding);
-    return {
-      p1: l.overrides.p1 ?? auto.p1,
-      p2: l.overrides.p2 ?? auto.p2,
-      p3: l.overrides.p3 ?? auto.p3,
-    };
+  const suggestionFor = (cost) => {
+    const decimal = cost.startsWith(".") ? `0${cost}` : cost;
+    try {
+      const prices = pricesFromFormula(decimal, formula, rounding);
+      return Number(decimal) > 0
+        ? { prices }
+        : { error: "Indica un costo unitario mayor que cero." };
+    } catch (cause) {
+      return { error: cause.message };
+    }
   };
-  const total = useMemo(
-    () => round2(lines.reduce((s, l) => s + l.cost * l.quantity, 0)),
-    [lines],
+  const { prices: entryPrices, error: entryError } =
+    entry.cost === "" ? {} : suggestionFor(entry.cost);
+  const canAddLine = Boolean(
+    entryPrices && entry.code.trim() && entry.name.trim(),
   );
+  const pricedLines = lines.map((line) => {
+    const { prices, error } = suggestionFor(line.cost);
+    return { ...line, prices: { ...prices, ...line.overrides }, error };
+  });
+  const hasInvalidLine = pricedLines.some((line) => line.error);
+  const total = hasInvalidLine
+    ? null
+    : round2(
+        lines.reduce((sum, line) => sum + Number(line.cost) * line.quantity, 0),
+      );
   const units = lines.reduce((s, l) => s + l.quantity, 0);
   const onCodeChange = (code) => {
     const found = products.find(
@@ -80,7 +91,7 @@ function PurchaseEntryForm({
     }));
   };
   const addLine = () => {
-    if (!entry.code.trim() || !entry.name.trim() || entryCost <= 0) return;
+    if (!canAddLine) return;
     const qty = Math.max(1, Number(entry.quantity) || 1);
     setLines((prev) => {
       const existing = prev.find(
@@ -92,7 +103,7 @@ function PurchaseEntryForm({
             ? {
                 ...l,
                 quantity: l.quantity + qty,
-                cost: entryCost,
+                cost: entry.cost,
               }
             : l,
         );
@@ -106,7 +117,7 @@ function PurchaseEntryForm({
           name: entry.name.trim(),
           category: entry.category,
           quantity: qty,
-          cost: entryCost,
+          cost: entry.cost,
           overrides: {},
         },
       ];
@@ -127,20 +138,20 @@ function PurchaseEntryForm({
     );
   const submit = () => {
     setTried(true);
-    if (!supplierId || lines.length === 0) return;
+    if (!supplierId || lines.length === 0 || hasInvalidLine) return;
     onSubmit({
       supplierId,
       supplierInvoice: invoice.trim(),
       formulaId,
       condition,
-      lines: lines.map((l) => ({
+      lines: pricedLines.map((l) => ({
         productId: l.productId,
         code: l.code,
         name: l.name,
         category: l.category,
         quantity: l.quantity,
-        cost: l.cost,
-        prices: priceOf(l),
+        cost: Number(l.cost),
+        prices: l.prices,
       })),
     });
     setLines([]);
@@ -267,6 +278,7 @@ function PurchaseEntryForm({
               <Input
                 type="number"
                 inputMode="decimal"
+                aria-invalid={Boolean(entryError)}
                 value={entry.cost}
                 onChange={(e) =>
                   setEntry({
@@ -282,9 +294,7 @@ function PurchaseEntryForm({
             <Button
               className="h-10 rounded-xl"
               onClick={addLine}
-              disabled={
-                !entry.code.trim() || !entry.name.trim() || entryCost <= 0
-              }
+              disabled={!canAddLine}
             >
               <Plus />
               {"Agregar"}
@@ -327,7 +337,12 @@ function PurchaseEntryForm({
                   </Select2>
                 </Fragment>
               ))}
-            {entryCost > 0 && (
+            {entryError && (
+              <span role="alert" className="font-medium text-primary">
+                {entryError}
+              </span>
+            )}
+            {entryPrices && (
               <span>
                 {"Precios sugeridos:"}{" "}
                 <span className="font-medium text-foreground">
@@ -371,8 +386,7 @@ function PurchaseEntryForm({
                 </tr>
               </thead>
               <tbody>
-                {lines.map((l) => {
-                  const prices = priceOf(l);
+                {pricedLines.map((l) => {
                   const existing = products.find((p) => p.id === l.productId);
                   return (
                     <tr
@@ -420,19 +434,25 @@ function PurchaseEntryForm({
                         <Input
                           type="number"
                           value={l.cost}
+                          aria-invalid={Boolean(l.error)}
                           onChange={(e) =>
                             updateLine(l.key, {
-                              cost: Number(e.target.value) || 0,
+                              cost: e.target.value,
                             })
                           }
                           className="ml-auto h-8 w-24 rounded-lg text-right"
                         />
+                        {l.error && (
+                          <p role="alert" className="mt-1 text-xs text-primary">
+                            {l.error}
+                          </p>
+                        )}
                       </td>
                       {PRICE_KEYS.map((k) => (
                         <td className="px-2 py-2.5" key={k}>
                           <Input
                             type="number"
-                            value={prices[k]}
+                            value={l.prices[k] ?? ""}
                             onChange={(e) =>
                               updateLine(l.key, {
                                 overrides: {
@@ -450,7 +470,7 @@ function PurchaseEntryForm({
                         </td>
                       ))}
                       <td className="px-3 py-2.5 text-right font-semibold tabular-nums">
-                        {formatMoney(l.cost * l.quantity)}
+                        {l.error ? "—" : formatMoney(Number(l.cost) * l.quantity)}
                       </td>
                       <td className="px-2 py-2.5">
                         <Button
@@ -506,12 +526,16 @@ function PurchaseEntryForm({
           <p className="text-xs font-medium uppercase tracking-wider text-accent-foreground/80">
             {"Total compra"}
           </p>
-          <MoneyDisplay
-            value={total}
-            className="text-[30px] leading-tight text-primary"
-            symbolClassName="text-primary/70"
-            centsClassName="text-primary/50"
-          />
+          {total === null ? (
+            <p className="text-[30px] leading-tight text-primary">{"—"}</p>
+          ) : (
+            <MoneyDisplay
+              value={total}
+              className="text-[30px] leading-tight text-primary"
+              symbolClassName="text-primary/70"
+              centsClassName="text-primary/50"
+            />
+          )}
         </div>
         <p className="text-xs text-muted-foreground">
           {condition === "credito"
@@ -527,6 +551,7 @@ function PurchaseEntryForm({
         <Button
           className="h-12 w-full rounded-xl text-[15px] font-semibold shadow-md shadow-primary/20"
           onClick={submit}
+          disabled={hasInvalidLine}
         >
           <Upload />
           {"Subir factura al inventario"}

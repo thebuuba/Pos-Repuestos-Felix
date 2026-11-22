@@ -47,24 +47,62 @@ function agingSummary(docs) {
   for (const d of docs) out[agingBucket(d)] += balanceOf(d);
   return out;
 }
-var dateFmt = new Intl.DateTimeFormat("es-DO", {
-  day: "2-digit",
-  month: "short",
+const BUSINESS_ZONE = "America/Santo_Domingo";
+const dateParts = { day: "2-digit", month: "short" };
+const timeParts = { hour: "numeric", minute: "2-digit" };
+const documentDateFmt = new Intl.DateTimeFormat("es-DO", {
+  ...dateParts,
   year: "numeric",
+  timeZone: "UTC",
 });
-var dateTimeFmt = new Intl.DateTimeFormat("es-DO", {
-  day: "2-digit",
-  month: "short",
-  hour: "numeric",
-  minute: "2-digit",
+const shortDocumentDateFmt = new Intl.DateTimeFormat("es-DO", {
+  ...dateParts,
+  timeZone: "UTC",
 });
-var timeFmt = new Intl.DateTimeFormat("es-DO", {
-  hour: "numeric",
-  minute: "2-digit",
+const dateFmt = new Intl.DateTimeFormat("es-DO", {
+  ...dateParts,
+  year: "numeric",
+  timeZone: BUSINESS_ZONE,
 });
-var formatDate = (iso) => dateFmt.format(new Date(iso));
-var formatDateTime = (iso) => dateTimeFmt.format(new Date(iso));
-var formatTime = (iso) => timeFmt.format(new Date(iso));
+const dateTimeFmt = new Intl.DateTimeFormat("es-DO", {
+  ...dateParts,
+  ...timeParts,
+  timeZone: BUSINESS_ZONE,
+});
+const timeFmt = new Intl.DateTimeFormat("es-DO", {
+  ...timeParts,
+  timeZone: BUSINESS_ZONE,
+});
+
+function documentaryDate(iso) {
+  const parts =
+    typeof iso === "string" &&
+    iso.length === 10 &&
+    /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!parts) return null;
+  const [year, month, day] = parts.slice(1).map(Number);
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    throw new RangeError("Revisa la fecha del documento.");
+  }
+  return date;
+}
+function formatDate(iso) {
+  const date = documentaryDate(iso);
+  return date ? documentDateFmt.format(date) : dateFmt.format(new Date(iso));
+}
+function formatDateTime(iso) {
+  const date = documentaryDate(iso);
+  return date ? shortDocumentDateFmt.format(date) : dateTimeFmt.format(new Date(iso));
+}
+function formatTime(iso) {
+  return documentaryDate(iso) ? "" : timeFmt.format(new Date(iso));
+}
 function isSameDay(iso, ref = new Date()) {
   const d = new Date(iso);
   return (
