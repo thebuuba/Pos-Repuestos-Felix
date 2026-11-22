@@ -116,7 +116,7 @@ function SettingsPage() {
       />
       {error && <p role="alert" className="text-sm text-primary">{error}</p>}
       <Tabs2 defaultValue="negocio" className="space-y-6">
-        <TabsList2 className="h-auto flex-wrap justify-start gap-1 rounded-xl bg-muted p-1">
+        <TabsList2 className="mobile-touch-controls h-auto flex-wrap justify-start gap-1 rounded-xl bg-muted p-1">
           <TabsTrigger2 value="negocio" className={TAB_CLASS}>
             <Building className="h-4 w-4" />
             {"Negocio"}

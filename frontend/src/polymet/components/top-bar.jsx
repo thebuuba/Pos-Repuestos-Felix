@@ -32,7 +32,7 @@ var timeFormatter = new Intl.DateTimeFormat("es-DO", {
   hour: "numeric",
   minute: "2-digit",
 });
-function TopBar() {
+function TopBar({ onBrandClick } = {}) {
   const { runtime } = usePosStore();
   const pwa = usePwa();
   const [now, setNow] = useState(() => new Date());
@@ -62,7 +62,7 @@ function TopBar() {
   return (
     <TooltipProvider2 delayDuration={200}>
       <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-3 border-b border-border bg-card/85 px-4 backdrop-blur-md lg:px-6">
-        <Link to="/ventas" className="lg:hidden" aria-label="Repuestos Félix · Ventas"><BrandLogo compact /></Link>
+        <Link to="/ventas" className="lg:hidden" aria-label="Repuestos Félix · Ventas" onClick={onBrandClick}><BrandLogo compact /></Link>
         <div className="relative hidden w-full max-w-sm md:block">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input

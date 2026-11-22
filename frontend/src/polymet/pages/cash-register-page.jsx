@@ -185,7 +185,7 @@ function CashRegisterPage() {
               className="h-14 rounded-xl pl-14 text-center text-2xl font-semibold tabular-nums"
             />
           </div>
-          <div className="mt-3 flex justify-center gap-2">
+          <div className="mobile-touch-controls mt-3 flex flex-wrap justify-center gap-2">
             {[2000, 3000, 5000, 1e4].map((a) => (
               <button disabled={disabled}
                 type="button"
@@ -345,6 +345,11 @@ function CashRegisterPage() {
         icon={History}
         bodyClassName="p-0 pt-4"
       >
+        {closures.length === 0 ? (
+          <p className="px-5 pb-5 text-sm text-muted-foreground">
+            {"Sin cierres registrados."}
+          </p>
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[680px] text-sm">
             <thead>
@@ -410,6 +415,7 @@ function CashRegisterPage() {
             </tbody>
           </table>
         </div>
+        )}
       </SectionCard>
       <CashCountDialog
         open={countOpen}

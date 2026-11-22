@@ -57,7 +57,7 @@ function ReportsPage() {
         description="Cómo va el negocio: ventas, ganancias, productos más vendidos e impuestos."
         actions={
           <Fragment>
-            <div className="flex rounded-full bg-card p-1 shadow-sm ring-1 ring-border">
+            <div className="mobile-touch-controls flex flex-wrap rounded-full bg-card p-1 shadow-sm ring-1 ring-border">
               {PERIODS.map((p) => (
                 <button
                   type="button"
@@ -205,6 +205,11 @@ function ReportsPage() {
           className="lg:col-span-2"
           bodyClassName="p-0 pt-4"
         >
+          {data.top.length === 0 ? (
+            <p className="px-5 pb-5 text-sm text-muted-foreground">
+              {"Sin ventas en el período."}
+            </p>
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[560px] text-sm">
               <thead>
@@ -223,7 +228,6 @@ function ReportsPage() {
                 </tr>
               </thead>
               <tbody>
-                {data.top.length === 0 && <tr><td colSpan={5} className="p-5 text-center text-muted-foreground">Sin ventas en el período.</td></tr>}
                 {data.top.map((t, i) => (
                   <tr
                     className="border-b border-border last:border-0"
@@ -261,6 +265,7 @@ function ReportsPage() {
               </tbody>
             </table>
           </div>
+          )}
         </SectionCard>
         <div className="space-y-4">
           <SectionCard title="Por categoría" description={operational ? "Venta neta por categoría actual" : undefined}>

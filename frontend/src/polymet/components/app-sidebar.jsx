@@ -11,7 +11,8 @@ function isActive(item, pathname) {
     ? pathname === "/"
     : pathname === item.path || pathname.startsWith(`${item.path}/`);
 }
-function AppSidebar({ onNavigate, className }) {
+// Polymet's menu list, shared by the desktop sidebar and the phone «Más» panel.
+function SidebarNav({ onNavigate, className, groupsClassName, touch = false, ...props }) {
   const { pathname } = useLocation();
   const { receivables, payables, products } =
     usePosStore();
@@ -21,18 +22,8 @@ function AppSidebar({ onNavigate, className }) {
     "/inventario": products.filter((p) => p.stock <= p.minStock).length,
   };
   return (
-    <div
-      className={cn(
-        "flex h-full w-full flex-col bg-sidebar text-sidebar-foreground",
-        className,
-      )}
-    >
-      <div className="flex h-16 shrink-0 items-center px-5">
-        <Link to="/" onClick={onNavigate}>
-          <BrandLogo />
-        </Link>
-      </div>
-      <nav className="flex-1 space-y-6 overflow-y-auto px-3 pb-4 pt-3">
+    <nav className={className} {...props}>
+      <div className={cn("space-y-6", groupsClassName)}>
         {NAV_GROUPS.map((group) => (
           <div key={group.label}>
             <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">
@@ -51,8 +42,10 @@ function AppSidebar({ onNavigate, className }) {
                     <Link
                       to={item.path}
                       onClick={onNavigate}
+                      aria-current={active ? "page" : undefined}
                       className={cn(
-                        "group flex h-10 items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors",
+                        "group flex items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors",
+                        touch ? "h-11" : "h-10",
                         active
                           ? "bg-sidebar-accent text-sidebar-accent-foreground"
                           : "text-sidebar-foreground hover:bg-muted hover:text-foreground",
@@ -79,7 +72,7 @@ function AppSidebar({ onNavigate, className }) {
                           {badge}
                         </span>
                       )}
-                      {item.shortcut && !badge && (
+                      {item.shortcut && !badge && !touch && (
                         <kbd className="hidden rounded-md border border-border bg-card px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground xl:inline-block">
                           {item.shortcut}
                         </kbd>
@@ -91,8 +84,28 @@ function AppSidebar({ onNavigate, className }) {
             </ul>
           </div>
         ))}
-      </nav>
+      </div>
+    </nav>
+  );
+}
+function AppSidebar({ onNavigate, className }) {
+  return (
+    <div
+      className={cn(
+        "flex h-full w-full flex-col bg-sidebar text-sidebar-foreground",
+        className,
+      )}
+    >
+      <div className="flex h-16 shrink-0 items-center px-5">
+        <Link to="/" onClick={onNavigate}>
+          <BrandLogo />
+        </Link>
+      </div>
+      <SidebarNav
+        onNavigate={onNavigate}
+        className="flex-1 overflow-y-auto px-3 pb-4 pt-3"
+      />
     </div>
   );
 }
-export { AppSidebar };
+export { AppSidebar, SidebarNav };

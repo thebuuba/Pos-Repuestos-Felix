@@ -36,25 +36,70 @@ test('la navegación inferior comparte rutas, conserva todos los módulos y deja
     assert.equal(await nav.getByRole('link', { name: 'Ventas', exact: true }).getAttribute('aria-current'), 'page');
     await nav.getByRole('link', { name: 'Inventario' }).click();
     await page.getByRole('heading', { name: 'Catálogo de artículos e inventario' }).waitFor();
+    for (const label of ['Todos', 'OK', 'Bajo', 'Agotado', 'Anterior', 'Siguiente']) {
+      const bounds = await page.getByRole('button', { name: label, exact: true }).boundingBox();
+      assert.ok(bounds.height >= 44, `Botón móvil ${label} conserva alto táctil`);
+    }
     await nav.getByRole('link', { name: 'Caja', exact: true }).click();
     await page.getByRole('heading', { name: 'Caja', exact: true }).waitFor();
+    await page.getByText('Sin cierres registrados.', { exact: true }).waitFor();
+    for (const label of ['2,000', '3,000', '5,000', '10,000']) {
+      const bounds = await page.getByRole('button', { name: label, exact: true }).boundingBox();
+      assert.ok(bounds.height >= 44, `Monto rápido ${label} conserva alto táctil`);
+    }
     await page.goBack();
     await page.getByRole('heading', { name: 'Catálogo de artículos e inventario' }).waitFor();
-    await nav.getByRole('button', { name: 'Más', exact: true }).click();
+    const more = nav.getByRole('button', { name: 'Más', exact: true });
+    await more.click();
     const dialog = page.getByRole('dialog', { name: 'Más opciones' });
     await dialog.waitFor();
-    await dialog.evaluate(element => Promise.all(element.getAnimations().map(animation => animation.finished)));
+    assert.equal(await more.getAttribute('data-active'), 'true');
     assert.equal(await dialog.getByRole('link').count(), 12, 'Los doce módulos permanecen disponibles');
-    assert.ok((await dialog.boundingBox()).width >= 358, 'El panel ocupa el ancho del teléfono, sin barra lateral');
+    const panelBox = await dialog.boundingBox();
+    assert.equal(panelBox.x, 0, 'El panel Más ocupa de borde a borde, sin tarjeta flotante');
+    assert.equal(panelBox.width, 390, 'El panel Más ocupa todo el ancho del teléfono');
+    assert.equal(await page.evaluate(() => {
+      const header = document.querySelector('header');
+      const hb = header.getBoundingClientRect();
+      const navEl = document.querySelector('.mobile-bottom-nav');
+      const nb = navEl.getBoundingClientRect();
+      return header.contains(document.elementFromPoint(hb.x + hb.width / 2, hb.y + hb.height / 2))
+        && navEl.contains(document.elementFromPoint(nb.x + nb.width / 2, nb.y + nb.height / 2));
+    }), true, 'Cabecera y barra inferior siguen visibles y accesibles sobre el panel Más');
+    await more.click();
+    await dialog.waitFor({ state: 'hidden' });
+    await more.click();
+    await dialog.waitFor();
     await page.keyboard.press('Escape');
     await dialog.waitFor({ state: 'hidden' });
     await page.waitForFunction(() => document.activeElement?.getAttribute('aria-controls') === 'pos-mobile-menu');
-    assert.equal(await nav.getByRole('button', { name: 'Más', exact: true }).evaluate(element => element === document.activeElement), true);
-    await nav.getByRole('button', { name: 'Más', exact: true }).click();
+    assert.equal(await more.evaluate(element => element === document.activeElement), true);
+    await more.click();
+    await dialog.getByRole('link', { name: 'Reportes', exact: true }).click();
+    await dialog.waitFor({ state: 'hidden' });
+    assert.equal(new URL(page.url()).pathname, '/reportes');
+    for (const label of ['Hoy', '7 días', '30 días', 'Este mes']) {
+      const bounds = await page.getByRole('button', { name: label, exact: true }).boundingBox();
+      assert.ok(bounds.height >= 44, `Período ${label} conserva alto táctil`);
+    }
+    const emptyTop = page.getByText('Sin ventas en el período.', { exact: true }).first();
+    const emptyTopBox = await emptyTop.boundingBox();
+    assert.ok(emptyTopBox.x >= 0 && emptyTopBox.x + emptyTopBox.width <= 390, 'El mensaje vacío de Más vendidos cabe en pantalla');
+    await more.click();
+    await dialog.getByRole('link', { name: 'Configuración', exact: true }).click();
+    await dialog.waitFor({ state: 'hidden' });
+    for (const label of ['Negocio', 'Fórmulas de precios', 'Comprobantes NCF', 'Facturación', 'Mi cuenta']) {
+      const bounds = await page.getByRole('tab', { name: label, exact: true }).boundingBox();
+      assert.ok(bounds.height >= 44, `Pestaña ${label} conserva alto táctil`);
+    }
+    await more.click();
     await dialog.getByRole('link', { name: 'Compras', exact: true }).click();
     await dialog.waitFor({ state: 'hidden' });
     assert.equal(new URL(page.url()).pathname, '/compras');
+    await more.click();
+    await dialog.waitFor();
     await nav.getByRole('link', { name: 'Ventas', exact: true }).click();
+    await dialog.waitFor({ state: 'hidden' });
     const evidence = path.resolve('dist/verification/mobile-navigation');
     await mkdir(evidence, { recursive: true });
     for (const [width, height] of [[320, 844], [390, 844], [768, 1024], [844, 390], [1440, 1000]]) {

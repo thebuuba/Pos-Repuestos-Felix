@@ -126,7 +126,7 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
             ))}
           </SelectContent2>
         </Select2>
-        <div className="grid grid-cols-4 gap-1 rounded-xl bg-muted p-1">
+        <div className="mobile-touch-controls grid grid-cols-4 gap-1 rounded-xl bg-muted p-1">
           {STOCK_FILTERS.map(([value, label]) => (
             <button
               type="button"
@@ -298,7 +298,7 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
             : `Mostrando ${formatNumber(rows.length)} de ${formatNumber(products.length)} productos`}</span>
         </p>
         {paginated && (
-          <nav aria-label="Páginas del inventario" className="flex gap-2">
+          <nav aria-label="Páginas del inventario" className="mobile-touch-controls flex gap-2">
             <Button
               type="button"
               variant="outline"
