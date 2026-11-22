@@ -18,18 +18,18 @@ before(async () => {
     HYPERDRIVE: { connectionString: database.connectionString },
     ASSETS: { async fetch(request) {
       const path = new URL(request.url).pathname;
-      return new Response(await readFile(new URL('../public' + path, import.meta.url)));
+      return new Response(await readFile(new URL('../dist/operational' + path, import.meta.url)));
     } },
   };
 });
 after(async () => { await Promise.all(pending); await pool?.end(); await database?.stop(); });
 const call = (path, options = {}, bindings = env) => worker.fetch(new Request('https://pos.example' + path, { ...options, headers: { Authorization: auth, ...options.headers } }), bindings, ctx);
 
-test('Worker conserva assets originales y protege rutas privadas sin necesitar conexión a la base', async () => {
+test('Worker sirve la interfaz operativa y conserva la imagen original y protege rutas privadas sin necesitar conexión a la base', async () => {
   const bindings = { ...env, HYPERDRIVE: undefined };
   const response = await call('/', {}, bindings);
   assert.equal(response.status, 200);
-  assert.match(await response.text(), /brand-banner/);
+  assert.match(await response.text(), /type="module" src="\/app\.js"/);
   const image = await call('/assets/brand/repuestos-felix.jpg', {}, bindings);
   assert.equal(image.status, 200);
   assert.match(image.headers.get('content-type'), /image\/jpeg/);

@@ -2,7 +2,7 @@
 
 Actualizado el 21 de noviembre de 2026. Trabajo en `feat/sistema-unificado-offline`; `main` se conserva. El alcance completo sigue siendo web, PWA y Windows con el diseño aprobado de Polymet, las mismas funciones y trabajo offline durable/sincronizable en una computadora Windows.
 
-**Foco vigente:** el usuario retiró el objetivo automático y pidió quitar los datos mock para concentrarse en Inventario. El Excel todavía no se recibió. La entrada habitual ya usa exclusivamente el proveedor de la API y abre `/inventario`; los siguientes módulos del plan anterior quedan pendientes. Ver [inventario y Excel](inventario-excel.md).
+**Foco vigente:** el usuario retiró el objetivo automático y pidió quitar los datos mock para concentrarse en Inventario. La exportación NetPOS se recibió para revisión aislada. La entrada habitual ya usa exclusivamente el proveedor de la API y abre `/inventario`; los siguientes módulos del plan anterior quedan pendientes. Ver [inventario y Excel](inventario-excel.md).
 
 | Área | Evidencia actual | Trabajo pendiente |
 | --- | --- | --- |
@@ -11,7 +11,7 @@ Actualizado el 21 de noviembre de 2026. Trabajo en `feat/sistema-unificado-offli
 | PWA | La versión anterior instala/cachea la interfaz; el nuevo diseño ya tiene recursos locales | Conectar instalación, caché y actualizaciones al frontend compartido; probar instalada |
 | Offline y sincronización | Diario IndexedDB para una solicitud web incierta: persistencia antes del envío, reintento exacto y recuperación al recargar. Clientes visibles reciben cambios mediante consultas condicionales cada cinco segundos | Cola de operaciones confirmadas localmente en Windows, identidades compartidas, conciliación, descarga incremental, reinicios y conflictos. El diario web no constituye ese modo offline |
 | Windows | C++ Build Tools, Rust/Cargo 1.100.0 y dependencias de Tauri 2.12.7 preparados. Una comprobación Rust sobre una fixture aislada compila sin red; no se modificó PATH persistente | Proyecto de aplicación, SQLite, comandos transaccionales locales, instalador y verificación del ejecutable instalado |
-| Cloudflare | Compilación del Worker pasa. Sesión CLI de la cuenta configurada verificada el 21/11; el dominio indicado responde 404 en `/health` y `/api/state`. Se detectaron cambios concurrentes locales de cuenta/origen/Hyperdrive en `wrangler.jsonc`, preservados durante esta entrega | Validar y guardar esa configuración, comprobar Hyperdrive/CA y desplegar el sistema integrado tras preparar el negocio. El paquete del Worker aún usa `public/`; Vercel sigue aplazado |
+| Cloudflare | Compilación del Worker pasa. Sesión CLI de la cuenta configurada verificada el 21/11; el dominio indicado responde 404 en `/health` y `/api/state`. Se detectaron cambios concurrentes locales de cuenta/origen/Hyperdrive en `wrangler.jsonc`, preservados durante esta entrega | Validar y guardar esa configuración, comprobar Hyperdrive/CA y desplegar el sistema integrado tras preparar el negocio. El paquete selecciona `dist/operational/`. Vercel sigue aplazado |
 
 ## Referencia ejecutable
 

@@ -10,7 +10,6 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { buildOperational } from '../scripts/build-operational.mjs';
 import { migrateDatabase } from '../src/db/migrations.js';
-import { readSnapshot, writeOperation } from '../src/pos/store.js';
 import { temporaryPostgres } from './postgres.js';
 
 const entry = fileURLToPath(new URL('../src/server.js', import.meta.url));
@@ -49,15 +48,15 @@ async function runEntry({ cwd, databaseUrl, args = [], port }) {
 }
 
 test('la entrada operativa requiere un puerto explícito separado del puerto heredado', async () => {
-  for (const port of [undefined, 3000]) {
-    const result = await runEntry({ args: ['--operational'], port });
+  for (const [args, port] of [[[], undefined], [[], 3000], [['--operational'], undefined], [['--operational'], 3000]]) {
+    const result = await runEntry({ args, port });
     await result.stop();
     assert.equal(result.exitCode, 1);
     assert.match(result.stderr, /PORT.*(?:nuevo|distinto)/);
   }
 });
 
-test('el arranque selecciona activos y se niega a abrir datos incompatibles con la interfaz heredada', { timeout: 60_000 }, async t => {
+test('ambas entradas sirven solo Polymet y conservan códigos literales tras restaurar v5', { timeout: 60_000 }, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'felix-operational-entry-'));
   let database, admin;
   const children = [];
@@ -78,69 +77,44 @@ test('el arranque selecciona activos y se niega a abrir datos incompatibles con 
     children.push(child);
     return child;
   };
-  const rejectLegacy = async label => {
-    const legacy = await start();
-    await legacy.stop();
-    assert.equal(legacy.started, false, label);
-    assert.equal(legacy.exitCode, 1, label);
-    assert.match(legacy.stderr, /start:operational/, label);
-  };
-
-  const missingAssets = await start(['--operational']);
+  const missingAssets = await start();
   await missingAssets.stop();
   assert.equal(missingAssets.started, false);
   assert.match(missingAssets.stderr, /pnpm build/);
 
   await buildOperational(join(directory, 'dist', 'operational'));
-  const read = backup => readSnapshot(admin, 'Prueba', backup);
-  await writeOperation(admin, 'POST', '/api/productos', {
-    databaseId: (await read()).databaseId, codigo: 'RF-1', nombre: 'Control',
-    stock: 10, stockMinimo: 2, costo: '999999999999.99', precio1: 15.25, precio2: 0, precio3: 15,
-  }, randomUUID(), 'Prueba');
-  const compatible = await start();
-  assert.equal(compatible.started, true, compatible.stderr);
-  assert.match(await (await fetch(compatible.origin + '/')).text(), /\/manifest\.webmanifest/);
-  assert.equal((await fetch(compatible.origin + '/sw.js')).status, 200);
-  await compatible.stop();
-
-  assert.equal((await read()).state.catalogo.importada, false);
-  for (const [label, update, undo] of [
-    ['existencia fraccionada', 'stock=10.25', 'stock=10'],
-    ['mínimo fraccionado', 'stock_minimo=2.25', 'stock_minimo=2'],
-    ['costo subcentavo en el límite', 'costo=999999999999.9898', 'costo=999999999999.99'],
-    ['tarifa subcentavo', 'precio2=15.001', 'precio2=0'],
-    ['código con espacios', "codigo='RF 1'", "codigo='RF-1'"],
-  ]) {
-    await admin.query('UPDATE productos SET ' + update);
-    await rejectLegacy(label);
-    await admin.query('UPDATE productos SET ' + undo);
+  for (const args of [[], ['--operational']]) {
+    const child = await start(args);
+    assert.equal(child.started, true, child.stderr);
+    for (const path of ['/', '/inventario']) {
+      const html = await (await fetch(child.origin + path)).text();
+      assert.match(html, /<div id="root"><\/div>/);
+      assert.match(html, /type="module" src="\/app\.js"/);
+    }
+    assert.equal((await fetch(child.origin + '/app.js')).status, 200);
+    assert.equal((await fetch(child.origin + '/sw.js')).status, 404);
+    if (args.length) continue;
+    const get = async path => (await fetch(child.origin + path)).json();
+    const post = async (path, body, key = randomUUID()) => {
+      const response = await fetch(child.origin + path, { method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key }, body: JSON.stringify(body) });
+      assert.equal(response.status, 200, await response.clone().text());
+      return response.json();
+    };
+    const { databaseId } = await get('/api/state');
+    const draft = { databaseId, nombre: 'Control', stock: 1, costo: 1, precio1: 1, precio2: 1, precio3: 1 };
+    for (const codigo of ['RF-1', 'rf-1', 'RF-1 ']) await post('/api/productos', { ...draft, codigo });
+    const backup = await get('/api/backup');
+    assert.equal(backup.version, 5);
+    const { revision } = await get('/api/state');
+    const key = randomUUID();
+    const body = { databaseId, revision, backup };
+    const restored = await post('/api/restore', body, key);
+    const replay = await post('/api/restore', body, key);
+    assert.equal(replay.databaseId, restored.databaseId);
+    assert.equal(replay.confirmation.replayed, true);
+    assert.equal(replay.revision, restored.revision);
+    assert.deepEqual((await get('/api/state')).state.productos.map(p => p.codigo).sort(), ['RF-1', 'RF-1 ', 'rf-1']);
+    await child.stop();
   }
-  await admin.query("INSERT INTO productos(codigo,nombre,costo,precio1,precio2,precio3) VALUES ('rf-1','Otro',0,0,0,0)");
-  await rejectLegacy('colisión por mayúsculas');
-  await admin.query("DELETE FROM productos WHERE codigo='rf-1'");
-
-  await admin.query(`INSERT INTO pos_privado.netpos_importaciones (huella,database_id,categorias,marcas,ubicaciones,unidades)
-    SELECT repeat('a',64),database_id,'{}','{}','{}','{}' FROM pos_privado.sistema`);
-  assert.equal((await read()).state.catalogo.importada, true);
-  await rejectLegacy('generación importada con números compatibles');
-
-  const operational = await start(['--operational']);
-  assert.equal(operational.started, true, operational.stderr);
-  const html = await (await fetch(operational.origin + '/inventario')).text();
-  assert.match(html, /<div id="root"><\/div>/);
-  assert.match(html, /type="module" src="\/app\.js"/);
-  assert.equal((await fetch(operational.origin + '/app.js')).status, 200);
-  assert.equal((await fetch(operational.origin + '/sw.js')).status, 404);
-  assert.equal((await (await fetch(operational.origin + '/api/state')).json()).state.catalogo.importada, true);
-  await operational.stop();
-
-  await admin.query("UPDATE productos SET stock_minimo=2.50,codigo='RF-1 '");
-  const backup = JSON.parse(JSON.stringify(await read(true)));
-  assert.equal(backup.version, 5);
-  const { databaseId, revision } = await read();
-  const restored = await writeOperation(admin, 'POST', '/api/restore', { databaseId, revision, backup }, randomUUID(), 'Prueba');
-  assert.notEqual(restored.databaseId, databaseId);
-  assert.equal(restored.state.catalogo.importada, false);
-  assert.deepEqual(restored.state.productos.map(p => [p.codigo, p.stockMinimo]), [['RF-1 ', 2.5]]);
-  await rejectLegacy('respaldo v5 incompatible restaurado a otra generación');
 });

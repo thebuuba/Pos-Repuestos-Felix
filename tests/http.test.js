@@ -39,8 +39,8 @@ test('Fetch conserva streaming de assets y entrega bytes binarios sin convertirl
   assert.deepEqual((await reader.read()).value, new Uint8Array([255, 217]));
   assert.equal((await reader.read()).done, true);
   assert.deepEqual(loaded, ['assets/brand/repuestos-felix.jpg']);
-  const binary = new Uint8Array([137, 80, 78, 71, 0, 255]);
-  const bytes = await handleRequest(request('/icons/icon-192.png'), { pool: forbiddenPool, hosting, readAsset: () => binary });
+  const binary = new Uint8Array([119, 79, 70, 50, 0, 255]);
+  const bytes = await handleRequest(request('/assets/fonts/inter-latin-wght-normal.woff2'), { pool: forbiddenPool, hosting, readAsset: () => binary });
   assert.deepEqual(new Uint8Array(await bytes.arrayBuffer()), binary);
 });
 

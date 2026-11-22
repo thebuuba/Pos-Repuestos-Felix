@@ -17,8 +17,8 @@
     "start:operational": "node src/server.js --operational",
     "start:local": "node --env-file=.env.local src/server.js",
     "start:supabase": "node --env-file=.env.supabase src/server.js",
-    "dev:worker": "wrangler dev --local-protocol https",
-    "build:worker": "wrangler deploy --dry-run --outdir dist/worker",
+    "dev:worker": "pnpm build && wrangler dev --assets dist/operational --local-protocol https",
+    "build:worker": "pnpm build && wrangler deploy --assets dist/operational --dry-run --outdir dist/worker",
     "build": "node scripts/build-operational.mjs",
     "build:operational": "node scripts/build-operational.mjs",
     "build:design": "node scripts/build-operational.mjs",
@@ -28,7 +28,7 @@
     "preview:reference": "node scripts/serve-design.mjs --reference",
     "test:design": "node --test tests/design-preview.test.js",
     "deploy:worker": "node scripts/deploy-worker.mjs",
-    "test": "node --test --test-concurrency=4 tests/*.test.js"
+    "test": "pnpm build && node --test --test-concurrency=4 tests/*.test.js"
   },
   "dependencies": {
     "@fontsource-variable/inter": "5.3.0",

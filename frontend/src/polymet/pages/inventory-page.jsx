@@ -13,7 +13,9 @@ import { toast as ue } from "sonner";
 import { ConfirmDialog } from "../components/confirm-dialog.jsx";
 import { Fragment, useMemo, useRef, useState } from "react";
 import { formatMoney, formatNumber } from "../lib/format.js";
-import { decimalUnits } from "../../../../src/pos/operation-fields.js";
+import { costUnits, decimalUnits, quantityUnits } from "../../../../src/pos/operation-fields.js";
+const wholeMoney = new Intl.NumberFormat("es-DO", { maximumFractionDigits: 0 });
+const roundedValue = millionths => decimalUnits((millionths + 5000n) / 10000n, 2);
 function InventoryPage() {
   const { products, categories, formulas, settings, saveProduct, deleteProduct, runtime } =
     usePosStore();
@@ -23,20 +25,22 @@ function InventoryPage() {
   const newProductButtonRef = useRef(null);
   const { totalUnits, stockValue, retailValue, lowStock, lowCount, outCount } = useMemo(() => {
     let stockHundredths = 0n;
-    let stockValue = 0, retailValue = 0, lowCount = 0, outCount = 0;
+    let costMillionths = 0n, retailMillionths = 0n;
+    let lowCount = 0, outCount = 0;
     const lowStock = [];
     for (const product of products) {
-      // Each stock is limited to 2,147,483,647, so its hundredths round to a safe integer.
-      stockHundredths += BigInt(Math.round(product.stock * 100));
-      stockValue += product.stock * product.cost;
-      retailValue += product.stock * product.prices.p1;
+      const quantity = quantityUnits(product.stock, "las existencias");
+      stockHundredths += quantity;
+      costMillionths += quantity * costUnits(product.costExact ?? product.cost, "el costo");
+      retailMillionths += quantity * costUnits(product.pricesExact?.p1 ?? product.prices.p1, "el precio");
       const state = stockState(product);
       if (state === "out") outCount++;
       if (state === "low") lowCount++;
       if (needsRestock(product)) lowStock.push(product);
     }
     lowStock.sort((a, b) => a.stock / (a.minStock || 1) - b.stock / (b.minStock || 1));
-    return { totalUnits: decimalUnits(stockHundredths, 2), stockValue, retailValue, lowStock, lowCount, outCount };
+    return { totalUnits: decimalUnits(stockHundredths, 2), stockValue: roundedValue(costMillionths),
+      retailValue: roundedValue(retailMillionths), lowStock, lowCount, outCount };
   }, [products]);
   const openProduct = (product = null) => {
     setDraft({
@@ -81,9 +85,10 @@ function InventoryPage() {
         <StatCard
           title="Valor del inventario"
           value={stockValue}
+          scrollableValue
           footer={`A precio de venta: ${runtime
             ? formatMoney(retailValue)
-            : `RD$ ${retailValue.toLocaleString("es-DO", { maximumFractionDigits: 0 })}`}`}
+            : `RD$ ${wholeMoney.format(retailValue)}`}`}
           to="/reportes"
           highlight={true}
         />

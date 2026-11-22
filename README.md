@@ -1,6 +1,6 @@
 # POS Repuestos Félix
 
-Proyecto del POS de Repuestos Félix con el diseño aprobado de Polymet. La nueva vista de trabajo abre **Inventario** y utiliza exclusivamente datos de la API, sin productos, ventas, saldos ni cajeros de demostración. El siguiente trabajo es preparar la importación del Excel que proporcionará el negocio; todavía no se ha recibido ni importado.
+Proyecto del POS de Repuestos Félix con el diseño aprobado de Polymet. La nueva vista de trabajo abre **Inventario** y utiliza exclusivamente datos de la API, sin productos, ventas, saldos ni cajeros de demostración. La exportación NetPOS se preparó para revisión en PostgreSQL aislado. La carga en el servicio del negocio sigue pendiente.
 
 La API se comparte entre **Cloudflare Workers y Node.js local**, con **PostgreSQL local o Supabase**. La nueva PWA, Windows y los módulos restantes mantienen trabajo pendiente; su estado está en [estado del sistema](docs/estado-sistema-unificado.md). Las contraseñas permanecen en el servidor.
 
@@ -31,29 +31,19 @@ tests/                   Pruebas y datos ficticios en fixtures/
 docs/                    Decisiones y planes de trabajo
 ```
 
-La nueva compilación está en `dist/operational/`, generada con `pnpm build`. El servicio Node conserva la interfaz anterior en `public/` hasta la activación controlada del esquema y la transición de su PWA; cambiarlo directamente dejaría a clientes existentes con la caché anterior. El servidor sirve únicamente los archivos incluidos en su lista permitida. Las carpetas `src/`, `scripts/`, `supabase/`, las credenciales y los respaldos no se publican. Los datos de ejemplo se limitan a pruebas y a la referencia visual explícita.
+Node y los comandos de Cloudflare sirven la compilación Polymet de `dist/operational/`. Genera los recursos con `pnpm build` antes de iniciar Node. Usa un origen nuevo y configura `PORT` con un puerto libre distinto de 3000. La activación requiere detener primero el servicio heredado verificado para evitar escrituras sobre el catálogo nuevo desde sesiones antiguas. Los archivos de `public/` se conservan como referencia histórica. La compilación incorpora la imagen original y las fuentes locales.
 
 El diseño conserva los componentes, la navegación lateral, los temas y las medidas de Polymet. La imagen original del negocio se conserva como recurso; no sustituye la composición aprobada.
 
 El contenido respeta el ancho máximo de 1480 px y los puntos de corte de la referencia. En teléfonos conserva los controles adaptables y el desplazamiento interno de las tablas.
 
-## Instalar en Android o iPhone
+## Instalación como PWA
 
-Esta sección describe la PWA anterior conservada en `public/`. La instalación del nuevo frontend compartido de Polymet todavía requiere su propia integración y verificación.
-
-Abre la dirección **HTTPS** del sistema e inicia sesión. En Android pulsa **Instalar app** o usa el menú del navegador. En iPhone abre la página en Safari y elige **Compartir → Añadir a pantalla de inicio**. La app también funciona directamente en el navegador. La disponibilidad del aviso automático depende del navegador; el botón incluye instrucciones alternativas.
-
-Los controles se adaptan a pantallas pequeñas, los menús se abren al tocar y las tablas se desplazan dentro de su propio recuadro. La interfaz conserva el mismo servidor y base de datos que la versión de escritorio.
-
-**Sin conexión:** una vez preparada la caché, se puede abrir la interfaz. No se guardan clientes, inventario, facturas ni contraseñas en la caché del service worker. Las operaciones requieren conexión y confirmación del servidor. Si hay un carrito pendiente, conserva esa pantalla: cerrar la app no guarda borradores. No hay sincronización de ventas sin conexión.
-
-**Actualizaciones:** el service worker instala una versión completa de los archivos estáticos y espera a que se cierren las pestañas/instancias anteriores. Para publicar cambios en la interfaz, incrementa `CACHE` en `public/sw.js` en el mismo despliegue. No se fuerza una actualización en medio de una venta.
-
-El manifiesto, los iconos y la implementación siguen las [guías de instalación de PWA](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable) y de [service workers](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API/Using_Service_Workers). En desarrollo, `http://127.0.0.1` también permite probar la PWA; abrir `index.html` directamente no ejecuta el servidor.
+La instalación y la sincronización offline de la interfaz Polymet siguen pendientes. La PWA anterior puede conservar una copia del HTML en el origen donde se instaló su service worker. Abre el POS nuevo en su propio origen HTTPS o en otro puerto local.
 
 ## Diseño compartido de Polymet (rama de trabajo)
 
-La referencia visual aprobada, reglas y procedencia están en [la documentación del diseño](docs/design/recuperacion-polymet.md). `pnpm build` y `pnpm build:design` compilan la entrada operativa, sin datos de demostración. `pnpm preview` o `pnpm preview:design` sirven esa interfaz en `http://127.0.0.1:3001`: es una vista estática y muestra la falta de conexión si no hay API. La activación de esta compilación en el servicio conectado y la transición de la PWA anterior siguen pendientes; `start:local` y `start:supabase` conservan la interfaz anterior.
+La referencia visual aprobada, reglas y procedencia están en [la documentación del diseño](docs/design/recuperacion-polymet.md). `pnpm build` y `pnpm build:design` compilan la entrada operativa, sin datos de demostración. `pnpm preview` o `pnpm preview:design` sirven esa interfaz en `http://127.0.0.1:3001`: es una vista estática y muestra la falta de conexión si no hay API. La activación en el servicio del negocio y la transición de la PWA anterior siguen pendientes.
 
 La demostración original se conserva únicamente para comparación y pruebas mediante `pnpm build:reference` y `pnpm preview:reference`; no se utiliza como entrada del negocio. `pnpm test:design` comprueba esa referencia aislada con Edge. El trabajo del Excel está documentado en [inventario e importación](docs/inventario-excel.md).
 
@@ -92,7 +82,7 @@ El proyecto usa **pnpm 10.8.0**, fijado en `packageManager`, y `pnpm-lock.yaml` 
 
 4. La primera vez, abre `psql -h 127.0.0.1 -U postgres -d pos_repuestos_felix`, ejecuta `ALTER ROLE pos_app LOGIN;` y después `\password pos_app`. Escribe una contraseña exclusiva y completa esa misma contraseña, codificada para URL, en `.env.local`. La contraseña administrativa permanece en el archivo de migraciones.
 
-5. Ejecuta `pnpm start:local` y abre **http://127.0.0.1:3000** para la interfaz existente. Una base nueva contiene la configuración y Cliente Contado, sin mercancía ni ventas de ejemplo. El servidor comprueba la estructura al arrancar; las migraciones se ejecutan explícitamente con una cuenta administrativa.
+5. Ejecuta `pnpm build` y `pnpm start:local`. Abre el puerto configurado en el perfil, por ejemplo **http://127.0.0.1:3001**. Una base nueva contiene la configuración y Cliente Contado, sin mercancía ni ventas de ejemplo. El servidor comprueba la estructura al arrancar; las migraciones se ejecutan explícitamente con una cuenta administrativa.
 
 ## Usar Supabase
 
@@ -145,7 +135,7 @@ La configuración sigue la [guía de conexiones de Supabase](https://supabase.co
 
 Detén el servidor con `Ctrl+C` e inicia el otro comando. **Local y Supabase mantienen datos independientes; no hay sincronización ni cambio automático ante fallos.** Puedes usar ambas configuraciones, una por ejecución.
 
-Para copiar datos entre ellas: exporta desde **Configuración → Copia de seguridad**, cambia el destino del servidor y usa **Restaurar copia**. El respaldo v3 incluye tablas, filas inactivas, movimientos y los atributos de catálogo de Polymet. La restauración pide confirmación, conserva un respaldo automático y reemplaza los datos de la base seleccionada en una transacción. También importa respaldos relacionales v2 (los atributos nuevos reciben valores neutros) y el JSON anterior del HTML con Firebase. No consulta ni modifica Firebase.
+La API administrativa admite respaldos operativos v5 mediante `GET /api/backup` y restauraciones transaccionales mediante `POST /api/restore`, con revisión, generación y clave de idempotencia. La restauración conserva un respaldo automático y admite los formatos anteriores. El archivo histórico de NetPOS requiere un respaldo administrativo de PostgreSQL.
 
 `pnpm start` permite usar un archivo `.env` en lugar de los dos perfiles anteriores. Las variables ya presentes en el entorno tienen prioridad sobre el archivo seleccionado; evita dejar `DATABASE_URL` de otro destino definida en la terminal.
 
@@ -179,18 +169,18 @@ Para Cloudflare utiliza la guía anterior. Para el servidor Node.js o Docker, co
 | `DATABASE_CA_FILE` | Ruta al certificado CA montado como archivo secreto, si tu proyecto lo necesita |
 | `DATABASE_CA` | Alternativa a `DATABASE_CA_FILE`: contenido PEM de la CA en una variable privada del alojamiento |
 | `HOST` | `0.0.0.0` dentro del servicio alojado |
-| `PORT` | Puerto indicado por el proveedor; por defecto `3000` |
+| `PORT` | Obligatorio. Elige un puerto libre distinto de 3000. |
 | `PUBLIC_ORIGIN` | Dirección exacta, por ejemplo `https://pos.tu-dominio.com`, sin rutas ni parámetros |
 | `APP_USERNAME` | Usuario de acceso, por ejemplo `admin` |
 | `APP_PASSWORD` | Contraseña larga y única, de al menos 16 caracteres |
 
-Instalación del servicio: `pnpm install --prod --frozen-lockfile`. Aplica migraciones desde un entorno administrativo antes del despliegue; no configures `MIGRATION_DATABASE_URL` en el proceso web. Inicio: `node src/server.js`. Usa pnpm 10.8.0 en el alojamiento. El `Dockerfile` prepara esta versión; los `.env` y certificados locales se excluyen del contexto de construcción. Monta los certificados como secretos en ejecución cuando sean necesarios.
+Instala con `pnpm install --frozen-lockfile` y compila los recursos con `pnpm build`. Aplica migraciones desde un entorno administrativo antes del despliegue; no configures `MIGRATION_DATABASE_URL` en el proceso web. Inicio: `node src/server.js`. Usa pnpm 10.8.0 en el alojamiento. El `Dockerfile` prepara esta versión; los `.env` y certificados locales se excluyen del contexto de construcción. Monta los certificados como secretos en ejecución cuando sean necesarios.
 
 El proveedor debe terminar HTTPS, redirigir HTTP a HTTPS y **sobrescribir** `X-Forwarded-Proto` con el protocolo real. Mantén el puerto de Node privado, accesible solo desde ese proxy: no basta con enviar una cabecera para asegurar el transporte. El servidor rechaza nombres de host ajenos, tráfico sin indicación HTTPS en modo público y escrituras de otros orígenes. `GET /health` es un indicador público de que el proceso está activo y no expone datos del negocio.
 
 El navegador pide usuario y contraseña mediante autenticación HTTP Basic sobre HTTPS. Esta versión utiliza una cuenta compartida del negocio; no incorpora perfiles ni permisos individuales. Si necesitas volver a autenticar una PWA abierta, el enlace **Volver a iniciar sesión** abre `/login` en otra pestaña y conserva el carrito original. Vuelve después y pulsa **Actualizar datos**. Para cambiar la contraseña modifica el secreto del alojamiento y reinicia el servicio.
 
-Los archivos de `public/`, el manifiesto y los iconos son públicos; el acceso a los datos de PostgreSQL exige autenticación en modo público. No introduzcas datos reales del negocio ni credenciales en los archivos estáticos.
+Los recursos compilados de Polymet se sirven desde `dist/operational/` y el acceso a los datos de PostgreSQL exige autenticación en modo público. No introduzcas datos reales del negocio ni credenciales en los archivos estáticos.
 
 ## Pruebas
 

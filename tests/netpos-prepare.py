@@ -25,7 +25,7 @@ def table(folder, name, headers, rows):
         writer.writerows(rows)
 
 
-def fixture(folder, codes=None, history=None, cost="12.345600000000001", formula=False, description="Pieza á"):
+def fixture(folder, codes=None, history=None, cost="12.345600000000001", formula=False, description="Pieza á", cells=None):
     folder.mkdir(exist_ok=True)
     if codes is None:
         codes = [("n", "12"), ("n", "45139"), ("n", "1234567890123450"),
@@ -49,6 +49,8 @@ def fixture(folder, codes=None, history=None, cost="12.345600000000001", formula
     def row(number, fields):
         line = ET.SubElement(data, "row", r=str(number))
         for i, (kind, value) in enumerate(fields):
+            if number == 2 and cells and HEAD[i] in cells:
+                kind, value = "s", cells[HEAD[i]]
             cell = ET.SubElement(line, "c", r=chr(65+i)+str(number), t=kind)
             if number > 1 and i == 0 and value == "45139":
                 cell.set("s", "1")
@@ -160,6 +162,26 @@ class Preparation(unittest.TestCase):
                 row[header.index(field)] = value
                 table(self.source,master," ".join(header),[row])
                 self.run_prepare(False,self.root/f"master-{idx}")
+
+    def test_text_amounts_require_ascii_decimal_syntax_and_keep_precision(self):
+        for field, value in [("COSTO", "1__2.30"), ("PRECIO2", "1_2.30"), ("EXISTENCIA", "1_8"),
+                             ("MINIMO", " 2"), ("PRECIO", "１２"), ("PRECIO3", "1.0000000000000001")]:
+            with self.subTest(field=field):
+                fixture(self.source, cells={field: value})
+                self.run_prepare(False, self.root/field)
+        for master, field, value in [("CLIENTES", "LIMITE_CREDITO", "1_2.30"), ("EMPRESA", "ITBIS", "1_8")]:
+            with self.subTest(master=master):
+                fixture(self.source)
+                with (self.source/(master+".csv")).open(encoding="utf-8-sig", newline="") as stream:
+                    header, row = list(csv.reader(stream))
+                row[header.index(field)] = value
+                table(self.source, master, " ".join(header), [row])
+                self.run_prepare(False, self.root/master)
+        fixture(self.source, cells={"COSTO": "+999999999999.9898", "EXISTENCIA": ".25e+1"})
+        self.run_prepare(True)
+        with (self.out/"products.csv").open(encoding="utf-8", newline="") as stream:
+            row = next(csv.DictReader(stream))
+        self.assertEqual((row["costo"], row["stock"]), ("999999999999.9898", "2.50"))
 
     def test_rejects_ambiguity_order_collision_and_scale(self):
         for codes, hist, cost in [

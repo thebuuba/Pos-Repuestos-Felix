@@ -45,7 +45,7 @@ test('el acceso público requiere HTTPS, origen y credenciales válidas', async 
   assert.equal((await call('/api/state', { Authorization: auth })).statusCode, 200);
   assert.equal((await call('/api/state', { Authorization: 'Basic ' + Buffer.from('felix:incorrecta').toString('base64') })).statusCode, 401);
   assert.equal((await call('/api/state', { Authorization: auth, 'X-Forwarded-Proto': 'http' })).statusCode, 426);
-  assert.equal((await call('/manifest.webmanifest')).statusCode, 200);
+  assert.equal((await call('/styles.css')).statusCode, 200);
   assert.equal((await call('/login', { Authorization: auth })).statusCode, 303);
   assert.equal((await call('/health', { Host: 'interno.example', 'X-Forwarded-Proto': 'http' })).statusCode, 200);
 });
@@ -90,21 +90,13 @@ test('no publica credenciales, SQL ni archivos del servidor', async () => {
   assert.equal((await fetch(base + '/app.js')).status, 200);
 });
 
-test('la cabecera muestra la imagen original y el servidor entrega el JPEG completo', async () => {
-  const { readFile } = await import('node:fs/promises');
-  const { JSDOM } = await import('jsdom');
-  const html = new JSDOM(await (await fetch(base + '/')).text());
-  try {
-    const image = html.window.document.querySelector('.brand-banner');
-    assert.ok(image, 'La cabecera debe incluir la imagen del negocio');
-    assert.equal(image.getAttribute('alt'), 'Repuestos Félix · Tanaka · 829-782-3872');
-    assert.equal(image.getAttribute('width'), '2272');
-    assert.equal(image.getAttribute('height'), '464');
-    const response = await fetch(base + image.getAttribute('src'));
-    assert.equal(response.status, 200);
-    assert.match(response.headers.get('content-type'), /image\/jpeg/);
-    assert.deepEqual(Buffer.from(await response.arrayBuffer()), await readFile(new URL('../public/assets/brand/repuestos-felix.jpg', import.meta.url)));
-  } finally { html.window.close(); }
+test('el servidor por defecto entrega el inventario compilado de Polymet', async () => {
+  const html = await (await fetch(base + '/inventario')).text();
+  assert.match(html, /<div id="root"><\/div>/);
+  assert.match(html, /type="module" src="\/app\.js"/);
+  for (const path of ['/manifest.webmanifest', '/sw.js', '/pwa.js']) {
+    assert.equal((await fetch(base + path)).status, 404, path);
+  }
 });
 
 test('responde con 413 si el respaldo supera 10 MB', async () => {
@@ -132,25 +124,9 @@ test('rejects a write from a different database', async () => {
   assert.deepEqual((await get()).state, original.state);
 });
 
-test('publica el manifiesto y todos sus iconos con tipos correctos', async () => {
-  const response = await fetch(base + '/manifest.webmanifest');
+test('entrega la fuente compilada y admite HEAD', async () => {
+  const response = await fetch(base + '/assets/fonts/inter-latin-wght-normal.woff2', { method: 'HEAD' });
   assert.equal(response.status, 200);
-  assert.match(response.headers.get('content-type'), /application\/manifest\+json/);
-  const manifest = await response.json();
-  assert.equal(manifest.display, 'standalone');
-  for (const icon of manifest.icons) {
-    const response = await fetch(base + icon.src);
-    assert.equal(response.status, 200, icon.src);
-    assert.match(response.headers.get('content-type'), /image\/png/);
-    const png = Buffer.from(await response.arrayBuffer());
-    assert.equal(png.readUInt32BE(16), Number(icon.sizes.split('x')[0]));
-    assert.equal(png.readUInt32BE(20), Number(icon.sizes.split('x')[1]));
-  }
-  const head = await fetch(base + '/icons/icon-192.png', { method: 'HEAD' });
-  assert.equal(head.status, 200);
-  assert.equal(head.headers.get('content-type'), 'image/png');
-  assert.equal((await head.arrayBuffer()).byteLength, 0);
-  for (const path of ['/sw.js', '/styles.css', '/pwa.js', '/icons/apple-touch-icon.png']) {
-    assert.equal((await fetch(base + path)).status, 200, path);
-  }
+  assert.equal(response.headers.get('content-type'), 'font/woff2');
+  assert.equal((await response.arrayBuffer()).byteLength, 0);
 });

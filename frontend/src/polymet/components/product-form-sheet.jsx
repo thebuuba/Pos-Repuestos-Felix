@@ -146,15 +146,18 @@ function ProductFormSheet({
   const quantityError = "Usa una cantidad entre 0 y 2147483647 con hasta dos decimales";
   const textError = (value) =>
     value.length > 2000 ? "Usa hasta 2000 caracteres" : undefined;
+  const name = form.name === product?.name ? form.name : form.name.trim();
+  const brand = form.brand === product?.brand ? form.brand : form.brand.trim();
+  const location = form.location === product?.location ? form.location : form.location.trim().toUpperCase();
   const errors = {
     code: !form.code.trim()
       ? "Requerido"
       : (textError(form.code) ??
         (codeTaken ? "Ese código ya existe" : undefined)),
-    name: !form.name.trim() ? "Requerido" : textError(form.name.trim()),
-    brand: textError(form.brand.trim()),
+    name: !form.name.trim() ? "Requerido" : textError(name),
+    brand: textError(brand),
     category: textError(form.category),
-    location: textError(form.location.trim().toUpperCase()),
+    location: textError(location),
     cost:
       form.cost === ""
         ? "Indica el costo"
@@ -196,10 +199,10 @@ function ProductFormSheet({
         databaseId: draft.databaseId,
         ...(draft.version === undefined ? {} : { version: draft.version }),
         code: form.code,
-        name: form.name.trim(),
-        brand: form.brand.trim(),
+        name,
+        brand,
         category: form.category,
-        location: form.location.trim().toUpperCase(),
+        location,
         cost: costDecimal,
         stock: Number(form.stock),
         minStock: Number(form.minStock),

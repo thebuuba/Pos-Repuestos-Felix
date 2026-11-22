@@ -4,3 +4,9 @@
 label {
   display: block;
 }
+
+/* Keep Polymet's number aligned and use the card's end padding before scrolling. */
+.scrollable-stat-value {
+  margin-inline-end: -1.25rem;
+  overflow-x: auto;
+}

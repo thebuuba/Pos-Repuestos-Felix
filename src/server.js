@@ -10,9 +10,8 @@ import { databaseConfig } from './db/config.js';
 import { hostingConfig } from './hosting.js';
 import { handleRequest } from './http/app.js';
 
-const root = new URL('../public/', import.meta.url);
+const root = new URL('../dist/operational/', import.meta.url);
 const legacyPort = 3000;
-const legacyInventoryError = 'La interfaz heredada no admite este inventario. Compila con pnpm build e inicia pnpm start:operational con un PORT nuevo.';
 
 export async function createApp(pool, { assetsDirectory = root, ...options } = {}) {
   const directory = fileURLToPath(assetsDirectory);
@@ -43,45 +42,25 @@ export async function createApp(pool, { assetsDirectory = root, ...options } = {
   });
 }
 
-async function assertLegacyInventoryCompatible(pool, snapshot) {
-  if (snapshot.state.catalogo.importada) throw new Error(legacyInventoryError);
-  // Read exact NUMERIC values and include inactive products, which a purchase can reactivate.
-  const { rows } = await pool.query(`SELECT codigo,
-    stock <> trunc(stock) OR stock_minimo <> trunc(stock_minimo) OR costo <> trunc(costo,2)
-      OR precio1 <> trunc(precio1,2) OR precio2 <> trunc(precio2,2) OR precio3 <> trunc(precio3,2) AS incompatible
-    FROM public.productos`);
-  const codes = new Set();
-  for (const { codigo, incompatible } of rows) {
-    const foldedCode = codigo.toLowerCase();
-    if (incompatible || /\s/u.test(codigo) || codes.has(foldedCode)) throw new Error(legacyInventoryError);
-    codes.add(foldedCode);
-  }
-}
-
 async function main() {
   const args = process.argv.slice(2);
-  const operational = args.length === 1 && args[0] === '--operational';
-  if (args.length && !operational) throw new Error('Modo de inicio desconocido. Usa --operational para la interfaz nueva.');
-  const port = Number(process.env.PORT || legacyPort);
-  if (operational && (!process.env.PORT || port === legacyPort)) {
+  if (args.length && !(args.length === 1 && args[0] === '--operational')) throw new Error('Modo de inicio desconocido. Usa --operational para la interfaz nueva.');
+  const port = Number(process.env.PORT);
+  if (!process.env.PORT || port === legacyPort) {
     throw new Error(`Configura un PORT explícito y distinto del puerto heredado (${legacyPort}).`);
   }
   if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw new Error('PORT debe estar entre 1 y 65535.');
   const hosting = hostingConfig();
-  let assetsDirectory = root;
-  if (operational) {
-    const compiled = resolve('dist', 'operational');
-    try { await Promise.all(['index.html', 'app.js', 'styles.css'].map(file => access(join(compiled, file)))); }
-    catch { throw new Error('Compila dist/operational con pnpm build desde la carpeta del proyecto.'); }
-    assetsDirectory = pathToFileURL(compiled + sep);
-  }
+  const compiled = resolve('dist', 'operational');
+  try { await Promise.all(['index.html', 'app.js', 'styles.css'].map(file => access(join(compiled, file)))); }
+  catch { throw new Error('Compila dist/operational con pnpm build desde la carpeta del proyecto.'); }
+  const assetsDirectory = pathToFileURL(compiled + sep);
   const pool = new pg.Pool(databaseConfig());
   pool.on('error', (error) => console.error('Error de PostgreSQL:', error.code || error.name));
   try {
     const databaseLabel = process.env.DATABASE_LABEL || 'PostgreSQL';
     // Verify the selected schema and connection without granting the server DDL.
-    const snapshot = await readSnapshot(pool, databaseLabel);
-    if (!operational) await assertLegacyInventoryCompatible(pool, snapshot);
+    await readSnapshot(pool, databaseLabel);
     const server = await createApp(pool, { databaseLabel, hosting, assetsDirectory });
     server.listen(port, hosting.host, () => console.log(`POS disponible en ${hosting.origin || `http://127.0.0.1:${port}`} (${databaseLabel})`));
     server.on('error', async (error) => {

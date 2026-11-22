@@ -4,6 +4,7 @@ import { dirname, join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
+import { buildOperational } from './build-operational.mjs';
 
 export function validateDeploymentConfig(config) {
   if (!/^[a-f0-9]{32}$/i.test(config.account_id || '')) throw new Error('Configura account_id con la cuenta Cloudflare verificada.');
@@ -20,6 +21,7 @@ async function main() {
   process.loadEnvFile(join(root, '.env.supabase'));
   if (!process.env.APP_PASSWORD || process.env.APP_PASSWORD.length < 16) throw new Error('Configura una APP_PASSWORD de al menos 16 caracteres en el perfil privado.');
   if (config.vars.APP_USERNAME !== (process.env.APP_USERNAME || 'admin')) throw new Error('El usuario de acceso del Worker debe coincidir con el perfil privado.');
+  const assets = await buildOperational(join(root, 'dist/operational'));
   const directory = join(root, 'supabase/.temp');
   await mkdir(directory, { recursive: true });
   const secretFile = join(directory, `worker-secrets-${randomUUID()}.json`);
@@ -28,7 +30,7 @@ async function main() {
     const require = createRequire(import.meta.url);
     const executable = join(dirname(require.resolve('wrangler/package.json')), 'bin/wrangler.js');
     await new Promise((done, reject) => {
-      const child = spawn(process.execPath, [executable, 'deploy', '--secrets-file', secretFile], { cwd: root, stdio: 'inherit', windowsHide: true });
+      const child = spawn(process.execPath, [executable, 'deploy', '--assets', assets, '--secrets-file', secretFile], { cwd: root, stdio: 'inherit', windowsHide: true });
       child.once('error', reject);
       child.once('exit', code => code === 0 ? done() : reject(new Error('El despliegue no terminó correctamente.')));
     });

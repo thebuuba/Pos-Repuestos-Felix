@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { createTestHarness } from 'wrangler';
 import pg from 'pg';
 import { temporaryPostgres } from './postgres.js';
+import { buildOperational } from '../scripts/build-operational.mjs';
 import { migrateDatabase } from '../src/db/migrations.js';
 
 let database, pool, harness, root;
@@ -21,7 +22,7 @@ before(async () => {
   localDatabase.password = 'contrasena-ficticia-runtime';
   const testConfig = { ...config,
     main: fileURLToPath(new URL('../src/worker.js', import.meta.url)),
-    assets: { ...config.assets, directory: fileURLToPath(new URL('../public/', import.meta.url)) },
+    assets: { ...config.assets, directory: await buildOperational(join(root, 'operational')) },
     vars: { ...config.vars, PUBLIC_ORIGIN: 'https://pos.example' },
     // ID ficticio usado exclusivamente por el emulador local; no crea recursos.
     hyperdrive: [{ binding: 'HYPERDRIVE', id: '00000000000000000000000000000000', localConnectionString: localDatabase.toString() }],
@@ -45,10 +46,10 @@ const call = (path, options = {}) => harness.getWorker().fetch('https://pos.exam
 test('el runtime Workers sirve el frontend y protege los datos con la configuración de producción', async () => {
   const html = await call('/');
   assert.equal(html.status, 200);
-  assert.match(await html.text(), /brand-banner/);
-  const image = await call('/assets/brand/repuestos-felix.jpg');
-  assert.equal(image.status, 200);
-  assert.equal((await image.arrayBuffer()).byteLength, 176929);
+  assert.match(await html.text(), /type="module" src="\/app\.js"/);
+  assert.match(await (await call('/inventario')).text(), /<div id="root"><\/div>/);
+  assert.equal((await call('/app.js')).status, 200);
+  assert.equal((await call('/sw.js')).status, 404);
   assert.equal((await call('/api/state', { headers: { Authorization: '' } })).status, 401);
   assert.equal((await call('/src/worker.js')).status, 404);
 });

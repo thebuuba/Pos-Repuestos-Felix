@@ -109,9 +109,9 @@ async function movement(client, productId, quantity, stock, type, detailId = nul
     VALUES($1,$2,$3,$4,$5,$6,$7)`, [productId, quantityText(quantity), quantityText(stock), type, type === 'venta' ? detailId : null, type === 'compra' ? detailId : null, reason]);
 }
 async function productOperation(client, method, productId, body) {
-  let code, name, stock, amounts;
+  let code, stock, amounts;
   if (method !== 'DELETE') {
-    code = productCode(body.codigo); name = text(body.nombre, 'la descripción');
+    code = productCode(body.codigo);
     stock = quantityUnits(body.stock, 'las existencias'); amounts = prices(body);
     const oldCode = productId ? (await client.query('SELECT codigo FROM productos WHERE id=$1', [productId])).rows[0]?.codigo : null;
     for (const lockCode of [...new Set([code, oldCode].filter(Boolean))].sort()) {
@@ -128,7 +128,12 @@ async function productOperation(client, method, productId, body) {
     return { id: productId };
   }
   const attribute = (key, column, fallback) => body[key] === undefined ? previous?.[column] ?? fallback : body[key];
-  const attributeText = (key, label = key) => body[key] === undefined ? previous?.[key] ?? '' : text(body[key], label, false);
+  const attributeText = (key, label = key, required = false) => {
+    const value = required ? body[key] : attribute(key, key, '');
+    const trimmed = text(value, label, required);
+    return value === previous?.[key] ? value : trimmed;
+  };
+  const name = attributeText('nombre', 'la descripción', true);
   const metadata = ['marca', 'categoria'].map(key => attributeText(key));
   metadata.push(quantityText(quantityUnits(attribute('stockMinimo', 'stock_minimo', 0), 'la existencia mínima')));
   const taxable = attribute('gravado', 'gravado', true);

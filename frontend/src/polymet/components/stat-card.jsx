@@ -14,12 +14,14 @@ function StatCard({
   footer,
   to = "/",
   highlight = false,
+  scrollableValue = false,
 }) {
   const positive = (change ?? 0) >= 0;
   return (
     <div
       className={cn(
         "flex flex-col rounded-2xl border p-5 transition-shadow hover:shadow-md",
+        scrollableValue && "min-w-0",
         highlight
           ? "border-primary bg-primary text-primary-foreground"
           : "border-border bg-card",
@@ -47,7 +49,10 @@ function StatCard({
           <ArrowUpRight className="h-4 w-4" />
         </Link>
       </div>
-      <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      <div className={cn(
+        "mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1",
+        scrollableValue && "scrollable-stat-value",
+      )}>
         {format === "money" ? (
           <MoneyDisplay
             value={value}

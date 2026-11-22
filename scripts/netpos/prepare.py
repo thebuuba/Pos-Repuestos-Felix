@@ -22,7 +22,7 @@ REPO = Path(__file__).resolve().parents[2]
 NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 RID = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
 IDENT = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,62}\Z")
-EXCEL_NUMBER = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[Ee][+-]?[0-9]+)?")
+ASCII_DECIMAL = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[Ee][+-]?[0-9]+)?")
 # WhiteSpace y LineTerminator de ECMAScript para replicar String.prototype.trim().
 JS_WHITESPACE = "\t\n\v\f\r \xa0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
 CHOICES = {"CATEGORIAS": ("CATEGORIA", "categorias"), "MARCAS": ("MARCA", "marcas"),
@@ -162,7 +162,7 @@ def xlsx(path):
 
 
 def signature(value, rounding=ROUND_HALF_EVEN):
-    if not EXCEL_NUMBER.fullmatch(value):
+    if not ASCII_DECIMAL.fullmatch(value):
         return None
     try:
         n = Decimal(value)
@@ -241,8 +241,13 @@ def keys_for(rows, historic):
     return adopted
 
 
+def text_decimal(raw):
+    require(ASCII_DECIMAL.fullmatch(raw), "Sintaxis decimal inválida.")
+    return Decimal(raw)
+
+
 def amount(raw, scale, maximum, excel=False):
-    n = signature(raw) if excel else Decimal(raw)
+    n = signature(raw) if excel else text_decimal(raw)
     require(n is not None and n.is_finite() and 0 <= n <= maximum and
             n == n.quantize(Decimal(1).scaleb(-scale)), "Importe o cantidad fuera de precisión o rango.")
     return format(n, f".{scale}f")
@@ -287,7 +292,7 @@ def catalog_data(out, rows, keys, masters):
     (out/"key-review.json").write_text(dump(review), encoding="utf-8")
     require(len(masters["EMPRESA"]) == 1, "Se requiere una empresa.")
     company = masters["EMPRESA"][0]
-    require(flag(company["IMPUESTOS_INCLUIDOS"]) and Decimal(company["ITBIS"]) == 18, "Se requiere ITBIS 18 % incluido.")
+    require(flag(company["IMPUESTOS_INCLUIDOS"]) and text_decimal(company["ITBIS"]) == 18, "Se requiere ITBIS 18 % incluido.")
     with binary_copy(out/"settings.bin") as settings:
         company_fields = ("NOMBRE_EMPRESA","RNC","TELEFONO","EMAIL","DIRECCION")
         settings([*[public_text(company[k], "EMPRESA."+k, required=(k == "NOMBRE_EMPRESA")) for k in company_fields],

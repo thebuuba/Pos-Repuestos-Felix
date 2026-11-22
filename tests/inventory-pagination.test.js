@@ -30,6 +30,8 @@ test('inventario conectado pagina todo el catálogo, filtra existencias y conser
         CASE id WHEN 123 THEN 999999999999.9898 ELSE 12.3456 END, 15, 10.003, 0,
         CASE WHEN id <= 100 THEN 'Grupo A' ELSE 'Grupo B' END, id NOT IN (1, 122)
       FROM generate_series(1,123) AS id;
+      UPDATE productos SET nombre='  Pieza sintética 123  ', marca='  Marca Mixta ', ubicacion=' OpCión Pasillo a  '
+        WHERE codigo='caso-ultimo';
     `);
     pool = new pg.Pool({ connectionString: database.connectionString, options: '-c role=pos_app' });
     server = await createApp(pool, { assetsDirectory: pathToFileURL(directory + sep) });
@@ -76,7 +78,8 @@ test('inventario conectado pagina todo el catálogo, filtra existencias y conser
     const sheet = page.getByRole('dialog');
     const cost = sheet.getByRole('spinbutton', { name: 'Costo base RD$', exact: true });
     assert.equal(await cost.inputValue(), '999999999999.9898');
-    await cost.fill('24.5678');
+    const price = sheet.getByRole('spinbutton', { name: 'Precio 1 · Detalle', exact: true });
+    await price.fill('24.5678');
     await sheet.getByRole('button', { name: 'Guardar cambios', exact: true }).click();
     await sheet.waitFor({ state: 'hidden' });
     await lower.getByRole('cell', { name: 'RD$ 24.5678', exact: true }).waitFor();
@@ -85,9 +88,19 @@ test('inventario conectado pagina todo el catálogo, filtra existencias y conser
     await search.fill('CASO-ULTIMO');
     await result('Mostrando 1–2 de 2 productos');
     await lower.getByRole('button', { name: 'Editar', exact: true }).click();
-    assert.equal(await cost.inputValue(), '24.5678');
+    assert.equal(await price.inputValue(), '24.5678');
+    const location = sheet.getByLabel('Ubicación', { exact: true });
+    assert.deepEqual(await Promise.all([sheet.getByLabel('Descripción', { exact: true }).inputValue(),
+      sheet.getByLabel('Marca', { exact: true }).inputValue(), location.inputValue()]),
+      ['  Pieza sintética 123  ', '  Marca Mixta ', ' OpCión Pasillo a  ']);
     assert.equal(await sheet.getByLabel('Código', { exact: true }).inputValue(), 'caso-ultimo');
-    await sheet.getByRole('button', { name: 'Cancelar', exact: true }).click();
+    await location.fill(' pasillo b ');
+    await cost.fill('24.5678');
+    await sheet.getByRole('button', { name: 'Guardar cambios', exact: true }).click();
+    await sheet.waitFor({ state: 'hidden' });
+    const edited = (await (await fetch(origin + '/api/state')).json()).state.productos.find(p => p.codigo === 'caso-ultimo');
+    assert.deepEqual([edited.nombre, edited.marca, edited.ubicacion], ['  Pieza sintética 123  ', '  Marca Mixta ', 'PASILLO B']);
+    await page.reload();
     await search.fill('no existe');
     await result('Mostrando 0 de 0 productos');
     await result('Sin resultados');
@@ -144,6 +157,8 @@ test('inventario conectado pagina todo el catálogo, filtra existencias y conser
     await previous.click();
     await result('Mostrando 1–50 de 123 productos');
 
+    const valuation = page.getByRole('link', { name: 'Ver Valor del inventario' }).locator('xpath=../..');
+    const money = valuation.getByText('RD$', { exact: true }).locator('xpath=../..');
     const evidence = process.env.INVENTORY_EVIDENCE_DIR;
     if (evidence) await mkdir(evidence, { recursive: true });
     for (const [width, height] of [[320, 844], [390, 844], [768, 1024], [1440, 1000]]) {
@@ -157,6 +172,10 @@ test('inventario conectado pagina todo el catálogo, filtra existencias y conser
         await page.evaluate(() => document.fonts.ready);
         const documentWidth = await html.evaluate(el => el.scrollWidth);
         assert.ok(documentWidth <= width, `${width} px en ${theme}, ancho del documento ${documentWidth} px`);
+        if (width === 1440) {
+          assert.ok(await money.evaluate(el => el.scrollWidth <= el.clientWidth),
+            'la valoración de la fixture normal permanece completa a tamaño de escritorio');
+        }
         if (width < 640) {
           assert.equal(await table.evaluate(el => el.parentElement.scrollWidth > el.parentElement.clientWidth), true);
         }
@@ -180,6 +199,30 @@ test('inventario conectado pagina todo el catálogo, filtra existencias y conser
       }
     }
 
+    // Two quarter-cent cost lines and two three-quarter-cent retail lines round only in the aggregate.
+    await admin.query(`UPDATE productos SET
+      stock=CASE id WHEN 1 THEN 1000 WHEN 2 THEN 0.01 WHEN 3 THEN 0.01 ELSE 0 END,
+      costo=CASE id WHEN 1 THEN 999999999999.9898 ELSE 0.25 END,
+      precio1=CASE id WHEN 1 THEN 999999999999.9898 ELSE 0.75 END;
+      UPDATE pos_privado.sistema SET revision=revision+1`);
+    await refresh.click();
+    await result('1,000.02 unidades en almacén');
+    assert.match(await valuation.textContent(), /999,999,999,999,989\.81/);
+    assert.match(await valuation.textContent(), /A precio de venta: RD\$ 999,999,999,999,989\.82/);
+    await page.setViewportSize({ width: 320, height: 844 });
+    assert.equal(await page.locator('html').evaluate(el => el.scrollWidth), 320,
+      'la valoración exacta permanece dentro de la pantalla de 320 px');
+    assert.ok(await money.evaluate(el => {
+      el.scrollLeft = el.scrollWidth;
+      const end = el.scrollLeft;
+      el.scrollLeft = 0;
+      return end > 0 && el.scrollWidth - el.clientWidth === end;
+    }), 'todos los dígitos del importe se alcanzan dentro de la tarjeta');
+    assert.match(await valuation.innerText(), /999,999,999,999,989[\s.]+81/);
+    if (evidence) {
+      await valuation.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: join(evidence, 'valoracion-extrema-320.png'), animations: 'disabled' });
+    }
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();

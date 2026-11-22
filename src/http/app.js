@@ -9,12 +9,7 @@ const pageRoutes = new Set([
 const pageAsset = ['index.html', 'text/html'];
 const publicFiles = {
   '/app.js': ['app.js', 'text/javascript'],
-  '/pwa.js': ['pwa.js', 'text/javascript'], '/styles.css': ['styles.css', 'text/css'],
-  '/sw.js': ['sw.js', 'text/javascript'], '/manifest.webmanifest': ['manifest.webmanifest', 'application/manifest+json'],
-  '/icons/icon-192.png': ['icons/icon-192.png', 'image/png'],
-  '/icons/icon-512.png': ['icons/icon-512.png', 'image/png'],
-  '/icons/maskable-512.png': ['icons/maskable-512.png', 'image/png'],
-  '/icons/apple-touch-icon.png': ['icons/apple-touch-icon.png', 'image/png'],
+  '/styles.css': ['styles.css', 'text/css'],
   '/assets/brand/repuestos-felix.jpg': ['assets/brand/repuestos-felix.jpg', 'image/jpeg'],
   '/assets/fonts/inter-latin-wght-normal.woff2': ['assets/fonts/inter-latin-wght-normal.woff2', 'font/woff2'],
   '/assets/Inter-OFL.txt': ['assets/Inter-OFL.txt', 'text/plain'],
