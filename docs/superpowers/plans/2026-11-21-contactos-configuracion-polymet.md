@@ -85,7 +85,7 @@ updateSettings({version,databaseId,itbisRate,rounding,defaultPriceLevel,printer,
 // printer, ticketFooter, allowNegativeStock:false,ncf:[],version,databaseId.
 ```
 
-El diario conserva el mismo paquete en resultados inciertos; ningún formulario reconstruye DTO desde una versión nueva durante un reintento. Un rechazo definitivo probado libera el borrador; una respuesta desconocida no se convierte en éxito. Configuración captura versión/generación al empezar a editar cada sección; cambios remotos no sobrescriben borradores sucios ni se usan para forzar su guardado. Tras éxito propio una sección limpia puede adoptar la nueva versión.
+El diario conserva el mismo paquete en resultados inciertos; ningún formulario reconstruye DTO desde una versión nueva durante un reintento. Un rechazo definitivo probado libera el borrador; una respuesta desconocida no se convierte en éxito. Configuración captura versión/generación al empezar a editar cada sección; cambios remotos no sobrescriben borradores sucios ni se usan para forzar su guardado. Tras éxito propio una sección limpia puede adoptar la nueva versión. Antes de la primera instantánea confirmada, usar estado de carga/error y deshabilitar escrituras; no abrir un borrador con generación/versión nulas ni presentarlo como configuración real. Los últimos datos confirmados pueden consultarse con su advertencia de desconexión.
 
 ### Task 1: Cálculo exacto de fórmulas y fechas documentales
 
@@ -93,7 +93,7 @@ El diario conserva el mismo paquete en resultados inciertos; ningún formulario 
 
 **Interfaces:** Consumes no nueva dependencia. Produces `normalizeFormula`/`calculateFormula` y los exports existentes de pricing/accounts para las tareas 2 y 5. Leer los contratos anteriores en la copia de restricciones del brief.
 
-- [ ] **Step 1: Escribir pruebas que fallen.** Ejemplos normativos:
+- [x] **Step 1: Escribir pruebas que fallen.** Ejemplos normativos:
 
 ```js
 const f={costFactor:'1.18',margins:{p1:'35',p2:'25',p3:'15'}};
@@ -106,10 +106,10 @@ assert.throws(()=>calculateFormula('999999999999.99',f,0));
 ```
 
 Incluir límites/precisión para factor/recargos/costo, paso inválido, cero explícito válido. Fechas: `formatDate('2026-01-01')` conserva día 1 bajo UTC y Santo Domingo; `formatDateTime`/`formatTime` no inventan hora para fecha sin hora. Instantes usan America/Santo_Domingo. Mantener textos del diseño salvo corrección documentada de día/hora.
-- [ ] **Step 2: Ejecutar** `node --test tests/pricing.test.js tests/document-dates.test.js` y registrar fallo de comportamiento real.
-- [ ] **Step 3: Implementar.** BigInt decimal escalado; errores de dominio en español. Adaptar exports existentes sin fixtures ni lógica de persistencia. Parsear fecha documental mediante componentes de calendario, no una medianoche UTC convertida a hora del negocio. No cambiar envejecimiento de cuentas aún no conectado salvo la función de formato requerida. Proteger los llamadores de sugerencias ProductFormSheet/PurchaseEntryForm/PriceFormulasEditor frente a borradores inválidos o cálculo desbordado: feedback inline, recuperación al corregir y no caída de render ni aplicar/agregar sugerencias inválidas. Conservar guardado manual válido del producto aunque una fórmula no pueda sugerir un precio. Una edición de renglón de compra admite costo cero explícito y rechaza blanco, conservando la regla positiva original para agregar. Prueba de navegador de referencia con fórmulas y costo/factor/recargos inválidos o desbordados; conservar el caso manual sin fórmula. El editor sigue con persistencia/borradores pendientes de Task 5; aquí solo se protege el nuevo contrato de errores del cálculo.
-- [ ] **Step 4: Ejecutar las pruebas del paso 2 y** `node --test tests/pricing-preview.test.js tests/catalog-forms.test.js`, `pnpm build:design`, `pnpm build:operational`. Informar comandos y resultados.
-- [ ] **Step 5: Revisar diff y commit** solo archivos propios: `git commit -m "Calculate price suggestions with exact decimal arithmetic"`.
+- [x] **Step 2: Ejecutar** `node --test tests/pricing.test.js tests/document-dates.test.js` y registrar fallo de comportamiento real.
+- [x] **Step 3: Implementar.** BigInt decimal escalado; errores de dominio en español. Adaptar exports existentes sin fixtures ni lógica de persistencia. Parsear fecha documental mediante componentes de calendario, no una medianoche UTC convertida a hora del negocio. No cambiar envejecimiento de cuentas aún no conectado salvo la función de formato requerida. Proteger los llamadores de sugerencias ProductFormSheet/PurchaseEntryForm/PriceFormulasEditor frente a borradores inválidos o cálculo desbordado: feedback inline, recuperación al corregir y no caída de render ni aplicar/agregar sugerencias inválidas. Conservar guardado manual válido del producto aunque una fórmula no pueda sugerir un precio. Una edición de renglón de compra admite costo cero explícito y rechaza blanco, conservando la regla positiva original para agregar. Prueba de navegador de referencia con fórmulas y costo/factor/recargos inválidos o desbordados; conservar el caso manual sin fórmula. El editor sigue con persistencia/borradores pendientes de Task 5; aquí solo se protege el nuevo contrato de errores del cálculo.
+- [x] **Step 4: Ejecutar las pruebas del paso 2 y** `node --test tests/pricing-preview.test.js tests/catalog-forms.test.js`, `pnpm build:design`, `pnpm build:operational`. Informar comandos y resultados.
+- [x] **Step 5: Revisar diff y commit** solo archivos propios: `git commit -m "Calculate price suggestions with exact decimal arithmetic"`.
 
 ### Task 2: Persistencia transaccional, migración y respaldo v4
 
@@ -139,11 +139,11 @@ Respaldo: export v4, restauración completa incluyendo inactivos y referencia de
 
 ### Task 3: Cliente durable y adaptador operativo para contactos/configuración
 
-**Files:** Modify `frontend/src/data/pos-client.js`, `frontend/src/data/operational-store.jsx`; create `frontend/src/data/sales-options.js`; modify `frontend/src/polymet/data/pos-data.js` para reexportar constantes; update fixtures de `tests/pos-client.test.js`/`tests/catalog-forms.test.js` por el contrato ampliado; create `tests/contact-client.test.js`.
+**Files:** Modify `frontend/src/data/pos-client.js`, `frontend/src/data/operational-store.jsx`, `frontend/src/polymet/components/product-form-sheet.jsx` (frontera de ID de fórmula); create `frontend/src/data/sales-options.js`; modify `frontend/src/polymet/data/pos-data.js` para reexportar constantes; update fixtures de `tests/pos-client.test.js`/`tests/catalog-forms.test.js` por el contrato ampliado; create `tests/contact-client.test.js`.
 
 **Interfaces:** Consumes snapshot/operations Task 2, diario y protocolo de rechazo existentes. Produces métodos/DTO/settings de Contratos. No habilitar pantallas antes de su tarea UI. No importar `pos-data`, `seed-data`, `pos-store` demo al grafo operativo.
 
-- [ ] **Step 1: Añadir pruebas renderizadas de provider/cliente que fallen.** Verificar mapeo de todos los campos, null/0 separados, ID numérico de relaciones, fecha sin hora, proveedor balance desconocido, ausencia de NCF demo y límites de configuraciones. Ejercitar cada ruta permitida (POST/PUT/DELETE contactos/fórmulas, PUT configuración), rechazo de `restore`, URLs ajenas y campos arbitrarios. Verificar respuesta incompleta/falsa/malformada conserva journal/instantánea anterior. Reintento con mismo objeto/UUID/cuerpo tras respuesta incierta + recarga, rechazo definitivo desbloquea, otra pestaña no duplica operación.
+- [ ] **Step 1: Añadir pruebas renderizadas de provider/cliente que fallen.** Verificar mapeo de todos los campos, null/0 separados, ID numérico de relaciones, fecha sin hora, proveedor balance desconocido, ausencia de NCF demo y límites de configuraciones. Incluir selección de fórmula numérica real en ProductFormSheet por teclado: convertir valores de Radix a string y comparar IDs en la frontera sin cambiar la identidad de servidor. Ejercitar cada ruta permitida (POST/PUT/DELETE contactos/fórmulas, PUT configuración), rechazo de `restore`, URLs ajenas y campos arbitrarios. Verificar respuesta incompleta/falsa/malformada conserva journal/instantánea anterior. Reintento con mismo objeto/UUID/cuerpo tras respuesta incierta + recarga, rechazo definitivo desbloquea, otra pestaña no duplica operación.
 
 ```js
 // Esquemas permitidos son finitos por ruta; claves anidadas no se aceptan en journal.
@@ -153,7 +153,7 @@ await client.writeOperation({method:'PUT',path:'/api/configuracion',databaseId,
 ```
 
 - [ ] **Step 2: Ejecutar** `node --test tests/contact-client.test.js` y registrar rojo.
-- [ ] **Step 3: Ampliar validación de snapshot y rutas/payload.** Campos reconocidos por operación y null solo donde permite contrato; no aflojar límites de catálogo ni aceptar JSON genérico. El protocolo de errores conserva exactamente sus garantías. Reutilizar patrón WeakMap por acción mediante helper local pequeño. Métodos de guardado deben recordar el objeto original incierto; no transformar de nuevo antes de consultar su retry. `runtime.accountDetailsAvailable=false`. Agregados de ventas/compras solo de documentos reales; no calcular `suppliers.balance` desde compras ni inventar abonos. Extraer constantes de selección sin mover STORE_INFO/fixtures al bundle operativo.
+- [ ] **Step 3: Ampliar validación de snapshot y rutas/payload.** Campos reconocidos por operación y null solo donde permite contrato; no aflojar límites de catálogo ni aceptar JSON genérico. Rechazar números no finitos antes de JSON.stringify: NaN/Infinity no pueden convertirse silenciosamente en null en crédito/días/preferencias. El protocolo de errores conserva exactamente sus garantías. Reutilizar patrón WeakMap por acción mediante helper local pequeño. Métodos de guardado deben recordar el objeto original incierto; no transformar de nuevo antes de consultar su retry. `runtime.accountDetailsAvailable=false`. Agregados de ventas/compras solo de documentos reales; no calcular `suppliers.balance` desde compras ni inventar abonos. Extraer constantes de selección sin mover STORE_INFO/fixtures al bundle operativo.
 - [ ] **Step 4: Ejecutar** `node --test tests/contact-client.test.js tests/pos-client.test.js tests/catalog-forms.test.js tests/operational-build.test.js` y `pnpm build:operational`; commit `"Connect durable contact and settings operations to the shared frontend"`.
 
 ### Task 4: Formularios y pantallas de clientes/suplidores confirmados
@@ -194,4 +194,5 @@ await client.writeOperation({method:'PUT',path:'/api/configuracion',databaseId,
 ## Verificación de cobertura previa a ejecución
 
 Campos/contactos, configuración y fórmulas: tareas 1–5. Idempotencia/versiones y saldos históricos: 2–5. Respaldo/RLS/legacy: 2. Diario/retry y respuestas completas: 3–5. Diseño/adaptación/accesibilidad: 4–6. Evidencia multiplataforma y límites: 6. La especificación completa permanece abierta tras esta etapa.
+
 
