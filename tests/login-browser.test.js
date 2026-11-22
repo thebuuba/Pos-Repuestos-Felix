@@ -6,22 +6,19 @@ import { temporaryPostgres } from "./postgres.js";
 import { migrateDatabase } from "../src/db/migrations.js";
 import { createApp } from "../src/server.js";
 import { hostingConfig } from "../src/hosting.js";
+import { testAuthService } from "./fixtures/supabase-auth.js";
 
 test(
   "login propio recuerda la sesión al reabrir, no expone la cookie a JavaScript y permite salir",
   { timeout: 60000 },
   async () => {
-    let database, pool, server, browser;
+    let database, pool, server, browser, authService;
     try {
       database = await temporaryPostgres();
       pool = new pg.Pool({ connectionString: database.connectionString });
       await migrateDatabase(pool);
-      server = await createApp(pool, {
-        hosting: hostingConfig({
-          APP_USERNAME: "felix",
-          APP_PASSWORD: "clave-navegador-sintetica-12345",
-        }),
-      });
+      authService = await testAuthService();
+      server = await createApp(pool, { hosting: hostingConfig(authService.env) });
       await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
       const origin = "http://127.0.0.1:" + server.address().port;
       browser = await chromium.launch({ channel: "msedge", headless: true });
@@ -86,9 +83,14 @@ test(
         ),
         false,
       );
+      const secondTab = await reopened.newPage();
+      await secondTab.goto(origin + "/inventario");
+      await secondTab.getByRole("heading", { name: "Catálogo de artículos e inventario", exact: true }).waitFor();
       await next
         .getByRole("button", { name: "Cerrar sesión", exact: true })
         .click();
+      await secondTab.getByRole("link", { name: "Iniciar sesión" }).waitFor();
+      assert.equal(await secondTab.getByRole("heading", { name: "Catálogo de artículos e inventario" }).count(), 0);
       await next
         .getByRole("heading", { name: "Iniciar sesión", exact: true })
         .waitFor();
@@ -100,9 +102,16 @@ test(
         false,
       );
       assert.deepEqual(errors, []);
+      await next.getByRole("link", { name: "Cambiar mi contraseña" }).click();
+      await next.getByLabel("Usuario", { exact: true }).fill("felix");
+      await next.getByLabel("Contraseña", { exact: true }).fill("clave-navegador-sintetica-12345");
+      await next.getByLabel("Nueva contraseña").fill("Una frase privada del cajero");
+      await next.getByRole("button", { name: "Guardar contraseña y entrar" }).click();
+      await next.getByRole("heading", { name: "Catálogo de artículos e inventario", exact: true }).waitFor();
       await reopened.close();
     } finally {
       await browser?.close();
+      await authService?.close();
       if (server) await new Promise((resolve) => server.close(resolve));
       await pool?.end();
       await database?.stop();

@@ -10,7 +10,7 @@ export default {
     try {
       const url = new URL(request.url);
       const health = url.pathname === '/health' && request.method === 'GET';
-      const hosting = hostingConfig(health ? {} : { ...env, HOST: '0.0.0.0' });
+      const hosting = health ? hostingConfig({}) : hostingConfig({ ...env, HOST: '0.0.0.0' }, { requireSupabase: true });
       const headers = new Headers(request.headers);
       // El protocolo y el host provienen del Request recibido por Cloudflare,
       // nunca de cabeceras enviadas por el visitante.

@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { buildOperational } from './build-operational.mjs';
+import { authConfig } from '../src/supabase-auth.js';
 
 export function validateDeploymentConfig(config) {
   if (!/^[a-f0-9]{32}$/i.test(config.account_id || '')) throw new Error('Configura account_id con la cuenta Cloudflare verificada.');
@@ -19,14 +20,16 @@ async function main() {
   const config = JSON.parse(await readFile(join(root, 'wrangler.jsonc'), 'utf8'));
   validateDeploymentConfig(config);
   process.loadEnvFile(join(root, '.env.supabase'));
-  if (!process.env.APP_PASSWORD || process.env.APP_PASSWORD.length < 16) throw new Error('Configura una APP_PASSWORD de al menos 16 caracteres en el perfil privado.');
-  if (config.vars.APP_USERNAME !== (process.env.APP_USERNAME || 'admin')) throw new Error('El usuario de acceso del Worker debe coincidir con el perfil privado.');
+  const auth = authConfig(process.env);
+  const projectRef = (await readFile(join(root, 'supabase/.temp/project-ref'), 'utf8')).trim();
+  if (auth.url !== 'https://' + projectRef + '.supabase.co') throw new Error('El proyecto de Auth debe coincidir con el proyecto vinculado.');
   const assets = await buildOperational(join(root, 'dist/operational'));
   const directory = join(root, 'supabase/.temp');
   await mkdir(directory, { recursive: true });
   const secretFile = join(directory, `worker-secrets-${randomUUID()}.json`);
   try {
-    await writeFile(secretFile, JSON.stringify({ APP_PASSWORD: process.env.APP_PASSWORD }), { mode: 0o600, flag: 'wx' });
+    await writeFile(secretFile, JSON.stringify({ SUPABASE_URL: auth.url, SUPABASE_PUBLISHABLE_KEY: auth.key,
+      POS_SESSION_SECRET: process.env.POS_SESSION_SECRET }), { mode: 0o600, flag: 'wx' });
     const require = createRequire(import.meta.url);
     const executable = join(dirname(require.resolve('wrangler/package.json')), 'bin/wrangler.js');
     await new Promise((done, reject) => {

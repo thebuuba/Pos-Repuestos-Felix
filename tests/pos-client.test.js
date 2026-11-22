@@ -71,6 +71,18 @@ function createProduct(page, code) {
     payload: { codigo, nombre: codigo, costo: 1, precio1: 2, precio2: 0, precio3: 0, stock: 4 },
   }), code);
 }
+test('un 401 oculta el catálogo y requiere otra sesión antes de leer de nuevo', async t => {
+  const page = await tab(t);
+  await page.route(origin + '/api/state', route => route.fulfill({ status: 401, json: { error: 'Inicia sesión' } }));
+  const locked = await page.evaluate(async () => {
+    await client.reload().catch(() => {});
+    return client.getState();
+  });
+  assert.equal(locked.authenticationRequired, true);
+  assert.equal(locked.snapshot, null);
+  await page.unroute(origin + '/api/state');
+  assert.equal(await page.evaluate(() => client.reload().then(() => false, () => true)), true);
+});
 for (const initialWeak of [false, true]) test(`conditional refresh accepts the same opaque ETag when its weak marker ${initialWeak ? 'is removed' : 'is added'}`, async t => {
   const context = await browser.newContext();
   t.after(() => context.close());
@@ -116,6 +128,10 @@ test('a committed packet survives restart and subsequent 401, and replays with o
   assert.equal(await page.evaluate(() => client.getState().pending.id), packets[0].id);
   await assert.rejects(page.evaluate(() => client.retryPending()), /Inicia sesión/);
   assert.equal(await page.evaluate(() => client.getState().pending.id), packets[0].id);
+  assert.equal(await page.evaluate(() => client.getState().snapshot), null);
+  // Re-entering after login starts a new client over the same durable journal.
+  await page.reload();
+  await initialize(page);
   await assert.rejects(page.evaluate(() => client.retryPending()), /Origen no permitido/);
   await assert.rejects(page.evaluate(() => client.retryPending()), /Otra caja/);
   assert.equal(await page.evaluate(() => client.getState().pending.id), packets[0].id);

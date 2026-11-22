@@ -5,25 +5,26 @@ import pg from 'pg';
 import worker from '../src/worker.js';
 import { temporaryPostgres } from './postgres.js';
 import { migrateDatabase } from '../src/db/migrations.js';
-import { hostingConfig, sessionCookie } from '../src/hosting.js';
+import { testAuthService, loginCookie } from './fixtures/supabase-auth.js';
 
-let database, pool, env, auth;
+let database, pool, env, auth, authService;
 const pending = [];
 const ctx = { waitUntil(promise) { pending.push(promise); } };
 before(async () => {
   database = await temporaryPostgres();
   pool = new pg.Pool({ connectionString: database.connectionString });
   await migrateDatabase(pool);
-  env = { PUBLIC_ORIGIN: 'https://pos.example', APP_USERNAME: 'cajero', APP_PASSWORD: 'clave-prueba-worker-12345', DATABASE_LABEL: 'Pruebas Worker',
+  authService = await testAuthService();
+  env = { PUBLIC_ORIGIN: 'https://pos.example', ...authService.env, DATABASE_LABEL: 'Pruebas Worker',
     HYPERDRIVE: { connectionString: database.connectionString },
     ASSETS: { async fetch(request) {
       const path = new URL(request.url).pathname;
       return new Response(await readFile(new URL('../dist/operational' + path, import.meta.url)));
     } },
   };
-  auth = sessionCookie(hostingConfig(env)).split(';')[0];
+  auth = await loginCookie(call);
 });
-after(async () => { await Promise.all(pending); await pool?.end(); await database?.stop(); });
+after(async () => { await Promise.all(pending); await authService?.close(); await pool?.end(); await database?.stop(); });
 const call = (path, options = {}, bindings = env) => worker.fetch(new Request('https://pos.example' + path, { ...options, headers: { Cookie: auth, ...options.headers } }), bindings, ctx);
 
 test('Worker sirve la interfaz operativa y conserva la imagen original y protege rutas privadas sin necesitar conexión a la base', async () => {
@@ -47,7 +48,7 @@ test('Worker exige acceso para HTML y API y no confía en cabeceras de protocolo
   assert.equal((await call('/api/state', { headers: { Cookie: '' } })).status, 401);
   assert.equal((await worker.fetch(new Request('http://pos.example/api/state', { headers: { Cookie: auth, 'X-Forwarded-Proto': 'https' } }), env, ctx)).status, 426);
   assert.equal((await worker.fetch(new Request('https://ajeno.example/api/state', { headers: { Cookie: auth, Host: 'pos.example' } }), env, ctx)).status, 403);
-  assert.equal((await call('/', {}, { ...env, APP_PASSWORD: '' })).status, 503);
+  assert.equal((await call('/', {}, { ...env, SUPABASE_URL: '' })).status, 503);
   assert.equal((await call('/api/state', {}, { ...env, HYPERDRIVE: undefined })).status, 503);
 });
 

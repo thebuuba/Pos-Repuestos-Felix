@@ -14,12 +14,11 @@
     "not_found_handling": "none"
   },
   "vars": {
-    "APP_USERNAME": "admin",
     "DATABASE_LABEL": "Supabase - Repuestos Felix",
     "PUBLIC_ORIGIN": ""
   },
   "hyperdrive": [],
-  "secrets": { "required": ["APP_PASSWORD"] },
+  "secrets": { "required": ["SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY", "POS_SESSION_SECRET"] },
   "observability": {
     "enabled": true,
     "logs": { "enabled": true, "invocation_logs": true },

@@ -9,10 +9,9 @@ import pg from 'pg';
 import { temporaryPostgres } from './postgres.js';
 import { buildOperational } from '../scripts/build-operational.mjs';
 import { migrateDatabase } from '../src/db/migrations.js';
-import { hostingConfig, sessionCookie } from '../src/hosting.js';
+import { testAuthService, loginCookie } from './fixtures/supabase-auth.js';
 
-let database, pool, harness, root;
-const authorization = sessionCookie(hostingConfig({ PUBLIC_ORIGIN:'https://pos.example', APP_USERNAME:'admin', APP_PASSWORD:'contrasena-runtime-ficticia-123' })).split(';')[0];
+let database, pool, harness, root, authService, authorization;
 before(async () => {
   database = await temporaryPostgres();
   pool = new pg.Pool({ connectionString: database.connectionString });
@@ -24,17 +23,20 @@ before(async () => {
   const testConfig = { ...config,
     main: fileURLToPath(new URL('../src/worker.js', import.meta.url)),
     assets: { ...config.assets, directory: await buildOperational(join(root, 'operational')) },
-    vars: { ...config.vars, PUBLIC_ORIGIN: 'https://pos.example', APP_USERNAME: 'admin' },
+    vars: { ...config.vars, PUBLIC_ORIGIN: 'https://pos.example' },
     // ID ficticio usado exclusivamente por el emulador local; no crea recursos.
     hyperdrive: [{ binding: 'HYPERDRIVE', id: '00000000000000000000000000000000', localConnectionString: localDatabase.toString() }],
   };
   const configPath = join(root, 'wrangler.jsonc');
   await writeFile(configPath, JSON.stringify(testConfig));
-  harness = createTestHarness({ root, workers: [{ configPath, secrets: { APP_PASSWORD: 'contrasena-runtime-ficticia-123' } }] });
+  authService = await testAuthService();
+  harness = createTestHarness({ root, workers: [{ configPath, secrets: authService.env }] });
   await harness.listen();
+  authorization = await loginCookie(call);
 });
 after(async () => {
   await harness?.close();
+  await authService?.close();
   await pool?.end(); await database?.stop();
   if (root) {
     const absolute = resolve(root);

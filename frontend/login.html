@@ -121,6 +121,8 @@
         display: grid;
         gap: 18px;
       }
+      [hidden] { display: none !important; }
+      .account-link { color: var(--red); text-align: center; font-size: 13px; }
       label {
         display: grid;
         gap: 8px;
@@ -222,14 +224,16 @@
       </div>
       <h1>Iniciar sesión</h1>
       <p>Accede al sistema de Repuestos Félix.</p>
-      <form>
+      <form action="/login" method="post">
         <label for="username"
           >Usuario<input
             id="username"
             name="username"
             autocomplete="username"
             required
-            maxlength="2000"
+            maxlength="40"
+            autocapitalize="none"
+            spellcheck="false"
             autofocus
         /></label>
         <label for="password"
@@ -241,6 +245,9 @@
             required
             maxlength="2000"
         /></label>
+        <label for="new-password" hidden>Nueva contraseña
+          <input id="new-password" name="newPassword" type="password" autocomplete="new-password" minlength="12" disabled />
+        </label>
         <label class="remember"
           ><input
             id="remember"
@@ -251,6 +258,7 @@
         >
         <p id="error" role="alert" hidden></p>
         <button type="submit">Entrar al sistema</button>
+        <a class="account-link" href="/login?cambiar=1" hidden>Cambiar mi contraseña</a>
       </form>
       <footer>Inventario y gestión del negocio</footer>
     </main>

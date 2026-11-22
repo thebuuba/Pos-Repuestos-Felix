@@ -1,8 +1,9 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { authConfig } from './supabase-auth.js';
 
 const hash = (value) => createHash('sha256').update(value).digest();
 
-export function hostingConfig(env = process.env) {
+export function hostingConfig(env = process.env, { requireSupabase = false } = {}) {
   const publicOrigin = env.PUBLIC_ORIGIN;
   const host = env.HOST || (publicOrigin ? '0.0.0.0' : '127.0.0.1');
   const local = ['127.0.0.1', 'localhost', '::1'].includes(host);
@@ -10,6 +11,20 @@ export function hostingConfig(env = process.env) {
   const origin = publicOrigin ? new URL(publicOrigin) : null;
   if (origin && (origin.protocol !== 'https:' || origin.pathname !== '/' || origin.search || origin.hash || origin.username || origin.password)) {
     throw new Error('PUBLIC_ORIGIN debe ser una dirección HTTPS sin ruta, parámetros ni credenciales.');
+  }
+  const database = env.DATABASE_URL && new URL(env.DATABASE_URL);
+  const databaseHost = database?.hostname;
+  // An existing loopback installation can restart during account provisioning.
+  // Activating Supabase removes the two legacy settings from that profile.
+  const existingLocalLogin = local && !origin && env.APP_USERNAME && env.APP_PASSWORD;
+  if (requireSupabase || (databaseHost && !existingLocalLogin && !['127.0.0.1', 'localhost', '[::1]'].includes(databaseHost)) ||
+      'SUPABASE_URL' in env || 'SUPABASE_PUBLISHABLE_KEY' in env || 'POS_SESSION_SECRET' in env) {
+    const auth = authConfig(env);
+    const direct = /^db\.([a-z0-9]+)\.supabase\.co$/.exec(databaseHost);
+    const pooler = databaseHost?.endsWith('.pooler.supabase.com');
+    const project = direct?.[1] || (pooler && decodeURIComponent(database.username).split('.').at(-1));
+    if (project && auth.url !== 'https://' + project + '.supabase.co') throw new Error('El proyecto de Supabase Auth debe coincidir con la base del negocio.');
+    return { host, origin: origin?.origin ?? null, auth };
   }
   if (!origin && !env.APP_PASSWORD) return { host, origin: null, credentialsHash: null };
   const username = env.APP_USERNAME || 'admin';

@@ -1,6 +1,27 @@
 const form = document.querySelector("form");
 const button = form.querySelector("button");
 const error = document.getElementById("error");
+const query = new URLSearchParams(location.search);
+const changePassword = query.get("cambiar") === "1";
+const link = form.querySelector(".account-link");
+const supportsAccounts = document.documentElement.dataset.accounts === "true";
+if (query.get("salida") === "local") {
+  document.querySelector("main > p").textContent = "Saliste de este dispositivo. Supabase no pudo confirmar el cierre de la sesión remota.";
+}
+link.hidden = !supportsAccounts;
+if (changePassword && supportsAccounts) {
+  document.querySelector("h1").textContent = "Cambiar contraseña";
+  document.querySelector("main > p").textContent = "Introduce tu contraseña actual y elige una nueva de al menos 12 caracteres.";
+  const input = form.elements.newPassword;
+  input.closest("label").hidden = false;
+  input.disabled = false;
+  input.required = true;
+  button.textContent = "Guardar contraseña y entrar";
+  link.href = "/login";
+  link.textContent = "Volver al inicio de sesión";
+}
+const change = changePassword && supportsAccounts;
+const buttonLabel = button.textContent;
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (button.disabled) return;
@@ -8,7 +29,7 @@ form.addEventListener("submit", async (event) => {
   button.textContent = "Verificando…";
   error.hidden = true;
   try {
-    const response = await fetch("/login", {
+    const response = await fetch(change ? "/cuenta/clave" : "/login", {
       method: "POST",
       credentials: "same-origin",
       mode: "same-origin",
@@ -19,7 +40,8 @@ form.addEventListener("submit", async (event) => {
         username: form.elements.username.value,
         password: form.elements.password.value,
         remember: form.elements.remember.checked,
-        next: new URLSearchParams(location.search).get("next"),
+        next: query.get("next"),
+        ...(change && { newPassword: form.elements.newPassword.value }),
       }),
     });
     const result = await response.json();
@@ -35,6 +57,6 @@ form.addEventListener("submit", async (event) => {
         : cause.message;
     error.hidden = false;
     button.disabled = false;
-    button.textContent = "Entrar al sistema";
+    button.textContent = buttonLabel;
   }
 });

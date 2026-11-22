@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readSnapshot, writeOperation } from '../pos/store.js';
 import { hostingConfig, authorized, validCredentials, sessionCookie, clearSessionCookie } from '../hosting.js';
+import { accountSession } from '../supabase-auth.js';
 
 const pageRoutes = new Set([
   '/', '/index.html', '/ventas', '/inventario', '/compras', '/caja', '/clientes', '/suplidores',
@@ -60,7 +61,15 @@ async function readBody(request, limit = maxBodyBytes) {
 }
 
 /** Shared HTTP boundary for Node and Workers. Assets come only from this allowlist. */
-export async function handleRequest(request, { pool, hosting = hostingConfig({}), databaseLabel = 'PostgreSQL', readAsset } = {}) {
+export async function handleRequest(request, options = {}) {
+  const hosting = options.hosting ?? hostingConfig({});
+  const account = hosting.auth ? accountSession(hosting, request) : null;
+  const response = await route(request, { ...options, hosting }, account);
+  if (account?.cookie) response.headers.set('Set-Cookie', account.cookie);
+  return response;
+}
+
+async function route(request, { pool, hosting, databaseLabel = 'PostgreSQL', readAsset }, account) {
   try {
     const url = new URL(request.url);
     const pathname = url.pathname;
@@ -77,24 +86,35 @@ export async function handleRequest(request, { pool, hosting = hostingConfig({})
     if (hosting.origin && request.headers.get('x-forwarded-proto')?.split(',')[0].trim() !== 'https') {
       return json(426, { error: 'Accede mediante HTTPS. El proxy debe configurar X-Forwarded-Proto.' });
     }
-    if (['/login', '/logout'].includes(pathname) && request.method === 'POST') {
+    if (['/login', '/logout', '/cuenta/clave'].includes(pathname) && request.method === 'POST') {
       if (request.headers.get('origin') !== (hosting.origin || url.origin) || request.headers.get('sec-fetch-site') === 'cross-site') {
         return json(403, { error: 'Origen no permitido.' });
       }
-      if (pathname === '/logout') return json(200, { redirect: '/login' }, { 'Set-Cookie': clearSessionCookie(hosting) });
+      if (pathname === '/logout') {
+        const closed = !account || await account.signOut();
+        return json(200, { redirect: closed ? '/login' : '/login?salida=local' }, account ? {} : { 'Set-Cookie': clearSessionCookie(hosting) });
+      }
       if (request.headers.get('content-type')?.split(';')[0].trim() !== 'application/json') return json(415, { error: 'Se requiere application/json.' });
       const body = await readBody(request, 8192);
-      if (!validCredentials(body?.username, body?.password, hosting)) return json(401, { error: 'El usuario o la contraseña no son correctos.' });
+      const change = pathname === '/cuenta/clave';
+      if (change && (!account || typeof body?.newPassword !== 'string')) return json(400, { error: 'Indica una nueva contraseña para tu cuenta de Supabase.' });
+      const valid = account ? await account.signIn(body?.username, body?.password, body?.remember === true, change ? body.newPassword : undefined) :
+        validCredentials(body?.username, body?.password, hosting);
+      if (!valid) return json(401, { error: 'El usuario o la contraseña no son correctos.' });
       let next;
       try { next = new URL(body.next || '/inventario', url.origin); } catch { /* Fall back to inventory. */ }
       const redirect = next?.origin === url.origin && pageRoutes.has(next.pathname) ? next.pathname + next.search : '/inventario';
-      return json(200, { redirect }, { 'Set-Cookie': sessionCookie(hosting, body.remember === true) });
+      return json(200, { redirect }, account ? {} : { 'Set-Cookie': sessionCookie(hosting, body.remember === true) });
     }
-    const authenticated = authorized(request, hosting);
+    const needsSession = isPage || pathname === '/login' || pathname.startsWith('/api/');
+    const authenticated = needsSession && (account ? await account.authorized() : authorized(request, hosting));
     if (pathname === '/login' && request.method === 'GET') {
-      if (authenticated) return new Response(null, { status: 303, headers: { ...securityHeaders, Location: '/inventario' } });
+      if (authenticated && !(account && url.searchParams.get('cambiar') === '1')) return new Response(null, { status: 303, headers: { ...securityHeaders, Location: '/inventario' } });
       const asset = await readAsset('login.html');
-      return new Response(asset instanceof Response ? asset.body : asset, { headers: { ...securityHeaders, 'Content-Type': 'text/html; charset=utf-8' } });
+      if (asset instanceof Response && !asset.ok) return json(503, { error: 'No se pudo cargar el formulario.' });
+      const html = await new Response(asset instanceof Response ? asset.body : asset).text();
+      return new Response(account ? html.replace('<html ', '<html data-accounts="true" ') : html,
+        { headers: { ...securityHeaders, 'Content-Type': 'text/html; charset=utf-8' } });
     }
     if ((pathname.startsWith('/api/') || isPage) && !authenticated) {
       if (isPage) return new Response(null, { status: 303, headers: { ...securityHeaders, Location: '/login?next=' + encodeURIComponent(pathname + url.search) } });

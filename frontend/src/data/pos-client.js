@@ -206,7 +206,14 @@ export function createPosClient() {
     set({ pending });
     return pending;
   }
-  changes.onmessage = () => { readPending().catch(error => set({ error: error.message })); };
+  function lockSession() {
+    etag = null;
+    set({ authenticationRequired: true, snapshot: null, lastSync: null, connection: 'unavailable' });
+  }
+  changes.onmessage = event => {
+    if (event.data === 'logout') lockSession();
+    else readPending().catch(error => set({ error: error.message }));
+  };
 
   async function updatePending(update) {
     const pending = await journalTransaction(update);
@@ -216,6 +223,7 @@ export function createPosClient() {
   }
 
   function apply(snapshot, tag, request) {
+    if (state.authenticationRequired) return;
     const current = state.snapshot;
     if (current?.databaseId === snapshot.databaseId) {
       if (snapshot.revision < current.revision) return;
@@ -247,6 +255,7 @@ export function createPosClient() {
   }
 
   function readSnapshot({ fresh = false, background = false } = {}) {
+    if (state.authenticationRequired) return Promise.reject(new Error('Inicia sesión para acceder al sistema.'));
     if (reading && !fresh) return reading;
     const sequence = ++issued;
     const job = working(async () => {
@@ -268,7 +277,7 @@ export function createPosClient() {
           }
           return previous;
         }
-        if (response.status === 401) set({ authenticationRequired: true });
+        if (response.status === 401) lockSession();
         if (response.status !== 200) throw new Error((await serviceError(response))?.error || 'El servicio no confirmó la lectura del catálogo.');
         const observed = checkSnapshot(await response.json());
         apply(observed, response.headers.get('ETag'), sequence);
@@ -333,7 +342,7 @@ export function createPosClient() {
           body: sending.body,
         });
         if (received.status !== 200) {
-          if (received.status === 401) set({ authenticationRequired: true });
+          if (received.status === 401) lockSession();
           const body = await serviceError(received);
           const proven = [400, 409].includes(received.status) && matchesPacket(body?.rejection, sending);
           // Even an unproven conflict may announce a restored generation.
@@ -395,7 +404,10 @@ export function createPosClient() {
   async function logout() {
     const response = await fetch('/logout', { method: 'POST', credentials: 'same-origin', mode: 'same-origin', redirect: 'error' });
     if (response.status !== 200) throw new Error('No se pudo cerrar la sesión. Inténtalo de nuevo.');
-    location.assign('/login');
+    lockSession();
+    if (!disposed) changes.postMessage('logout');
+    const result = await response.json().catch(() => null);
+    location.replace(result?.redirect === '/login?salida=local' ? result.redirect : '/login');
   }
 
   return {

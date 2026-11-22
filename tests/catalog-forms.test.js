@@ -371,7 +371,7 @@ test(
     const { page, state } = await openInventory(t);
     const duplicate =
       "Ya existe un registro con ese código o número de factura.";
-    const expired = "La sesión expiró.";
+    const unavailable = "El servicio no está disponible.";
     const packets = [];
     await page.route("**/api/productos", (route) => {
       packets.push({
@@ -384,7 +384,7 @@ test(
         case 2:
           return route.fulfill({ status: 409, body: "Respuesta incompleta" });
         case 3:
-          return route.fulfill({ status: 401, json: { error: expired } });
+          return route.fulfill({ status: 503, json: { error: unavailable } });
         case 4:
           state.revision = 2;
           state.state.productos = [product];
@@ -409,7 +409,7 @@ test(
     for (const message of [
       /No se confirmó la operación/,
       /No se confirmó la operación/,
-      expired,
+      unavailable,
     ]) {
       await alert.getByText(message).waitFor();
       assert.equal(await code.isDisabled(), true);

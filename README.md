@@ -1,6 +1,6 @@
 # POS Repuestos Félix
 
-Proyecto del POS de Repuestos Félix con el diseño aprobado de Polymet. La nueva vista de trabajo abre **Inventario** y utiliza exclusivamente datos de la API, sin productos, ventas, saldos ni cajeros de demostración. La exportación NetPOS se preparó para revisión en PostgreSQL aislado. La carga en el servicio del negocio sigue pendiente.
+El POS de Repuestos Félix abre **Inventario** con el diseño de Polymet. La importación de NetPOS cargó 7.681 artículos en la base de Supabase del negocio. Consulta [dónde encontrar usuarios, inventario, clientes, suplidores e históricos](docs/donde-esta-cada-dato.md).
 
 La API se comparte entre **Cloudflare Workers y Node.js local**, con **PostgreSQL local o Supabase**. La nueva PWA, Windows y los módulos restantes mantienen trabajo pendiente; su estado está en [estado del sistema](docs/estado-sistema-unificado.md). Las contraseñas permanecen en el servidor.
 
@@ -171,18 +171,19 @@ Para Cloudflare utiliza la guía anterior. Para el servidor Node.js o Docker, co
 | `HOST` | `0.0.0.0` dentro del servicio alojado |
 | `PORT` | Obligatorio. Elige un puerto libre distinto de 3000. |
 | `PUBLIC_ORIGIN` | Dirección exacta, por ejemplo `https://pos.tu-dominio.com`, sin rutas ni parámetros |
-| `APP_USERNAME` | Usuario de acceso, por ejemplo `admin` |
-| `APP_PASSWORD` | Contraseña larga y única, de al menos 16 caracteres |
+| `SUPABASE_URL` | URL del proyecto de Auth que corresponde al negocio |
+| `SUPABASE_PUBLISHABLE_KEY` | Clave publicable de ese proyecto |
+| `POS_SESSION_SECRET` | Secreto aleatorio privado del servidor para cifrar y autenticar cookies |
 
 Instala con `pnpm install --frozen-lockfile` y compila los recursos con `pnpm build`. Aplica migraciones desde un entorno administrativo antes del despliegue; no configures `MIGRATION_DATABASE_URL` en el proceso web. Inicio: `node src/server.js`. Usa pnpm 10.8.0 en el alojamiento. El `Dockerfile` prepara esta versión; los `.env` y certificados locales se excluyen del contexto de construcción. Monta los certificados como secretos en ejecución cuando sean necesarios.
 
 El proveedor debe terminar HTTPS, redirigir HTTP a HTTPS y **sobrescribir** `X-Forwarded-Proto` con el protocolo real. Mantén el puerto de Node privado, accesible solo desde ese proxy: no basta con enviar una cabecera para asegurar el transporte. El servidor rechaza nombres de host ajenos, tráfico sin indicación HTTPS en modo público y escrituras de otros orígenes. `GET /health` es un indicador público de que el proceso está activo y no expone datos del negocio.
 
-El sistema muestra su propia pantalla `/login`; la autenticación HTTP Basic fue retirada. Usa `APP_USERNAME` y `APP_PASSWORD` de la configuración privada. «Mantener sesión en este dispositivo» conserva el acceso durante 30 días; sin marcarlo, la sesión vence a las ocho horas y la cookie no se conserva al cerrar el navegador. «Cerrar sesión» elimina la cookie del dispositivo. La API sigue protegida y las peticiones sin sesión reciben 401, sin provocar el cuadro nativo del navegador.
+En `/login` cada empleado introduce su nombre de usuario y contraseña. Supabase Auth verifica su identidad y el servidor comprueba el permiso de acceso al negocio. «Mantener sesión en este dispositivo» permite hasta 30 días. Si queda desmarcado, la cookie dura la sesión del navegador con un límite de ocho horas. «Cerrar sesión» cierra el acceso de ese dispositivo.
 
-La sesión está firmada, ligada al origen y protegida con `HttpOnly` y `SameSite=Strict`; en internet también usa `Secure` y el prefijo `__Host-`. Cambiar la contraseña del alojamiento invalida las sesiones anteriores al activar la configuración nueva. Esta versión mantiene una cuenta compartida del negocio; los usuarios y permisos individuales siguen pendientes. Las solicitudes operativas pendientes conservan su diario y sus claves de reintento si la sesión caduca. [Configuración de cookies de sesión](https://developer.mozilla.org/en-US/docs/Web/Security/Practical_implementation_guides/Cookies).
+La cookie de Supabase cifra los tokens con AES-256-GCM y queda vinculada al origen del POS y al proyecto. Usa `HttpOnly` y `SameSite=Strict`. En internet también usa `Secure` y el prefijo `__Host-`. Al salir se ocultan los datos en las pestañas del mismo origen. El diario conserva las solicitudes pendientes para su recuperación después de iniciar sesión. [Configuración de cookies de sesión](https://developer.mozilla.org/en-US/docs/Web/Security/Practical_implementation_guides/Cookies).
 
-En localhost, configura `APP_PASSWORD` para activar el mismo login, `HOST=127.0.0.1`, un `PORT` distinto de 3000 y deja `PUBLIC_ORIGIN` vacío. El servidor Node comprime las respuestas de texto/JSON cuando el navegador admite gzip. Solo los recursos estáticos permiten revalidación de caché; HTML privado y respuestas con datos mantienen `Cache-Control: no-store`.
+En localhost con la base de Supabase se usa el mismo login. Configura `HOST=127.0.0.1`, un `PORT` distinto de 3000 y deja `PUBLIC_ORIGIN` vacío. El servidor comprime texto y JSON cuando el navegador admite gzip. El HTML privado y las respuestas con datos llevan `Cache-Control: no-store`. El modo de desarrollo con PostgreSQL en loopback también admite credenciales locales.
 
 Los recursos compilados de Polymet se sirven desde `dist/operational/` y el acceso a los datos de PostgreSQL exige autenticación en modo público. No introduzcas datos reales del negocio ni credenciales en los archivos estáticos.
 

@@ -8,6 +8,7 @@
     "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   },
   "scripts": {
+    "usuarios:crear": "powershell -NoProfile -File scripts/crear-usuario.ps1",
     "netpos:prepare": "python scripts/netpos/prepare.py",
     "netpos:import": "node scripts/netpos/import.mjs",
     "db:migrate": "node --env-file-if-exists=.env --env-file-if-exists=.env.migrations scripts/migrate.js",
