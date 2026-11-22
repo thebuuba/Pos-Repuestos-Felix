@@ -15,7 +15,7 @@ Actualizado el 21 de noviembre de 2026. Trabajo en `feat/sistema-unificado-offli
 
 ## Referencia ejecutable
 
-`pnpm build` y `pnpm build:design` generan el inventario operativo en `dist/operational/`, sin datos de demostración. El arranque Node usa esa compilación. `pnpm preview:design` sirve una vista estática de la misma interfaz en `http://127.0.0.1:3001`; muestra conexión pendiente cuando falta la API y no reemplaza la lectura por muestras. La demostración original requiere `pnpm preview:reference` y se conserva aislada para pruebas visuales; no se publica como aplicación del negocio.
+`pnpm build` y `pnpm build:design` generan el inventario operativo en `dist/operational/`, sin datos de demostración. `pnpm preview:design` sirve una vista estática de la misma interfaz en `http://127.0.0.1:3001`; muestra conexión pendiente cuando falta la API y no reemplaza la lectura por muestras. Node conserva su interfaz anterior hasta preparar la activación y la transición de la PWA, evitando dejar clientes con su caché anterior. La demostración original requiere `pnpm preview:reference` y se conserva aislada para pruebas visuales; no se publica como aplicación del negocio.
 
 La revisión independiente no encontró defectos importantes en el aislamiento de la vista de diseño. Se comprobaron aperturas y foco de formularios/confirmaciones y la apertura del recibo, además de la prueba automática. Las pruebas de la API usan PostgreSQL desechable, no Supabase del negocio. La compilación Worker es un dry run, no un despliegue.
 

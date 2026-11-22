@@ -1,4 +1,4 @@
-import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Toaster } from './components/ui/sonner.jsx';
 import { Button } from './components/ui/button.jsx';
 import { usePosStore } from './data/pos-context.jsx';
@@ -23,13 +23,14 @@ function ServiceNotice({ runtime }) {
   );
 }
 
-export function PosShell({ pages }) {
+export function PosShell({ pages, homePath }) {
   const { runtime } = usePosStore();
   return (
     <BrowserRouter>
       <PosLayout>
         <ServiceNotice runtime={runtime} />
         <Routes>
+          {homePath && <Route path="/" element={<Navigate to={homePath} replace />} />}
           {Object.entries(pages).map(([path, Page]) => (
             <Route key={path} path={path} element={
               runtime && !runtime.snapshot

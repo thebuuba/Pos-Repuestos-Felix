@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { build } from 'esbuild';
 import { buildOperational } from '../scripts/build-operational.mjs';
+import { serveDesign } from '../scripts/serve-design.mjs';
+import { chromium } from 'playwright-core';
 
 test('the operational build has local public assets and no prototype store or fixture dependency', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'felix-operational-build-'));
@@ -33,6 +35,32 @@ test('the operational build has local public assets and no prototype store or fi
   } finally {
     assert.equal(path.dirname(path.resolve(directory)), path.resolve(tmpdir()));
     assert.ok(path.basename(directory).startsWith('felix-operational-build-'));
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('the root without an API opens inventory without presenting fake empty data', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'felix-inventory-entry-'));
+  let server, browser;
+  try {
+    await buildOperational(directory);
+    server = await serveDesign(directory, 0);
+    browser = await chromium.launch({ channel: 'msedge', headless: true });
+    const page = await browser.newPage();
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    assert.equal((await page.goto(server.origin + '/')).status(), 200);
+    await page.waitForURL('**/inventario', { timeout: 6000 });
+    await page.getByRole('main').getByRole('button', { name: 'Actualizar datos', exact: true }).waitFor();
+    assert.equal((await fetch(server.origin + '/api/state')).status, 404);
+    assert.equal(await page.getByRole('heading', { name: 'Catálogo de artículos e inventario', exact: true }).count(), 0);
+    assert.equal(await page.getByText('Mostrando 0 de 0 productos', { exact: true }).count(), 0);
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser?.close();
+    await server?.close();
+    assert.equal(path.dirname(path.resolve(directory)), path.resolve(tmpdir()));
+    assert.ok(path.basename(directory).startsWith('felix-inventory-entry-'));
     await rm(directory, { recursive: true, force: true });
   }
 });

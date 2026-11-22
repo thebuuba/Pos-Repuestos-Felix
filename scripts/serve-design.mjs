@@ -83,6 +83,6 @@ if (
   console.log(
     referenceOnly
       ? `Referencia de Polymet (demostración aislada): ${server.origin}`
-      : `Vista del inventario sin datos de muestra: ${server.origin}. Esta vista estática necesita la API; usa pnpm start para el sistema conectado.`,
+      : `Vista del inventario sin datos de muestra: ${server.origin}. Vista estática: API y activación conectada pendientes.`,
   );
 }

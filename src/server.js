@@ -39,9 +39,6 @@ export async function createApp(pool, { assetsDirectory = root, ...options } = {
 }
 
 async function main() {
-  const assetsDirectory = new URL('../dist/operational/', import.meta.url);
-  try { await readFile(new URL('index.html', assetsDirectory)); }
-  catch { throw new Error('Compila el inventario con pnpm build antes de iniciar el sistema.'); }
   const hosting = hostingConfig();
   const pool = new pg.Pool(databaseConfig());
   pool.on('error', (error) => console.error('Error de PostgreSQL:', error.code || error.name));
@@ -49,7 +46,7 @@ async function main() {
     const databaseLabel = process.env.DATABASE_LABEL || 'PostgreSQL';
     // Verify the selected schema and connection without granting the server DDL.
     await readSnapshot(pool, databaseLabel);
-    const server = await createApp(pool, { databaseLabel, hosting, assetsDirectory });
+    const server = await createApp(pool, { databaseLabel, hosting });
     const port = Number(process.env.PORT || 3000);
     if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw new Error('PORT debe estar entre 1 y 65535.');
     server.listen(port, hosting.host, () => console.log(`POS disponible en ${hosting.origin || `http://127.0.0.1:${port}`} (${databaseLabel})`));

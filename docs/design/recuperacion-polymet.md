@@ -11,8 +11,8 @@ Se recuperaron 71 módulos propios con JSX editable y el CSS de la versión publ
 ## Ejecutar y comprobar
 
 ```powershell
-pnpm build:design
-pnpm preview:design
+pnpm build:reference
+pnpm preview:reference
 ```
 
 La vista se abre manualmente en `http://127.0.0.1:3001`. El servidor escucha solo en la interfaz local, no carga archivos `.env`, no expone la API y solo sirve los recursos compilados y las rutas conocidas. Su carpeta `dist/design-preview/` queda fuera de la publicación Worker.

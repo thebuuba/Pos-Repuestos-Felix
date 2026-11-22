@@ -1,6 +1,6 @@
 # POS Repuestos Félix
 
-Proyecto del POS de Repuestos Félix con el diseño aprobado de Polymet. La entrada principal abre **Inventario** y utiliza exclusivamente datos de la API, sin productos, ventas, saldos ni cajeros de demostración. El siguiente trabajo es preparar la importación del Excel que proporcionará el negocio; todavía no se ha recibido ni importado.
+Proyecto del POS de Repuestos Félix con el diseño aprobado de Polymet. La nueva vista de trabajo abre **Inventario** y utiliza exclusivamente datos de la API, sin productos, ventas, saldos ni cajeros de demostración. El siguiente trabajo es preparar la importación del Excel que proporcionará el negocio; todavía no se ha recibido ni importado.
 
 La API se comparte entre **Cloudflare Workers y Node.js local**, con **PostgreSQL local o Supabase**. La nueva PWA, Windows y los módulos restantes mantienen trabajo pendiente; su estado está en [estado del sistema](docs/estado-sistema-unificado.md). Las contraseñas permanecen en el servidor.
 
@@ -31,7 +31,7 @@ tests/                   Pruebas y datos ficticios en fixtures/
 docs/                    Decisiones y planes de trabajo
 ```
 
-El arranque Node entrega `dist/operational/`, después de compilar con `pnpm build`. El servidor sirve únicamente los archivos incluidos en su lista permitida. Las carpetas `src/`, `scripts/`, `supabase/`, las credenciales y los respaldos no se publican. Los datos de ejemplo se limitan a pruebas y a la referencia visual explícita.
+La nueva compilación está en `dist/operational/`, generada con `pnpm build`. El servicio Node conserva la interfaz anterior en `public/` hasta la activación controlada del esquema y la transición de su PWA; cambiarlo directamente dejaría a clientes existentes con la caché anterior. El servidor sirve únicamente los archivos incluidos en su lista permitida. Las carpetas `src/`, `scripts/`, `supabase/`, las credenciales y los respaldos no se publican. Los datos de ejemplo se limitan a pruebas y a la referencia visual explícita.
 
 El diseño conserva los componentes, la navegación lateral, los temas y las medidas de Polymet. La imagen original del negocio se conserva como recurso; no sustituye la composición aprobada.
 
@@ -53,7 +53,7 @@ El manifiesto, los iconos y la implementación siguen las [guías de instalació
 
 ## Diseño compartido de Polymet (rama de trabajo)
 
-La referencia visual aprobada, reglas y procedencia están en [la documentación del diseño](docs/design/recuperacion-polymet.md). `pnpm build` y `pnpm build:design` compilan la entrada operativa, sin datos de demostración. `pnpm preview` o `pnpm preview:design` sirven esa interfaz en `http://127.0.0.1:3001`: es una vista estática y muestra la falta de conexión si no hay API. Para el sistema conectado, ejecutar `pnpm build` y luego `pnpm start:local` o `pnpm start:supabase` con la configuración y esquema correspondientes.
+La referencia visual aprobada, reglas y procedencia están en [la documentación del diseño](docs/design/recuperacion-polymet.md). `pnpm build` y `pnpm build:design` compilan la entrada operativa, sin datos de demostración. `pnpm preview` o `pnpm preview:design` sirven esa interfaz en `http://127.0.0.1:3001`: es una vista estática y muestra la falta de conexión si no hay API. La activación de esta compilación en el servicio conectado y la transición de la PWA anterior siguen pendientes; `start:local` y `start:supabase` conservan la interfaz anterior.
 
 La demostración original se conserva únicamente para comparación y pruebas mediante `pnpm build:reference` y `pnpm preview:reference`; no se utiliza como entrada del negocio. `pnpm test:design` comprueba esa referencia aislada con Edge. El trabajo del Excel está documentado en [inventario e importación](docs/inventario-excel.md).
 

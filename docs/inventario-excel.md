@@ -5,13 +5,15 @@ Solicitud vigente: retirar los datos de demostración y concentrar el trabajo en
 ## Entrada sin demostración
 
 - `pnpm build` y `pnpm build:design` generan `dist/operational/` desde el proveedor de la API real. Abrir `/` conduce a `/inventario`.
-- Node sirve esa compilación al ejecutar los comandos `start`. Requiere compilar primero y tener el esquema/configuración correspondientes; el arranque no aplica migraciones.
+- El servicio Node conserva `public/` durante esta preparación. Activar la nueva compilación exige preparar el esquema y resolver la caché de la PWA anterior; no se cambia la interfaz de los clientes existentes de forma automática.
 - `pnpm preview` y `pnpm preview:design` sirven la misma interfaz como vista estática. Una API ausente muestra el estado de conexión pendiente, sin sustituir datos por ejemplos ni presentar cero como una lectura confirmada.
 - La referencia con muestras permanece aislada para las pruebas visuales y requiere el comando explícito `preview:reference`. No se publica como POS ni se carga en PostgreSQL.
 
 La lectura del servicio conectado el 21 de noviembre de 2026 devolvió **cero artículos**. No se borraron datos del negocio ni se ejecutaron migraciones o escrituras de prueba en su base. Los productos que mostraba la vista de Polymet procedían de la demostración en memoria.
 
 El servicio existente no se reinició contra el esquema nuevo. Las migraciones de esta rama siguen pendientes de aplicación controlada en el negocio; cambiar la entrada de interfaz no acredita esa activación ni un despliegue.
+
+Los demás módulos siguen pendientes. El enlace «Panel» actúa como acceso de inicio a Inventario en esta etapa; no presenta un panel con estadísticas de muestra.
 
 ## Archivo pendiente
 
@@ -23,4 +25,6 @@ La implementación de inventario ya usa operaciones transaccionales con versione
 
 ## Verificación
 
-`pnpm test`: **159 aprobadas, cero fallidas y cero omitidas**, con concurrencia limitada a cuatro archivos para las bases y navegadores de prueba. `pnpm build` compiló la entrada operativa; la compilación Worker también terminó en seco, sin publicar. Una prueba del arranque real de Node, con PostgreSQL desechable y rol restringido, verificó el inicio en Inventario, cero artículos iniciales y persistencia de un artículo de prueba tras recargar. La prueba se cerró junto con su base temporal.
+Las pruebas de navegador usan la compilación operativa junto con la API y PostgreSQL desechable: verifican entrada en Inventario, cero artículos iniciales y persistencia tras recargar, además de edición/baja, conflictos y reintentos. La prueba sin API comprueba que la raíz también lleva a Inventario y conserva el estado de conexión pendiente, sin una lectura ficticia de cero existencias. El comando de pruebas limita la concurrencia a cuatro archivos para las bases y navegadores temporales. La compilación Worker se realiza en seco, sin publicar.
+
+Validación final: `pnpm test`, **160 aprobadas, cero fallidas y cero omitidas**; `pnpm build`, compilación operativa aprobada. La referencia visual permanece separada mediante sus comandos explícitos.

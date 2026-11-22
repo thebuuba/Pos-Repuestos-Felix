@@ -34,7 +34,7 @@ La suite completa pasó con **124 pruebas**, sin fallos ni omisiones, incluyendo
 
 ```powershell
 pnpm exec node --test --test-concurrency=2 tests/*.test.js
-pnpm build:design
+pnpm build:reference
 pnpm build:operational
 pnpm build:worker
 node scripts/compare-catalog.mjs inventory-final
