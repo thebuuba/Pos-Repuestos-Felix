@@ -13,6 +13,7 @@ import { toast as ue } from "sonner";
 import { ConfirmDialog } from "../components/confirm-dialog.jsx";
 import { Fragment, useMemo, useRef, useState } from "react";
 import { formatMoney, formatNumber } from "../lib/format.js";
+import { decimalUnits } from "../../../../src/pos/operation-fields.js";
 function InventoryPage() {
   const { products, categories, formulas, settings, saveProduct, deleteProduct, runtime } =
     usePosStore();
@@ -21,10 +22,12 @@ function InventoryPage() {
   const [toDelete, setToDelete] = useState(null);
   const newProductButtonRef = useRef(null);
   const { totalUnits, stockValue, retailValue, lowStock, lowCount, outCount } = useMemo(() => {
-    let totalUnits = 0, stockValue = 0, retailValue = 0, lowCount = 0, outCount = 0;
+    let stockHundredths = 0n;
+    let stockValue = 0, retailValue = 0, lowCount = 0, outCount = 0;
     const lowStock = [];
     for (const product of products) {
-      totalUnits += product.stock;
+      // Each stock is limited to 2,147,483,647, so its hundredths round to a safe integer.
+      stockHundredths += BigInt(Math.round(product.stock * 100));
       stockValue += product.stock * product.cost;
       retailValue += product.stock * product.prices.p1;
       const state = stockState(product);
@@ -33,7 +36,7 @@ function InventoryPage() {
       if (needsRestock(product)) lowStock.push(product);
     }
     lowStock.sort((a, b) => a.stock / (a.minStock || 1) - b.stock / (b.minStock || 1));
-    return { totalUnits, stockValue, retailValue, lowStock, lowCount, outCount };
+    return { totalUnits: decimalUnits(stockHundredths, 2), stockValue, retailValue, lowStock, lowCount, outCount };
   }, [products]);
   const openProduct = (product = null) => {
     setDraft({

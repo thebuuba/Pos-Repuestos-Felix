@@ -100,6 +100,15 @@ async function openInventory(t, products = [], formulas = []) {
   return { page, state };
 }
 
+test("the stock total preserves hundredths across 7,681 products", async (t) => {
+  const products = Array.from({ length: 7681 }, (_, index) => ({
+    ...product, id: index + 1, codigo: `SINT-${index + 1}`, stock: 9876543.55,
+  }));
+  const { page } = await openInventory(t, products);
+  const total = page.getByText(/unidades en almacén$/);
+  assert.equal(await total.textContent(), "75,861,731,007.55 unidades en almacén");
+});
+
 async function newDraft(page) {
   await page
     .getByRole("button", { name: "Nuevo artículo", exact: true })
