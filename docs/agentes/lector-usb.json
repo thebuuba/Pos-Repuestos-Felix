@@ -1,0 +1,20 @@
+{
+  "id": "revision-lector-usb",
+  "motor": "antigravity",
+  "modelo": "gemini-4-neon-high",
+  "modo": "analisis",
+  "objetivo": "Revisar cómo funciona el lector USB actual y qué cambios requeriría una captura global optativa que conserve un borrador de venta al navegar. No implementar la propuesta.",
+  "archivos": [
+    "frontend/src/data/barcode-scanner.js",
+    "frontend/src/polymet/components/product-search-bar.jsx",
+    "frontend/src/polymet/pages/point-of-sale-page.jsx",
+    "frontend/src/pos-shell.jsx",
+    "tests/barcode-scanner.test.js"
+  ],
+  "criterios": [
+    "Identificar con archivos y funciones qué depende del foco, del sufijo Enter y de la coincidencia literal del código.",
+    "Explicar cómo evitar agregar productos al escribir normalmente, editar formularios o confirmar un cobro.",
+    "Distinguir lo probado por software de lo que requiere probar el lector físico desconocido.",
+    "Proponer el cambio mínimo sin alterar confirmaciones, importes, existencias ni idempotencia."
+  ]
+}

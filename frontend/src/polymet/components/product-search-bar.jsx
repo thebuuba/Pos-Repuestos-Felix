@@ -22,8 +22,7 @@ import { useEffect } from "react";
 import { Camera } from "lucide-react";
 import { BarcodeCameraDialog } from "./barcode-camera-dialog.jsx";
 import { productForBarcode } from "../../data/barcode-scanner.js";
-import { toast } from "sonner";
-const scanQuantity = new Intl.NumberFormat('es-DO', { maximumFractionDigits: 2 });
+import { useScanFeedback } from "../../data/use-scan-feedback.js";
 function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, operational = false, disabled = false }) {
   const [query, setQuery] = useState("");
   const [quantity, setQuantity] = useState(1);
@@ -34,46 +33,7 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, ope
   const [cameraOpen, setCameraOpen] = useState(false);
   const inputId = useId();
   const inputRef = useRef(null);
-  const scanAudio = useRef(null);
-  const scanToast = useRef(null);
-  const prepareScanAudio = () => {
-    try {
-      const Audio = window.AudioContext || window.webkitAudioContext;
-      if (!scanAudio.current && Audio) scanAudio.current = new Audio();
-      const context = scanAudio.current;
-      if (context && context.state !== 'running') context.resume().catch(() => {});
-      return context;
-    } catch { return null; }
-  };
-  const beep = async () => {
-    const started = performance.now();
-    const context = prepareScanAudio();
-    if (!context) return;
-    try {
-      if (context.state !== 'running') await context.resume();
-      // Never replay an old confirmation after a delayed permission or navigation.
-      if (scanAudio.current !== context || document.hidden || context.state !== 'running' || performance.now() - started > 500) return;
-      const tone = context.createOscillator();
-      const volume = context.createGain();
-      const now = context.currentTime;
-      tone.frequency.value = 880;
-      volume.gain.setValueAtTime(0, now);
-      volume.gain.linearRampToValueAtTime(0.12, now + 0.01);
-      volume.gain.setValueAtTime(0.12, now + 0.09);
-      volume.gain.linearRampToValueAtTime(0, now + 0.14);
-      tone.connect(volume);
-      volume.connect(context.destination);
-      tone.onended = () => { tone.disconnect(); volume.disconnect(); };
-      tone.start(now);
-      tone.stop(now + 0.14);
-    } catch { /* The visual confirmation still works without an audio device. */ }
-  };
-  useEffect(() => () => {
-    const context = scanAudio.current;
-    scanAudio.current = null;
-    context?.close().catch(() => {});
-    if (scanToast.current !== null) toast.dismiss(scanToast.current);
-  }, []);
+  const { prepareScanAudio, confirmScan, dismissScan } = useScanFeedback();
   const focusSearch = () => {
     if (window.matchMedia('(max-width: 1023px) and (pointer: coarse)').matches) inputRef.current?.blur();
     else inputRef.current?.focus();
@@ -113,17 +73,11 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, ope
   const scanCode = (code, format) => {
     let feedback = { ok: false, message: 'No se agregó el producto. Revisa cantidad, precio y existencias.' };
     if (disabled) return feedback;
-    if (scanToast.current !== null) toast.dismiss(scanToast.current);
+    dismissScan();
     try {
       const product = productForBarcode(products, code, format);
       if (commit(product)) {
-        feedback = { ok: true, message: `${scanQuantity.format(Number(quantity))} × ${product.name}` };
-        scanToast.current = toast.success('Agregado a la venta', {
-          description: feedback.message,
-          duration: 2400,
-          className: 'scan-confirmation',
-        });
-        void beep();
+        feedback = confirmScan(product, quantity);
       }
     } catch (failure) {
       feedback = { ok: false, message: failure.message };
@@ -253,7 +207,7 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, ope
         aria-label="Escanear con cámara" title="Escanear con cámara"
         className="sale-camera-button h-11 w-11 rounded-xl bg-card text-muted-foreground"
         onClick={() => {
-          if (scanToast.current !== null) toast.dismiss(scanToast.current);
+          dismissScan();
           prepareScanAudio(); setOpen(false); setError(""); setCameraOpen(true);
         }}>
         <Camera className="h-4 w-4" aria-hidden="true" />

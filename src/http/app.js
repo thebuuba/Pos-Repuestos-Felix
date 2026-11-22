@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readSnapshot, writeOperation } from '../pos/store.js';
-import { readSyncBootstrap, writeSyncOperation } from '../pos/sync-operations.js';
+import { readSyncBootstrap, writeSyncOperation, retireSyncStream } from '../pos/sync-operations.js';
+import { stateTag, matchesStateTag, bootstrapTag } from '../pos/state-tag.js';
 import { hostingConfig, authorized, validCredentials, sessionCookie, clearSessionCookie } from '../hosting.js';
 import { accountSession } from '../supabase-auth.js';
 
@@ -27,20 +28,6 @@ const publicFiles = {
 const securityHeaders = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY',
   'Permissions-Policy': 'camera=(self), microphone=(), geolocation=()' };
 const maxBodyBytes = 10 * 1024 * 1024;
-const snapshotRepresentationVersion = 4;
-
-function stateTag({ databaseId, revision, databaseLabel }) {
-  const version = JSON.stringify([snapshotRepresentationVersion, databaseId, revision, databaseLabel]);
-  return `"${createHash('sha256').update(version).digest('hex')}"`;
-}
-
-function matchesStateTag(condition, tag) {
-  if (condition === '*') return true;
-  for (const [, candidate] of condition.matchAll(/(?:^|,)\s*(?:W\/)?("[^"]*")\s*(?=,|$)/g)) {
-    if (candidate === tag) return true;
-  }
-  return false;
-}
 
 function json(status, data, headers = {}) {
   return new Response(JSON.stringify(data), { status, headers: { ...securityHeaders, 'Content-Type': 'application/json; charset=utf-8', ...headers } });
@@ -158,7 +145,12 @@ async function route(request, { pool, hosting, databaseLabel = 'PostgreSQL', rea
       if ((origin && origin !== expectedOrigin) || request.headers.get('sec-fetch-site') === 'cross-site') {
         return json(403, { error: 'Origen no permitido.' });
       }
-      if (isSyncBootstrap) return json(200, await readSyncBootstrap(pool, databaseLabel));
+      if (isSyncBootstrap) {
+        const condition = request.headers.get('if-none-match');
+        const download = await readSyncBootstrap(pool, databaseLabel, condition ? version => matchesStateTag(condition, bootstrapTag(version)) : undefined);
+        const headers = { ETag: bootstrapTag(download.notModified ?? download.snapshot) };
+        return download.notModified ? new Response(null, { status: 304, headers: { ...securityHeaders, ...headers } }) : json(200, download, headers);
+      }
       if (isStateRead) {
         const condition = request.headers.get('if-none-match');
         const state = await readSnapshot(pool, databaseLabel, false, condition ? version => matchesStateTag(condition, stateTag(version)) : undefined);
@@ -172,12 +164,18 @@ async function route(request, { pool, hosting, databaseLabel = 'PostgreSQL', rea
       const body = await readBody(request);
       const actor = account?.user ? { id: account.user.id, name: account.user.email.split('@')[0] } :
         { id: 'local', name: hosting.username || 'Usuario local' };
+      if (pathname === '/api/sync/retire') {
+        if (request.method !== 'POST') return json(405, { error: 'Método no permitido.' });
+        return json(200, await retireSyncStream(pool, body, databaseLabel, actor));
+      }
       if (pathname === '/api/sync/operations') {
         if (request.method !== 'POST') return json(405, { error: 'Método no permitido.' });
         if (request.headers.get('idempotency-key') !== body?.operationId) return json(400, { error: 'La clave de envío no coincide con la operación local.' });
-        return json(200, await writeSyncOperation(pool, body, databaseLabel, actor));
+        const result = await writeSyncOperation(pool, body, databaseLabel, actor, { receiptOnly: request.headers.get('prefer') === 'return=receipt' });
+        return json(200, result, { ETag: stateTag(result.snapshot) });
       }
-      return json(200, await writeOperation(pool, request.method, pathname, body, request.headers.get('idempotency-key'), databaseLabel, actor));
+      const result = await writeOperation(pool, request.method, pathname, body, request.headers.get('idempotency-key'), databaseLabel, actor);
+      return json(200, result, { ETag: stateTag(result) });
     }
     const immutableAsset = /^\/assets\/pwa\/(app-[a-f0-9]{16}\.js|styles-[a-f0-9]{16}\.css|chunk-[A-Z0-9]{8}\.js)$/.exec(pathname);
     const asset = isPage ? pageAsset : publicFiles[pathname] || (immutableAsset && [pathname.slice(1), pathname.endsWith('.js') ? 'text/javascript' : 'text/css']);
@@ -203,6 +201,7 @@ async function route(request, { pool, hosting, databaseLabel = 'PostgreSQL', rea
     return json(error.status || 503, {
       error: error.status ? error.message : 'No se confirmó el guardado. Revisa la conexión y actualiza los datos antes de reintentar.',
       rejection: error.rejection,
+      retirementRejection: error.retirementRejection,
     });
   }
 }

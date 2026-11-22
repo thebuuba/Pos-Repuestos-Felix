@@ -100,7 +100,7 @@ test('GET /api/state conserva el snapshot y valida el ETag con una sola consulta
 
 test('GET /api/state replaces the earlier representation at the same data revision', async () => {
   const { databaseId, revision, databaseLabel } = await (await getState()).json();
-  const oldTag = '"' + createHash('sha256').update(JSON.stringify([2, databaseId, revision, databaseLabel])).digest('hex') + '"';
+  const oldTag = '"' + createHash('sha256').update(JSON.stringify([4, databaseId, revision, databaseLabel])).digest('hex') + '"';
   const response = await getState(oldTag);
   assert.equal(response.status, 200);
   assert.notEqual(response.headers.get('etag'), oldTag);
@@ -161,7 +161,7 @@ test('una edición de producto invalida el ETag sin aplicar caché a la escritur
     databaseId: previous.databaseId, ...productData, version: product.version, nombre: 'Repuesto actualizado',
   }, { 'If-None-Match': etag, 'Idempotency-Key': operationId });
   assert.equal(updated.status, 200, await updated.clone().text());
-  assert.equal(updated.headers.get('etag'), null);
+  assert.ok(updated.headers.get('etag'));
   assert.equal(updated.headers.get('cache-control'), 'no-store');
   const { result: updatedResult, confirmation, ...confirmed } = await updated.json();
   assert.deepEqual(confirmation, { operationId, databaseId: previous.databaseId, method: 'PUT', path, replayed: false });
@@ -178,6 +178,27 @@ test('una edición de producto invalida el ETag sin aplicar caché a la escritur
   assert.deepEqual(latestSnapshot, confirmed);
   assert.equal(latestSnapshot.revision, previous.revision + 1);
   assert.equal(latestSnapshot.state.productos.find(row => row.id === product.id).nombre, 'Repuesto actualizado');
+});
+
+test('el catálogo transmite los datos operativos exactos sin repetir metadatos del respaldo', async () => {
+  const initial = await (await getState()).json();
+  const created = await write('/api/productos', 'POST', { databaseId: initial.databaseId,
+    codigo: 'COMPACTO', nombre: 'Pieza con decimales', stock: '1.25', stockMinimo: '0.50',
+    costo: '12.3456', precio1: '23.4617', precio2: '22.1234', precio3: '20.0001', notificarMinimo: false });
+  assert.equal(created.status, 200);
+  const saved = await created.json();
+  const product = saved.state.productos.find(p => p.id === saved.result.id);
+  assert.deepEqual([product.stock, product.stockMinimo, product.notificarMinimo, product.costoExacto, product.preciosExactos],
+    [1.25, 0.5, false, '12.3456', { p1: '23.4617', p2: '22.1234', p3: '20.0001' }]);
+  for (const field of ['creado_en', 'actualizado_en', 'stock_minimo', 'notificar_minimo']) assert.equal(Object.hasOwn(product, field), false, field);
+  statements.length = 0;
+  assert.deepEqual((await (await getState()).json()).state.productos.find(p => p.id === product.id), product);
+  const productQuery = statements.find(sql => /FROM public\.productos\b/.test(sql));
+  assert.doesNotMatch(productQuery, /creado_en|actualizado_en/);
+  const backup = await (await fetch(origin + '/api/backup')).json();
+  const row = backup.tables.productos.find(p => Number(p.id) === product.id);
+  assert.ok(row.creado_en && row.actualizado_en);
+  assert.deepEqual([row.stock_minimo, row.notificar_minimo, row.costo], ['0.50', false, '12.3456']);
 });
 
 test('la etiqueta de base y una restauración invalidan los validadores anteriores', async () => {

@@ -14,6 +14,7 @@ before(async () => {
     import { PosStoreContext } from './frontend/src/data/pos-context.jsx';
     import { CashRegisterPage } from './frontend/src/polymet/pages/cash-register-page.jsx';
     import { OperationalPointOfSalePage } from './frontend/src/polymet/pages/point-of-sale-page.jsx';
+    import { SaleDraftProvider } from './frontend/src/data/sale-draft.jsx';
     const root = createRoot(document.getElementById('root'));
     window.calls = []; window.mode = 'deferred';
     const action = name => async dto => { calls.push({ name, dto });
@@ -21,7 +22,7 @@ before(async () => {
     window.render = (fields, sale = false) => {
       window.store = { ...window.store, ...fields, openCash: action('open'), closeCash: action('close'), addCashMovement: action('movement') };
       root.render(<MemoryRouter><PosStoreContext.Provider value={store}>
-        {sale ? <OperationalPointOfSalePage /> : <CashRegisterPage />}<Toaster />
+        {sale ? <SaleDraftProvider><OperationalPointOfSalePage /></SaleDraftProvider> : <CashRegisterPage />}<Toaster />
       </PosStoreContext.Provider></MemoryRouter>);
     };`, resolveDir: process.cwd(), loader: 'jsx' }, bundle: true, write: false, format: 'iife', jsx: 'automatic', loader: { '.css': 'empty' },
     define: { 'process.env.NODE_ENV': '"test"' } })).outputFiles[0].text;

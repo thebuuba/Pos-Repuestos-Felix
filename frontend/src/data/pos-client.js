@@ -1,6 +1,6 @@
 import { normalizeFormula } from '../../../src/domain/pricing.js';
 import { OperationError, costUnits, quantityUnits } from '../../../src/pos/operation-fields.js';
-import { journalTransaction } from './operation-journal.js';
+import { archiveJournal, journalArchives, journalTransaction } from './operation-journal.js';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const changedDatabase = 'La base cambió. Revisa la solicitud y los datos antes de continuar.';
@@ -266,12 +266,67 @@ function checkConfirmation(snapshot, packet, resource, expected, payload) {
 }
 
 export function createPosClient() {
-  let state = { snapshot: null, pending: null, busy: false, connection: 'checking', error: null, lastSync: null, authenticationRequired: false };
+  // Only an operation UUID is kept per tab, to recognize its receipt after a
+  // reload. The journal is shared; another tab's pending sale is not this draft.
+  let saleOperationId = null;
+  try { saleOperationId = sessionStorage.getItem('repuestos-felix-venta-pendiente'); } catch { /* Optional receipt ownership. */ }
+  let state = { snapshot: null, pending: null, archiveCount: 0, busy: false, recovering: false, recoveryIssue: null, resolution: null, saleOperationId, readErrorRetryable: false, connection: 'checking', error: null, lastSync: null, authenticationRequired: false };
   const listeners = new Set();
   const retired = new Set();
   const changes = new BroadcastChannel('repuestos-felix-operaciones');
   let active = 0, issued = 0, latestConfirmed = 0, etag = null, disposed = false;
   let reading = null;
+  let operationError = null;
+  let recoveryEnabled = false, retryTimer = null;
+  const awaiting = new Map(), attempts = new Map(), stopped = new Set();
+  const retryDelays = [1000, 3000, 10000];
+
+  // AbortController works in older installed Safari PWAs too. Keep the timer
+  // alive until the response body is read, not just until its headers arrive.
+  function deadline() {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(new DOMException('Tiempo de espera agotado.', 'TimeoutError')), 20000);
+    return { signal: controller.signal, close: () => clearTimeout(timer) };
+  }
+
+  function recoveryPacket() {
+    const packet = state.pending ?? awaiting.values().next().value;
+    return packet?.method === 'POST' && packet.path === '/api/ventas' && !stopped.has(packet.id) && (attempts.get(packet.id) ?? 0) < retryDelays.length &&
+      state.snapshot?.databaseId === packet.databaseId ? packet : null;
+  }
+
+  function scheduleRecovery() {
+    // Windows can reach its local API without internet. Keep the web/PWA
+    // network guard; the native exception still requires a confirmed catalog.
+    if (!recoveryEnabled || disposed || retryTimer !== null || active || state.recovering ||
+        state.authenticationRequired || (!window.__FELIX_DESKTOP__ && navigator.onLine === false) || document.hidden) return;
+    const packet = recoveryPacket();
+    if (!packet) return;
+    retryTimer = setTimeout(async () => {
+      retryTimer = null;
+      if (disposed || active || state.recovering || state.authenticationRequired ||
+          (!window.__FELIX_DESKTOP__ && navigator.onLine === false) || document.hidden || recoveryPacket()?.id !== packet.id) return;
+      attempts.set(packet.id, (attempts.get(packet.id) ?? 0) + 1);
+      set({ recovering: true });
+      try {
+        // A live service must first confirm the current database generation.
+        await readSnapshot({ background: true });
+        const current = state.pending ?? awaiting.values().next().value;
+        if (current?.id !== packet.id || state.snapshot?.databaseId !== packet.databaseId ||
+            stopped.has(packet.id) || state.authenticationRequired) return;
+        await working(() => send(packet, true, true));
+      } catch (error) {
+        if (error.recoveryStopped) {
+          stopped.add(packet.id);
+          set({ recoveryIssue: { operationId: packet.id, message: error.message } });
+        }
+      }
+      finally {
+        set({ recovering: false });
+        scheduleRecovery();
+      }
+    }, retryDelays[attempts.get(packet.id) ?? 0]);
+  }
 
   function set(fields) {
     if (disposed) return;
@@ -281,17 +336,19 @@ export function createPosClient() {
   }
 
   async function readPending() {
-    const pending = await journalTransaction();
-    set({ pending });
+    const [pending, archiveCount] = await Promise.all([journalTransaction(), journalArchives(true)]);
+    set({ pending, archiveCount });
     return pending;
   }
   function lockSession() {
     etag = null;
-    set({ authenticationRequired: true, snapshot: null, lastSync: null, connection: 'unavailable' });
+    operationError = null;
+    try { sessionStorage.removeItem('repuestos-felix-venta-pendiente'); } catch { /* Optional receipt ownership. */ }
+    set({ authenticationRequired: true, snapshot: null, resolution: null, saleOperationId: null, lastSync: null, connection: 'unavailable' });
   }
   changes.onmessage = event => {
     if (event.data === 'logout') lockSession();
-    else readPending().catch(error => set({ error: error.message }));
+    else readPending().then(scheduleRecovery).catch(error => set({ error: error.message }));
   };
 
   async function updatePending(update) {
@@ -312,24 +369,31 @@ export function createPosClient() {
     }
     latestConfirmed = Math.max(latestConfirmed, request);
     etag = tag;
-    set({ snapshot, connection: 'connected', authenticationRequired: false, error: null, lastSync: new Date().toISOString() });
+    set({ snapshot, connection: 'connected', authenticationRequired: false, readErrorRetryable: false, error: operationError, lastSync: new Date().toISOString() });
   }
 
-  async function working(work, background = false) {
+  async function working(work, background = false, readSequence = null) {
     if (disposed) throw new Error('El cliente está cerrado.');
+    if (readSequence === null) operationError = null;
     if (!background) {
       active++;
-      set({ busy: true, error: null });
+      set({ busy: true, error: operationError });
     }
     try { return await work(); }
     catch (error) {
-      set({ error: error.message });
+      if (readSequence === null) {
+        operationError = error.message;
+        set({ error: operationError });
+      } else if (readSequence === issued && readSequence >= latestConfirmed) {
+        set({ error: operationError ?? error.message });
+      }
       throw error;
     } finally {
       if (!background) {
         active--;
         set({ busy: active > 0 });
       }
+      scheduleRecovery();
     }
   }
 
@@ -341,87 +405,107 @@ export function createPosClient() {
       await readPending();
       const previousTag = etag;
       const previous = state.snapshot;
+      const timeout = deadline();
+      let response;
       try {
-        const response = await fetch('/api/state', {
+        response = await fetch('/api/state', {
           credentials: 'same-origin', mode: 'same-origin', redirect: 'error', cache: 'no-store',
           headers: previousTag ? { 'If-None-Match': previousTag } : {},
-          signal: AbortSignal.timeout(15_000),
+          signal: timeout.signal,
         });
         if (response.status === 304) {
           if (!previous || !previousTag) throw new Error('No hay una copia confirmada del catálogo.');
           if (!sameVersionTag(response.headers.get('ETag'), previousTag)) throw new Error('El servicio no confirmó la versión del catálogo.');
           if (previous === state.snapshot && previousTag === etag) {
             latestConfirmed = Math.max(latestConfirmed, sequence);
-            set({ connection: 'connected', authenticationRequired: false, error: null, lastSync: new Date().toISOString() });
+            set({ connection: 'connected', authenticationRequired: false, readErrorRetryable: false, error: operationError, lastSync: new Date().toISOString() });
           }
           return previous;
         }
-        if (response.status === 401) lockSession();
+        if (response.status === 401 && sequence >= latestConfirmed) lockSession();
         if (response.status !== 200) throw new Error((await serviceError(response))?.error || 'El servicio no confirmó la lectura del catálogo.');
         const observed = checkSnapshot(await response.json());
         apply(observed, response.headers.get('ETag'), sequence);
         return observed;
       } catch (error) {
-        if (sequence === issued) set({ connection: 'unavailable' });
-        if (error instanceof TypeError || error.name === 'TimeoutError') throw new Error('No se pudo conectar con el servicio.');
+        if (response && [400, 401, 403, 409].includes(response.status)) error.recoveryStopped = true;
+        if (sequence === issued) set({ connection: 'unavailable', readErrorRetryable: !response || response.status >= 500 ||
+          [408, 429].includes(response.status) || error instanceof TypeError || ['TimeoutError', 'AbortError'].includes(error.name) });
+        if (error instanceof TypeError || ['TimeoutError', 'AbortError'].includes(error.name)) throw new Error('No se pudo conectar con el servicio.');
         throw error;
-      }
-    }, background).finally(() => { if (reading === job) reading = null; });
+      } finally { timeout.close(); }
+    }, background, sequence).finally(() => { if (reading === job) reading = null; });
     reading = job;
     return job;
   }
 
-  async function reload(options) {
+  async function reload(options = {}) {
+    if (options.recover) recoveryEnabled = true;
+    // An online/foreground event can arrive while the last attempt is still
+    // in flight. Renew its budget now; terminal rejections remain in stopped.
+    if (options.resumeRecovery) attempts.clear();
     await readSnapshot(options);
+    scheduleRecovery();
     return state.snapshot;
   }
 
   function checkGeneration(databaseId) {
+    if (state.authenticationRequired) throw new Error('Inicia sesión para acceder al sistema.');
     if (!state.snapshot) throw new Error('Actualiza el catálogo antes de guardar.');
     if (databaseId !== state.snapshot.databaseId) throw new Error(changedDatabase);
   }
 
-  function uncertainError(cause, packet) {
+  function uncertainError(cause, packet, remember = true) {
     // The dialog may outlive the journal slot if another tab confirms it.
     const original = Object.freeze({ ...packet, status: 'sending' });
     const error = new Error(cause instanceof TypeError || cause instanceof SyntaxError ? unconfirmed : cause.message);
     error.uncertain = true;
+    error.recoveryStopped = stopped.has(original.id);
     error.operationId = original.id;
-    error.retry = () => working(() => send(original, true));
+    if (remember) awaiting.set(original.id, original);
+    error.retry = () => {
+      stopped.delete(original.id);
+      attempts.delete(original.id);
+      return working(() => send(original, true, true));
+    };
     return error;
   }
 
-  async function send(packet, exactRetry = false) {
+  async function send(packet, exactRetry = false, recovered = false) {
     const { resource, target: expected } = checkTarget(packet.method, packet.path);
     const { databaseId, ...payload } = JSON.parse(packet.body);
     if (packet.databaseId !== databaseId || !uuid.test(packet.id)) throw new Error(unconfirmed);
     checkPayload(packet.method, resource, payload);
     checkGeneration(packet.databaseId);
+    const remember = !recovered || awaiting.has(packet.id) || state.saleOperationId === packet.id;
     // A crashed tab releases its lock. Its durable "sending" marker still
     // records that the previous attempt could have committed.
     return navigator.locks.request('repuestos-felix-envio-' + packet.id, { ifAvailable: true }, async lock => {
-      if (!lock) throw uncertainError(new Error('Otra pestaña está enviando esta solicitud.'), packet);
+      if (!lock) throw uncertainError(new Error('Otra pestaña está enviando esta solicitud.'), packet, remember);
       const sending = await updatePending(current => {
         checkGeneration(packet.databaseId);
         if (!current && exactRetry) return packet;
         if (current?.id !== packet.id || current.databaseId !== packet.databaseId ||
             current.method !== packet.method || current.path !== packet.path || current.body !== packet.body || current.baseRevision !== packet.baseRevision) {
-          throw uncertainError(new Error('La solicitud pendiente cambió. Revisa las operaciones antes de reintentar.'), packet);
+          throw uncertainError(new Error('La solicitud pendiente cambió. Revisa las operaciones antes de reintentar.'), packet, remember);
         }
         return { ...current, status: 'sending' };
       });
       const request = ++issued;
       let received;
       let definitive = false;
+      const timeout = deadline();
       try {
         checkGeneration(sending.databaseId);
+        set({ recoveryIssue: null });
         received = await fetch(sending.path, {
           method: sending.method, mode: 'same-origin', credentials: 'same-origin', redirect: 'error',
           headers: { 'Content-Type': 'application/json', 'Idempotency-Key': sending.id },
           body: sending.body,
+          signal: timeout.signal,
         });
         if (received.status !== 200) {
-          if (received.status === 401) lockSession();
+          if (received.status === 401 && request >= latestConfirmed) lockSession();
           const body = await serviceError(received);
           const proven = [400, 409].includes(received.status) && matchesPacket(body?.rejection, sending);
           // Even an unproven conflict may announce a restored generation.
@@ -441,8 +525,12 @@ export function createPosClient() {
         if (snapshot.databaseId !== sending.databaseId) throw new Error(changedDatabase);
         checkConfirmation(snapshot, sending, resource, expected, payload);
         checkGeneration(sending.databaseId);
-        apply(snapshot, null, request);
+        apply(snapshot, received.headers.get('ETag'), request);
         await updatePending(current => current?.id === sending.id ? null : current);
+        awaiting.delete(sending.id);
+        attempts.delete(sending.id);
+        stopped.delete(sending.id);
+        set({ resolution: { operationId: sending.id, databaseId: sending.databaseId, path: sending.path, snapshot, recovered } });
         return snapshot;
       } catch (cause) {
         if ((!received || received.status >= 500 || [401, 403].includes(received.status)) && request >= latestConfirmed) {
@@ -450,10 +538,17 @@ export function createPosClient() {
         }
         if (definitive) {
           cause.definitive = true;
+          awaiting.delete(sending.id);
+          stopped.add(sending.id);
+          set({ resolution: { operationId: sending.id, databaseId: sending.databaseId, path: sending.path, error: cause.message } });
           throw cause;
         }
-        throw uncertainError(cause, sending);
-      }
+        if (received && received.status !== 200 && ![408, 429].includes(received.status) && received.status < 500) {
+          stopped.add(sending.id);
+          set({ recoveryIssue: { operationId: sending.id, message: cause.message } });
+        }
+        throw uncertainError(cause, sending, remember);
+      } finally { timeout.close(); }
     });
   }
 
@@ -465,12 +560,17 @@ export function createPosClient() {
       const body = JSON.stringify({ ...payload, databaseId });
       const packet = await updatePending(current => {
         checkGeneration(databaseId);
-        if (!current) return { id: crypto.randomUUID(), method, path, body, databaseId, baseRevision: state.snapshot.revision, status: 'prepared' };
+        if (!current) return { id: crypto.randomUUID(), method, path, body, databaseId, databaseLabel: state.snapshot.databaseLabel,
+          createdAt: new Date().toISOString(), baseRevision: state.snapshot.revision, status: 'prepared' };
         // Equal sale contents can belong to two customers. Only an explicit
         // recovery may reuse the pending invoice's idempotency key.
         if (resource !== 'ventas' && current.method === method && current.path === path && current.databaseId === databaseId && current.body === body) return current;
         throw new Error('Resuelve la solicitud pendiente antes de guardar otra operación.');
       });
+      if (resource === 'ventas') {
+        set({ saleOperationId: packet.id });
+        try { sessionStorage.setItem('repuestos-felix-venta-pendiente', packet.id); } catch { /* The journal remains durable. */ }
+      }
       return send(packet);
     });
   }
@@ -478,7 +578,54 @@ export function createPosClient() {
   function retryPending() {
     return working(async () => {
       const packet = await readPending();
-      if (packet) return send(packet);
+      if (packet) {
+        stopped.delete(packet.id);
+        attempts.delete(packet.id);
+        return send(packet, false, true);
+      }
+    });
+  }
+
+  async function readArchives() {
+    checkGeneration(state.snapshot?.databaseId);
+    const records = await journalArchives();
+    checkGeneration(state.snapshot?.databaseId);
+    return records.sort((a, b) => b.archivedAt.localeCompare(a.archivedAt));
+  }
+
+  function archivePending({ operationId, databaseId, acknowledged, reviewedPacket } = {}) {
+    return working(async () => {
+      if (acknowledged !== true) throw new Error('Confirma que has revisado la solicitud y su posible resultado.');
+      checkGeneration(databaseId);
+      const reviewed = reviewedPacket ?? state.pending;
+      if (!reviewed || reviewed.id !== operationId) throw new Error('La solicitud pendiente cambió. Repite la revisión.');
+      if (reviewed.databaseId === databaseId) throw new Error('Esta solicitud corresponde a la base actual. Reintenta su confirmación.');
+      return navigator.locks.request('repuestos-felix-envio-' + operationId, { ifAvailable: true }, async lock => {
+        if (!lock) throw new Error('Otra pestaña está enviando esta solicitud. Espera antes de archivarla.');
+        // Never release the journal based only on a cached or obsolete generation.
+        const observed = await readSnapshot({ fresh: true, background: true });
+        if (observed.databaseId !== databaseId) throw new Error(changedDatabase);
+        const record = await archiveJournal(current => {
+          checkGeneration(databaseId);
+          if (!current || ['id', 'databaseId', 'method', 'path', 'body', 'baseRevision', 'status'].some(key => current[key] !== reviewed[key])) {
+            throw new Error('La solicitud pendiente cambió. Repite la revisión.');
+          }
+          return { packet: current, archivedAt: new Date().toISOString(), currentDatabaseId: databaseId,
+            currentDatabaseLabel: state.snapshot.databaseLabel, reason: 'database-changed', acknowledged: true };
+        });
+        awaiting.delete(operationId);
+        attempts.delete(operationId);
+        stopped.add(operationId);
+        operationError = null;
+        if (state.saleOperationId === operationId) {
+          try { sessionStorage.removeItem('repuestos-felix-venta-pendiente'); } catch { /* The archive is durable. */ }
+          set({ saleOperationId: null });
+        }
+        await readPending();
+        set({ error: null, recoveryIssue: null });
+        if (!disposed) changes.postMessage(null);
+        return record;
+      });
     });
   }
 
@@ -494,7 +641,7 @@ export function createPosClient() {
   return {
     getState: () => state,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
-    reload, writeOperation, retryPending, logout,
-    dispose() { disposed = true; changes.close(); listeners.clear(); },
+    reload, writeOperation, retryPending, readArchives, archivePending, logout,
+    dispose() { disposed = true; clearTimeout(retryTimer); changes.close(); listeners.clear(); },
   };
 }

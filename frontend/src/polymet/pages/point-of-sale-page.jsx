@@ -1,11 +1,6 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
 import { usePosStore } from "../../data/pos-context.jsx";
-import {
-  quoteSale,
-  updateSaleLine,
-  receiptFromConfirmation,
-  saleRequest,
-} from "../../data/operational-sales.js";
+import { useSaleDraft } from "../../data/sale-draft.jsx";
 import { toLines } from "../lib/cart.js";
 import { computeTotals } from "../lib/cart.js";
 import { toast as ue } from "sonner";
@@ -378,140 +373,12 @@ function PointOfSalePage() {
 export { PointOfSalePage };
 
 export function OperationalPointOfSalePage() {
-  const { products, customers, settings, cashSession, runtime, registerSale } =
-    usePosStore();
-  const cashCustomer = customers.find((row) => row.isCashCustomer);
-  const [customerId, setCustomerId] = useState(() => cashCustomer?.id ?? null);
-  const [comprobante, setComprobante] = useState("B02");
-  const [condition, setCondition] = useState("contado");
-  const [paymentMethod, setPaymentMethod] = useState("efectivo");
-  const [received, setReceived] = useState("");
-  const [priceLevel, setPriceLevel] = useState(
-    settings.defaultPriceLevel ?? "p1",
-  );
-  const [items, setItems] = useState([]);
-  const itemsRef = useRef(items);
-  itemsRef.current = items;
-  const [receipt, setReceipt] = useState(null);
-  const [failure, setFailure] = useState(null);
-  const [sending, setSending] = useState(false);
-  const inFlight = useRef(false);
-  const customer = customers.find((row) => row.id === customerId);
-  const catalog = useMemo(
-    () => new Map(products.map((p) => [p.id, p])),
-    [products],
-  );
-  const { lines, totals } = useMemo(
-    () => quoteSale(items, settings.itbisRate),
-    [items, settings.itbisRate],
-  );
-  const cartQuantities = {};
-  for (const item of items) {
-    cartQuantities[item.product.id] =
-      Math.round(
-        ((cartQuantities[item.product.id] ?? 0) + item.quantity) * 100,
-      ) / 100;
-  }
-  // Another tab's confirmation or a catalog refresh must not freeze this draft.
-  // Checkout still waits for the shared journal; an already-sent sale stays locked.
-  const locked = sending || !!failure?.retry;
-  let disabledReason;
-  if (runtime.connection !== "connected")
-    disabledReason = "Conecta con el servicio para registrar la venta.";
-  else if (runtime.pending)
-    disabledReason = "Hay una solicitud pendiente de confirmación.";
-  else if (runtime.busy) disabledReason = "Espera a que termine la operación en curso.";
-  else if (!cashSession?.open) disabledReason = "La caja está cerrada. Ábrela para facturar.";
-  else if (!customer) disabledReason = "Selecciona un cliente activo.";
-  else if (comprobante !== "B02" && !customer.rnc)
-    disabledReason = "Selecciona un cliente con RNC.";
-  else if (
-    condition === "credito" &&
-    (customer.isCashCustomer || !customer.creditLimit)
-  )
-    disabledReason = "Selecciona un cliente con crédito aprobado.";
-  else if (
-    condition === "credito" &&
-    Math.round(customer.balance * 100) + Math.round(totals.total * 100) >
-      Math.round(customer.creditLimit * 100)
-  )
-    disabledReason = "La venta excede el crédito disponible del cliente.";
-  else if (items.some((item) => item.product.databaseId !== runtime.databaseId))
-    disabledReason = "La base cambió. Inicia una nueva venta.";
-  else if (
-    items.some(
-      (item) => catalog.get(item.product.id)?.version !== item.product.version,
-    )
-  )
-    disabledReason =
-      "El catálogo cambió. Retira los artículos actualizados y agrégalos de nuevo.";
-
-  function resetSale() {
-    itemsRef.current = [];
-    setItems([]);
-    setCustomerId(cashCustomer?.id ?? null);
-    setComprobante("B02");
-    setCondition("contado");
-    setPaymentMethod("efectivo");
-    setReceived("");
-    setFailure(null);
-  }
-  function editQuantity(product, level, quantity, replace = false) {
-    if (locked || inFlight.current || receipt) return false;
-    try {
-      const updated = updateSaleLine(itemsRef.current, product, level, quantity, replace);
-      quoteSale(updated, settings.itbisRate);
-      itemsRef.current = updated;
-      setItems(updated);
-      setFailure(null);
-      return true;
-    } catch (error) {
-      ue.error(error.message);
-      return false;
-    }
-  }
-  async function checkout(retry = false) {
-    if (inFlight.current || receipt) return;
-    if (!retry && (disabledReason || locked || !items.length)) return;
-    if (!retry && condition === "contado" && paymentMethod === "efectivo" &&
-        (!Number.isFinite(Number(received)) || Number(received) < totals.total)) {
-      ue.warning("El monto recibido es menor al total");
-      return;
-    }
-    inFlight.current = true;
-    setSending(true);
-    try {
-      const snapshot = retry
-        ? await failure.retry()
-        : await registerSale(
-            saleRequest(items, settings, customerId, condition, comprobante, cashSession, paymentMethod),
-          );
-      const config = snapshot.state.configuracion;
-      setReceipt({
-        sale: receiptFromConfirmation(snapshot),
-        footer: config.pieTicket,
-        printFormat: config.formatoImpresion ?? "Térmica 80 mm",
-        business: {
-          name: config.empresa,
-          rnc: config.rnc,
-          address: config.direccion,
-          phone: config.tel,
-        },
-      });
-      resetSale();
-    } catch (error) {
-      // An exact retry can fail before sending, for example on a database change.
-      // Keep its original operation while its outcome is uncertain.
-      setFailure({
-        message: error.message,
-        retry:
-          error.retry ?? (retry && !error.definitive ? failure.retry : null),
-      });
-    } finally {
-      inFlight.current = false;
-      setSending(false);
-    }
-  }
+  const { products, customers, settings, cashSession, runtime, cashCustomer,
+    customerId, setCustomerId, comprobante, setComprobante, condition, setCondition,
+    paymentMethod, setPaymentMethod, received, setReceived, priceLevel, setPriceLevel,
+    items, setItems, receipt, failure, sending, customer, lines, totals, cartQuantities,
+    locked, disabledReason, resetSale, editQuantity, checkout } = useSaleDraft();
+  const recoveryIssue = runtime.recoveryIssue?.operationId === failure?.operationId ? runtime.recoveryIssue : null;
   const checkoutRef = useRef(null);
   checkoutRef.current = () => checkout();
   useEffect(() => {
@@ -531,10 +398,11 @@ export function OperationalPointOfSalePage() {
           role={failure ? "alert" : "status"}
           className="space-y-2 rounded-xl border border-border bg-card p-4 text-sm"
         >
-          <p>{sending ? "Confirmando la venta…" : failure.message}</p>
+          <p>{sending ? "Confirmando la venta…" : runtime.recovering && failure?.retry ? "Comprobando la venta…" :
+            recoveryIssue ? recoveryIssue.message : failure?.retry && !failure.recoveryStopped ? "La venta está pendiente de confirmación. Conservamos la solicitud para evitar duplicarla." : failure.message}</p>
           {failure?.retry && (
             <Button
-              disabled={sending || runtime.busy}
+              disabled={sending || runtime.busy || runtime.recovering}
               variant="outline"
               onClick={() => checkout(true)}
             >
@@ -639,16 +507,7 @@ export function OperationalPointOfSalePage() {
           />
         }
       />
-      {receipt && (
-        <ReceiptDialog
-          {...receipt}
-          open
-          onOpenChange={(open) => {
-            if (!open) setReceipt(null);
-          }}
-          onNewSale={() => setReceipt(null)}
-        />
-      )}
+
     </div>
   );
 }

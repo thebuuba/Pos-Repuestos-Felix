@@ -21,6 +21,7 @@ import { useState } from "react";
 import { usePosStore } from "../../data/pos-context.jsx";
 import { usePwa } from "../../pwa.jsx";
 import { DesktopSyncStatus } from "../../desktop-status.jsx";
+import { SalesScanner } from './sales-scanner.jsx';
 var dateFormatter = new Intl.DateTimeFormat("es-DO", {
   timeZone: "America/Santo_Domingo",
   weekday: "long",
@@ -92,7 +93,7 @@ function TopBar({ onBrandClick } = {}) {
               </p>
             </div>
           </div>
-          {desktop ? <DesktopSyncStatus onSync={() => runtime?.reload?.()} /> : <Button
+          {desktop ? <DesktopSyncStatus onSync={() => runtime?.reload?.({ background: true })} /> : <Button
             variant="outline"
             className="desktop-data-refresh h-10 rounded-xl bg-card"
             aria-label="Actualizar datos"
@@ -134,7 +135,7 @@ function TopBar({ onBrandClick } = {}) {
               {dark ? "Modo claro" : "Modo oscuro"}
             </TooltipContent2>
           </Tooltip2>
-          <Button
+          {runtime ? <SalesScanner /> : <Button
             variant="outline"
             size="icon"
             className="desktop-notifications relative h-10 w-10 rounded-xl bg-card"
@@ -143,7 +144,7 @@ function TopBar({ onBrandClick } = {}) {
           >
             <Bell />
             {(!runtime || runtime.pending || runtime.error) && <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-primary ring-2 ring-card" />}
-          </Button>
+          </Button>}
           {runtime?.logout && <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl bg-card" aria-label="Cerrar sesión"
             onClick={() => runtime.logout().catch(error => toast.error(error.message))}><LogOut /></Button>}
         </div>

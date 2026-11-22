@@ -25,6 +25,8 @@ export class DesktopLedger {
       CREATE TABLE IF NOT EXISTS identities(table_name TEXT NOT NULL,local_id INTEGER NOT NULL,remote_id INTEGER NOT NULL,
         PRIMARY KEY(table_name,local_id),UNIQUE(table_name,remote_id)) STRICT;
       CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL,expires INTEGER NOT NULL) STRICT;`);
+    this.database.exec(`CREATE TABLE IF NOT EXISTS reconciliation_archives(id TEXT PRIMARY KEY,record TEXT NOT NULL) STRICT;
+      CREATE TABLE IF NOT EXISTS remembered_sessions(token_hash TEXT PRIMARY KEY REFERENCES sessions(token_hash) ON DELETE CASCADE) STRICT;`);
     for (const [table, columns] of Object.entries(tables)) {
       this.database.exec(`CREATE TABLE IF NOT EXISTS local_${table}(${columns.map(column => `${column} ANY${column === 'id' ? ' PRIMARY KEY' : ''}`).join(',')}) STRICT;`);
     }
@@ -63,7 +65,8 @@ export class DesktopLedger {
     }
   }
   operation(id) { const row = this.database.prepare('SELECT * FROM operations WHERE operation_id=?').get(id); return row && { ...row, record: JSON.parse(row.record), wire: row.wire && JSON.parse(row.wire) }; }
-  pending() { return this.database.prepare("SELECT operation_id FROM operations WHERE status<>'synced' ORDER BY sequence").all().map(row => this.operation(row.operation_id)); }
+  pending() { return this.database.prepare("SELECT operation_id FROM operations WHERE status IN ('pending','conflict') ORDER BY sequence").all().map(row => this.operation(row.operation_id)); }
+  archives() { return this.database.prepare('SELECT record FROM reconciliation_archives ORDER BY rowid').all().map(row => JSON.parse(row.record)); }
   add(record, fingerprint) {
     this.database.prepare('INSERT INTO operations(operation_id,fingerprint,record) VALUES(?,?,?)').run(record.operationId, fingerprint, JSON.stringify(record));
     return this.operation(record.operationId);

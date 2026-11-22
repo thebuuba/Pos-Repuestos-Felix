@@ -11,3 +11,4 @@ certs/
 .dev.vars.*
 !.dev.vars.example
 dist/
+.agent-runs/

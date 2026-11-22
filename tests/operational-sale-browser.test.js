@@ -50,10 +50,14 @@ test('el POS abre caja, recupera una venta confirmada, registra movimientos y co
     browser = await chromium.launch({ channel: 'msedge', headless: true });
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, locale: 'es-DO' });
     const errors = [], packets = [];
+    const resumeReplay = Promise.withResolvers();
     page.on('pageerror', error => errors.push(error.message));
     await page.route('**/api/ventas', async route => {
       packets.push({ key: route.request().headers()['idempotency-key'], body: route.request().postData() });
-      if (packets.length > 1) return route.continue();
+      if (packets.length > 1) {
+        await resumeReplay.promise;
+        return route.continue();
+      }
       const response = await route.fetch();
       assert.equal(response.status(), 200, await response.text());
       await route.abort('failed');
@@ -78,9 +82,21 @@ test('el POS abre caja, recupera una venta confirmada, registra movimientos y co
     await checkout.click();
     const retry = page.getByRole('button', { name: 'Reintentar venta' });
     await retry.waitFor();
+    // An uncertain sale must retain both its draft and its exact retry across routes.
+    await page.locator('aside').getByRole('link', { name: /Inventario/ }).click();
+    await page.getByRole('main').getByRole('heading').first().click();
+    await page.keyboard.type('SINT-3');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('F9');
+    assert.equal(new Set(packets.map(packet => packet.key)).size, 1, 'Fuera de Ventas F9 no crea otra operación; la recuperación conserva su ID');
+    await page.locator('aside').getByRole('link', { name: /Punto de venta/ }).click();
+    await retry.waitFor();
+    assert.equal(await search.isDisabled(), true);
+    assert.equal(await page.locator('.sale-cart tbody tr').count(), 1);
+    assert.match(await row.innerText(), /25\.01/);
     assert.equal(await page.getByRole('dialog').count(), 0);
     await page.keyboard.press('F9');
-    await retry.click();
+    resumeReplay.resolve();
     const dialog = page.getByRole('dialog');
     await dialog.getByRole('heading', { name: 'Venta registrada' }).waitFor();
     assert.match(await dialog.innerText(), /Registro 1/);

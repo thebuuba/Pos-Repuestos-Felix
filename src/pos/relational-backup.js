@@ -79,10 +79,10 @@ function validateBackupRow(table, row, columns, version) {
   }
 }
 
-export async function rows(client, table, preciseDates = false) {
+export async function rows(client, table, preciseDates = false, filter) {
   const columns = tables[table].map(key => key === 'fecha' ? 'fecha::text AS fecha' : preciseDates && key.endsWith('_en')
     ? `to_char(${key} AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS ${key}` : key).join(',');
-  return (await client.query(`SELECT ${columns} FROM public.${table} ORDER BY id`)).rows;
+  return (await client.query(`SELECT ${columns} FROM public.${table}${filter ? ' WHERE ' + filter.sql : ''} ORDER BY id`, filter?.values)).rows;
 }
 export async function exportBackup(client) {
   const data = {};

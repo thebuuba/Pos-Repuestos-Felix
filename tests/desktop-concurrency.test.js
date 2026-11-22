@@ -35,7 +35,7 @@ test('dos autenticaciones simultáneas conservan la identidad y contraseña de c
     origin: 'https://autenticacion-sintetica.invalid',
     secrets: {
       async protect(value) {
-        if (value === 'sid=A') { protectingA.resolve(); await releaseA.promise; }
+        if (value === '__Host-felix-session=A') { protectingA.resolve(); await releaseA.promise; }
         if (nextProtection) { const next = nextProtection; nextProtection = null; next.entered.resolve(); await next.release.promise; }
         return value;
       },
@@ -46,7 +46,7 @@ test('dos autenticaciones simultáneas conservan la identidad y contraseña de c
         const { username, password } = JSON.parse(options.body);
         assert.equal(password, 'clave-sintetica-' + username);
         if (username === 'b') reachedB.resolve();
-        return Response.json({ redirect: '/ventas' }, { headers: { 'Set-Cookie': `sid=${username.toUpperCase()}; Path=/` } });
+        return Response.json({ redirect: '/ventas' }, { headers: { 'Set-Cookie': `__Host-felix-session=${username.toUpperCase()}; Path=/` } });
       }
       assert.ok(url.endsWith('/api/account'));
       const username = options.headers.Cookie.split('=')[1].toLowerCase();
@@ -81,7 +81,7 @@ test('dos autenticaciones simultáneas conservan la identidad y contraseña de c
   assert.equal(profile.username, 'b');
   assert.equal(matchesPassword('clave-sintetica-b', profile), true);
   assert.equal(matchesPassword('clave-sintetica-a', profile), false);
-  assert.equal(ledger.get('remoteCookie'), 'sid=B');
+  assert.equal(ledger.get('remoteCookie'), '__Host-felix-session=B');
 
   // A request from the previous session can pass the outer check while a new
   // login awaits DPAPI. Its later local 401 must not revoke the new account.
@@ -103,7 +103,7 @@ test('dos autenticaciones simultáneas conservan la identidad y contraseña de c
     result: { id: 1 }, created: {}, expected: { effect: { nombre: 'Pendiente sintético' }, cashHead: null } }, 'huella-sintetica');
   assert.equal((await login('b')).status, 409);
   assert.equal(ledger.get('profile').username, 'a');
-  assert.equal(ledger.get('remoteCookie'), 'sid=A', 'Un cambio de cuenta rechazado debe conservar el acceso para sincronizar los pendientes actuales.');
+  assert.equal(ledger.get('remoteCookie'), '__Host-felix-session=A', 'Un cambio de cuenta rechazado debe conservar el acceso para sincronizar los pendientes actuales.');
 });
 
 test('Windows permite una sola instancia por carpeta y libera la exclusión al cerrar', { skip: process.platform !== 'win32', timeout: 20_000 }, async t => {

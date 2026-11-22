@@ -82,7 +82,10 @@ export function accountSession(hosting, request) {
       }
     } catch { /* A modified ticket or a different origin cannot open this cookie. */ }
   }
-  const clear = () => { cookie = name + '=' + attrs + '; Max-Age=0'; session = null; user = null; };
+  // Only explicit logout/account changes expire the browser cookie. An automatic
+  // rejection may arrive after another Worker has already issued a newer ticket.
+  // It must still deny this request, without deleting that unrelated credential.
+  const clear = (expire = true) => { if (expire) cookie = name + '=' + attrs + '; Max-Age=0'; session = null; user = null; };
   function save(tokens, deadline, remember) {
     if (!tokens?.access_token || !tokens.refresh_token || !Number.isFinite(tokens.expires_in) || tokens.expires_in <= 0) throw serviceError();
     session = { id: tokens.user.id, access: tokens.access_token, refresh: tokens.refresh_token,
@@ -98,7 +101,7 @@ export function accountSession(hosting, request) {
   }
   async function refresh() {
     const refreshed = await authRequest(auth, 'token?grant_type=refresh_token', { body: { refresh_token: session.refresh } });
-    if (!permitted(refreshed?.user) || refreshed.user.id !== session.id) { clear(); return false; }
+    if (!permitted(refreshed?.user) || refreshed.user.id !== session.id) { clear(false); return false; }
     save(refreshed, session.remember ? now() + rememberedSeconds : session.deadline, session.remember);
     user = refreshed.user;
     return true;
@@ -124,7 +127,7 @@ export function accountSession(hosting, request) {
       if (session.expires <= now() + 30) return refresh();
       user = await authRequest(auth, 'user', { method: 'GET', token: session.access });
       if (!user) return refresh();
-      if (!permitted(user) || user.id !== session.id) { clear(); return false; }
+      if (!permitted(user) || user.id !== session.id) { clear(false); return false; }
       if (session.remember && session.deadline - now() < 30 * 86400) {
         save({ user, access_token: session.access, refresh_token: session.refresh, expires_in: session.expires - now() },
           now() + rememberedSeconds, true);

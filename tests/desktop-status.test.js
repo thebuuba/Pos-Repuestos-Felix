@@ -162,3 +162,58 @@ test('el sondeo actualiza pendientes y conserva la última lectura si el estado 
   assert.match(await page.getByRole('dialog').innerText(), /3 operaciones pendientes/);
   assert.equal(await page.getByText('Sin operaciones pendientes', { exact: true }).count(), 0);
 });
+
+test('revisar pendientes exige confirmar la lista y conserva acceso al archivo tras el acuse', async t => {
+  const { page, state, packets } = await setup(t, true, { ...initial, connection: 'conflict', conflict: 'Precio modificado', pending: 1 });
+  const selection = { deviceId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', databaseId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', operationIds: [reference],
+    operations: [{ reference, date: initial.lastSync, operation: 'Venta', total: '10.25', error: 'Precio modificado' }], resuming: false };
+  await page.route('**/api/desktop/reconciliation', route => route.fulfill({ json: selection }));
+  let submitted;
+  await page.route('**/api/desktop/reconcile', async route => {
+    submitted = route.request().postDataJSON();
+    state.status = { ...initial, connection: 'online', pending: 0, archived: 1, lastSync: '2026-11-22T15:30:00.000Z' };
+    await route.fulfill({ json: state.status });
+  });
+  await page.getByRole('button', { name: /^Sincronización:/ }).click();
+  await page.getByRole('button', { name: 'Revisar pendientes', exact: true }).click();
+  const confirm = page.getByRole('button', { name: 'Archivar y actualizar', exact: true });
+  await confirm.waitFor();
+  assert.equal(await confirm.isDisabled(), true);
+  assert.equal(submitted, undefined);
+  if (process.env.FELIX_DESKTOP_EVIDENCE_DIR) {
+    await mkdir(process.env.FELIX_DESKTOP_EVIDENCE_DIR, { recursive: true });
+    for (const width of [320, 390, 768, 1440]) {
+      await page.setViewportSize({ width, height: width <= 390 ? 844 : 1000 });
+      for (const dark of [false, true]) {
+        await page.evaluate(dark => document.documentElement.classList.toggle('dark', dark), dark);
+        const dialog = page.getByRole('dialog');
+        assert.ok(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth + 1));
+        await dialog.screenshot({ path: path.join(process.env.FELIX_DESKTOP_EVIDENCE_DIR, `review-${width}-${dark ? 'dark' : 'light'}.png`), animations: 'disabled' });
+      }
+    }
+  }
+  await page.getByRole('checkbox', { name: /He revisado/ }).check();
+  await confirm.click();
+  await page.getByText('1 operación archivada para revisión.', { exact: true }).waitFor();
+  assert.deepEqual(submitted, { deviceId: selection.deviceId, databaseId: selection.databaseId, operationIds: selection.operationIds, acknowledged: true });
+  assert.equal(await page.getByRole('link', { name: 'Descargar historial de revisión', exact: true }).getAttribute('href'), '/api/desktop/archive');
+  assert.equal(packets.some(packet => packet.path.endsWith('/sync')), false);
+});
+
+test('una revisión sin acuse mantiene el pendiente y permite reanudarla', async t => {
+  const { page, state } = await setup(t, true, { ...initial, connection: 'conflict', conflict: 'Existencias insuficientes', pending: 1 });
+  await page.route('**/api/desktop/reconciliation', route => route.fulfill({ json: { deviceId: initial.deviceId, databaseId: 'base-ficticia', operationIds: [reference],
+    operations: [{ reference, operation: 'Venta', date: initial.lastSync, total: '10.25' }], resuming: false } }));
+  await page.route('**/api/desktop/reconcile', async route => {
+    state.status = { ...state.status, reconciling: true };
+    await route.fulfill({ status: 503, json: { error: 'La revisión espera confirmación del servidor.' } });
+  });
+  await page.getByRole('button', { name: /^Sincronización:/ }).click();
+  await page.getByRole('button', { name: 'Revisar pendientes', exact: true }).click();
+  await page.getByRole('checkbox', { name: /He revisado/ }).check();
+  await page.getByRole('button', { name: 'Archivar y actualizar', exact: true }).click();
+  await page.getByRole('alert').filter({ hasText: /revisión espera confirmación/ }).waitFor();
+  await page.getByRole('button', { name: 'Reanudar revisión', exact: true }).waitFor();
+  assert.equal(await page.getByText('1 operación archivada para revisión.', { exact: true }).count(), 0);
+  assert.match(await page.getByRole('dialog').innerText(), /1 operación pendiente/);
+});

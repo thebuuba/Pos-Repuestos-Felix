@@ -161,7 +161,9 @@ test(`${name}: el tema elegido se aplica antes del JavaScript y persiste entre c
     try {
       await page.goto(origin + '/ventas', { waitUntil: 'commit' });
       await page.locator('.pos-startup').waitFor();
-      const initial = await page.evaluate(() => ({ dark: document.documentElement.classList.contains('dark'), color: getComputedStyle(document.body).backgroundColor }));
+      // The inline HTML background paints before the stylesheet arrives; body
+      // can still be transparent at this point without a visible theme change.
+      const initial = await page.evaluate(() => ({ dark: document.documentElement.classList.contains('dark'), color: getComputedStyle(document.documentElement).backgroundColor }));
       assert.equal(initial.dark, expected === 'dark');
       release();
       await page.getByRole('status').filter({ hasText: 'Cargando productos para la venta…' }).waitFor();

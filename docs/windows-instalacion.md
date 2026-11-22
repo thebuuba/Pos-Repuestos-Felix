@@ -1,5 +1,27 @@
 # Instalación Windows
 
+## Entrega vigente: recuperación de ventas, 22 de noviembre de 2026
+
+Incluye la recuperación automática de ventas pendientes, el límite de espera de las peticiones, la coordinación del recibo entre pestañas y el catálogo operativo más compacto. Conserva el escáner global de la entrega anterior y el almacenamiento local nativo.
+
+- Archivo: `dist/releases/Repuestos-Felix-1.0.0-windows-x64-setup.exe`.
+- Tamaño: **331.176.729 bytes**.
+- SHA-256: `af8d5ffc81a48a7e49cb6df059ad1f773a512788398d881d1243e963a2e104ae`.
+- NSIS terminó con código 0. Payload de **521 archivos**, verificado después de empaquetar. Registro: `dist/verification/ios-recovery-windows-final.log`.
+
+Se actualizaron los recursos de interfaz y dos archivos del servidor en la instalación existente y se cotejaron los 521 archivos finales con el manifiesto. Windows comprueba su API local aun cuando el equipo no tenga internet. Se conservó el lanzador nativo y la carpeta de datos. La aplicación abierta no se reinició: sus módulos en memoria se actualizarán al volver a abrirla. No se ejecutó una instalación desde cero. Evidencia de pruebas y publicación: [Recuperación de ventas en iOS](validacion-recuperacion-ios-2026-11-22.md).
+
+## Entrega anterior: escáner global, 22 de noviembre de 2026
+
+El lector USB en modo teclado con sufijo Enter agrega a la venta desde cualquier módulo mientras el POS está activo. El borrador y su reintento se conservan al navegar; el botón «Escáner de ventas» permite desactivarlo. El flujo no cobra automáticamente. Requisitos y límites: [Escanear en ventas](escaneo-ventas.md).
+
+- Archivo: `dist/releases/Repuestos-Felix-1.0.0-windows-x64-setup.exe`.
+- Tamaño: **331.162.968 bytes**.
+- SHA-256: `e5bf9857ee8c7ffd0bbec62db8cb12ab0604033237fac1318404dadf1c78ca4e`.
+- NSIS terminó con código 0; payload de **516 archivos**, verificado después del empaquetado. Registro: `dist/verification/global-scanner-windows-final.log`.
+
+Se reutiliza el lanzador nativo Tauri/WebView2 ya verificado. La instalación existente recibió 74 recursos de interfaz y se cotejaron sus 516 archivos contra el manifiesto; el ejecutable y el servidor conservaron sus hashes y no se modificó la carpeta de datos. No se ejecutó otra instalación ni se probó un lector físico. Esta entrega sustituye a las enumeradas en el historial inferior. Validación completa y publicación: [Escáner global](validacion-escaner-global-2026-11-22.md).
+
 La aplicación usa los mismos componentes del POS web y PWA. El instalador se prepara para Windows 10/11 de 64 bits, con instalación por usuario y asistente en español. Incluye Node 24.16.0 y el instalador offline de Microsoft Edge WebView2; no necesita que el usuario instale Node, PostgreSQL, Rust ni herramientas de desarrollo.
 
 La primera configuración del equipo requiere conexión e inicio de sesión para descargar los datos autorizados del negocio. El paquete no contiene inventario, usuarios, claves, respaldos ni datos de demostración. Después de la configuración, SQLite conserva las tablas operativas, solicitudes y operaciones pendientes; PGlite se usa en memoria para ejecutar las mismas reglas SQL del servidor.
@@ -187,3 +209,16 @@ La interfaz compartida aplica el tema desde el HTML, conserva la selección y mu
 - Payload: **447 archivos**, 137,1 MiB, verificados después del empaquetado. NSIS terminó con código 0 (`dist/verification/bundle-session-theme.log`); la copia final coincide por hash. No se ejecutó de nuevo el instalador.
 
 Windows instalado recibió los recursos y se cotejó el manifiesto (`session-theme-installed.json`). Se actualizaron también dos módulos del servidor web empaquetado, comprobando antes con esbuild que el proceso nativo no los importa. El código usado por el servidor nativo y su ejecutable no cambian; el ejecutable mantiene SHA-256 `4580ce755a3a05b3c5e497adca92d938ab9cf0ebdf100ada655681eb6a5bc23b`. No se modificaron datos del negocio. Pruebas, mediciones y límites de verificación: [validacion-sesion-tema-rendimiento-2026-11-22.md](validacion-sesion-tema-rendimiento-2026-11-22.md).
+
+## Entrega con recuperación y sincronización corregidas
+
+Esta entrega sustituye al instalador anterior. Corrige la espera de red que bloqueaba las operaciones locales, la recuperación de sesiones y los conflictos provocados por ventas simultáneas desde la PWA. Incluye revisión durable de pendientes, respuestas condicionales y actualización transaccional de la proyección sin reiniciar PGlite en cada sincronización.
+
+- Instalador: `dist/releases/Repuestos-Felix-1.0.0-windows-x64-setup.exe`.
+- Tamaño: **331.214.154 bytes**.
+- SHA-256: `bcb67ee5d6971d82a7cfbd53a899a7a483da2dde12d15662ca86303149b755e0`.
+- Payload: **556 archivos**, 141,1 MiB, verificados tras empaquetar. NSIS terminó con código 0 reutilizando el lanzador nativo previamente compilado; no cambió código Rust.
+
+La instalación existente recibió **48 archivos**, incluyendo los módulos del servidor local. Se verificaron sus 556 recursos contra el manifiesto, conservando el ejecutable instalado y los datos del negocio. No se ejecutó de nuevo el instalador ni se cerró la aplicación en uso: **cerrar y volver a abrir Félix POS activa el servidor local actualizado**.
+
+El Worker se publicó antes de actualizar Windows. Tras retirar un flujo de pendientes no debe recuperarse una versión antigua del servidor que ignore ese retiro. Pruebas, publicación, capturas y límites: [validacion-sincronizacion-2026-11-22.md](validacion-sincronizacion-2026-11-22.md).

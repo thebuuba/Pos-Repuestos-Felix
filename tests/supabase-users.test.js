@@ -120,5 +120,5 @@ test('la sesión persistente renueva su plazo al usarse y conserva el cierre por
   user.app_metadata.acceso_pos = false;
   const revoked = await call('/api/account', cookie);
   assert.equal(revoked.status, 401);
-  assert.match(revoked.headers.get('set-cookie'), /Max-Age=0/);
+  assert.equal(revoked.headers.get('set-cookie'), null, 'Revocar deniega la petición sin borrar un ticket posterior.');
 });

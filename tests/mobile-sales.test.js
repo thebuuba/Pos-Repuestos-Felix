@@ -88,6 +88,8 @@ test('venta corta en teléfono: cobro confirmado, más sin perder el carrito, re
       await page.getByRole('link', { name: 'Inventario', exact: true }).tap();
       await stateRead;
       await page.getByRole('link', { name: 'Ventas', exact: true }).tap();
+      await row.waitFor();
+      assert.equal((await row.getByRole('cell').nth(1).innerText()).trim(), '2', 'Navegar conserva las dos unidades del borrador');
       await search.fill('MOVIL-01'); await search.press('Enter');
       await row.waitFor();
       await page.clock.resume();
@@ -111,14 +113,14 @@ test('venta corta en teléfono: cobro confirmado, más sin perder el carrito, re
       await page.setViewportSize({ width: 390, height: 844 });
       await page.getByRole('button', { name: /^Cobrar/ }).tap();
       await page.getByRole('button', { name: 'Exacto', exact: true }).tap();
-      assert.equal(await page.getByRole('spinbutton', { name: 'Monto recibido' }).inputValue(), '10.13');
+      assert.equal(await page.getByRole('spinbutton', { name: 'Monto recibido' }).inputValue(), '30.38');
       await page.screenshot({ path: path.join(evidence, `${name}-cobro.png`), animations: 'disabled' });
       await page.getByRole('button', { name: /Registrar venta/ }).tap();
       await page.getByRole('dialog').waitFor();
       const state = await (await fetch(origin + '/api/state')).json();
       assert.equal(state.state.facturas.length, name === 'chromium' ? 1 : 2);
-      assert.equal(state.state.facturas.at(-1).total, 10.13);
-      assert.equal(state.state.productos[0].stock, name === 'chromium' ? 9 : 8);
+      assert.equal(state.state.facturas.at(-1).total, 30.38);
+      assert.equal(state.state.productos[0].stock, name === 'chromium' ? 7 : 4);
       assert.deepEqual(errors, []);
       // Same components at desktop width retain the full controls and unrestricted browser zoom.
       const desktop = await browser.newPage({ viewport: { width: 1440, height: 1000 } });

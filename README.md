@@ -1,5 +1,7 @@
 # POS Repuestos Félix
 
+Para coordinar tareas de desarrollo entre Codex y Gemini/Antigravity, consulta [el flujo de agentes](docs/agentes/README.md). `pnpm agentes estado` comprueba los CLI y `pnpm agentes ejecutar <tarea.json>` prepara una entrega aislada para revisión.
+
 El POS de Repuestos Félix abre el **Panel** con el diseño de Polymet. Punto de venta, Inventario, Compras, Clientes, Suplidores, Configuración y Reportes usan la API del negocio. La importación de NetPOS cargó 7.681 artículos en Supabase. Consulta [dónde encontrar usuarios, inventario, clientes, suplidores e históricos](docs/donde-esta-cada-dato.md).
 
 La API se comparte entre **Cloudflare Workers y Node.js local**, con **PostgreSQL local o Supabase**. Caja registra turnos, movimientos y cierres. Abonos, conciliación de cuentas, PWA y Windows mantienen trabajo pendiente; su estado está en [estado del sistema](docs/estado-sistema-unificado.md). Supabase Auth gestiona las cuentas de acceso.

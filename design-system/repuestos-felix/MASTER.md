@@ -30,6 +30,8 @@ La descarga pública contiene JavaScript compilado con rutas de origen, componen
 
 ## Tipografía, medidas y componentes
 
+Por petición posterior del usuario, el lector USB puede agregar a la venta desde cualquier módulo. La cabecera operativa sustituye las notificaciones deshabilitadas por el icono Lucide `ScanBarcode` con el botón y tokens existentes: acento rojo mientras está activo, superficie neutra si se desactiva o espera la confirmación de una venta. El control aparece también en teléfono, sin desplazar la navegación inferior. El aviso existente «Agregado a la venta» añade la acción **Ver venta** fuera de Ventas; no se abre ni cobra automáticamente la factura. Las entradas de formularios conservan su función, y diálogos/cobro pausan el agregado global. El borrador y su confirmación se conservan al navegar.
+
 - Fuente **Inter variable**, pesos del original. Alojarla localmente para que Windows y la PWA no dependan de Google Fonts al abrir sin conexión.
 - Texto normal: 14 px/20 px en los controles y tablas; etiquetas auxiliares 11–12 px según el componente. Título de página 24 px, desde `md` 28 px, peso 600, espaciado reducido.
 - Números con `tabular-nums`. `MoneyDisplay` conserva moneda más pequeña, parte entera destacada y centavos atenuados. Mostrar dos decimales con `RD$`.
@@ -83,6 +85,10 @@ Los estados de carga, error, datos vacíos, desconexión, sincronización y conf
 Por petición posterior del usuario (22 de noviembre de 2026), el arranque operativo muestra una pantalla centrada con el icono existente y «Félix POS». La carga describe su fase real: «Preparando la aplicación…» durante la descarga inicial, «Cargando productos para la venta…» o «Cargando datos de [módulo]…» durante la lectura confirmada, y «Abriendo [módulo]…» dentro del contenido al descargar una sección nueva. No simular porcentajes ni sustituir una actualización de fondo por otra pantalla completa. El indicador respeta movimiento reducido. No presentar la espera como un catálogo pendiente de sincronización ni mostrar módulos vacíos durante el arranque. Un fallo real ofrece Reintentar, y se mantienen los estados reales de desconexión, sesión y operaciones pendientes.
 
 El acceso, la carga inicial y el POS comparten el tema elegido. Aplicarlo desde el `head`, antes del primer pintado, y conservarlo al volver a entrar; el valor predeterminado es claro. El botón de tema mantiene su diseño e iconos originales. La preferencia visual se guarda localmente, sin guardar credenciales ni datos del negocio allí.
+
+Tras el reporte de bloqueo de ventas en iOS del 22 de noviembre, los fallos transitorios del arranque muestran «Restableciendo la conexión…» y anuncian el reintento automático, con el botón Reintentar disponible. Una venta incierta presenta un único aviso de confirmación pendiente; al recuperarse muestra el recibo real. Los rechazos permanentes y los conflictos de base conservan su explicación. No sustituir el contenido ya cargado por la pantalla inicial durante una interrupción.
+
+La corrección de sincronización permite revisar una solicitud que pertenece a una base anterior desde el aviso existente. El diálogo compartido presenta sus datos legibles, exige aceptación explícita y conserva el paquete original en un historial descargable al archivar. Windows incorpora la revisión de su lote pendiente dentro del diálogo de Sincronización: no repite dos listas, distingue pendientes de archivados y permite reanudar una revisión sin acuse. Archivar nunca se anuncia como una venta confirmada. Se mantienen los tokens, botones y diálogos existentes; las acciones nuevas y su aceptación tienen al menos 44 px de alto. Los controles técnicos de revisión sólo aparecen cuando corresponden, sin reinstalar el panel de almacenamiento que el usuario retiró.
 
 ## Criterio de aceptación
 

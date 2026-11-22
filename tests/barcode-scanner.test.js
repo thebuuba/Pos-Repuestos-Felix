@@ -33,7 +33,7 @@ after(async () => {
 });
 
 async function openSale(t, products = [product], categories = [], engineBrowser = browser) {
-  const context = await engineBrowser.newContext({ viewport: { width: 1440, height: 1000 }, locale: 'es-DO', serviceWorkers: 'block' });
+  const context = await engineBrowser.newContext({ viewport: { width: 1440, height: 1000 }, locale: 'es-DO', serviceWorkers: 'block', reducedMotion: 'reduce' });
   t.after(() => context.close());
   const page = await context.newPage();
   page.setDefaultTimeout(5000);
@@ -43,7 +43,7 @@ async function openSale(t, products = [product], categories = [], engineBrowser 
     if (route.request().method() !== 'GET') writes.push(route.request().url());
     return route.fulfill({ status: 503, json: { error: 'Escritura deshabilitada en esta prueba' } });
   });
-  await context.route('**/api/state', route => route.fulfill({ json: {
+  const snapshot = {
     databaseId, databaseLabel: 'Prueba aislada', revision: 1,
     state: {
       empresa: 'Negocio', itbisRate: 0.18, configuracionVersion: 1,
@@ -58,12 +58,204 @@ async function openSale(t, products = [product], categories = [], engineBrowser 
         summary: { opening: 0, cashSales: 0, cardSales: 0, transferSales: 0, creditSales: 0, entradas: 0, salidas: 0, cobros: 0, pagos: 0, expected: 0, invoices: 0 },
         movements: [], closures: [] },
     },
-  } }));
+  };
+  await context.route('**/api/state', route => route.fulfill({ json: snapshot }));
   await page.goto(server.origin + '/ventas');
   const search = page.getByPlaceholder('Escanea o escribe… ej. BUJ-C7HSA');
   await search.waitFor();
-  return { page, search, writes };
+  return { page, search, writes, snapshot, context };
 }
+
+async function navigateModule(page, path) {
+  await page.evaluate(path => {
+    history.pushState(null, '', path);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  }, path);
+  await page.locator('main [aria-busy="true"]').waitFor({ state: 'hidden' });
+}
+async function physicalScan(page, code = product.codigo, delay = 0) {
+  await page.keyboard.type(code, { delay });
+  await page.keyboard.press('Enter');
+}
+
+test('el lector global agrega fuera de Ventas y conserva el borrador sin cobrar', async t => {
+  const { page, writes } = await openSale(t);
+  await observeScanAudio(page);
+  await navigateModule(page, '/inventario');
+  await page.getByRole('main').getByRole('heading').first().click();
+  await physicalScan(page);
+  await page.getByText('Agregado a la venta', { exact: true }).waitFor();
+  await page.locator('.scan-confirmation').hover();
+  assert.equal(new URL(page.url()).pathname, '/inventario');
+  await page.waitForFunction(() => window.scanAudio.beeps.length === 1 && window.scanAudio.beeps[0].ended);
+  await page.getByRole('button', { name: 'Ver venta', exact: true }).click();
+  const row = page.locator('.sale-cart tbody tr').filter({ hasText: product.nombre });
+  assert.equal((await row.locator('td').nth(1).innerText()).trim(), '1');
+  await page.getByRole('button', { name: 'Tarjeta', exact: true }).click();
+  await navigateModule(page, '/caja');
+  await page.getByRole('heading').first().click();
+  await physicalScan(page);
+  await navigateModule(page, '/ventas');
+  await row.waitFor();
+  assert.equal((await row.locator('td').nth(1).innerText()).trim(), '2');
+  assert.match(await page.getByRole('button', { name: 'Tarjeta', exact: true }).getAttribute('class'), /bg-card/);
+  // A third read is accepted; a fourth exceeds the exact available stock.
+  await page.getByRole('heading', { name: 'Agregar productos', exact: true }).click();
+  await physicalScan(page);
+  await page.waitForFunction(() => window.scanAudio.beeps.length === 3);
+  await physicalScan(page);
+  await page.getByText(/Existencias insuficientes/).waitFor();
+  await physicalScan(page, 'DESCONOCIDO');
+  await page.getByText(/No hay un artículo con el código exacto/).waitFor();
+  assert.equal((await row.locator('td').nth(1).innerText()).trim(), '3');
+  assert.equal(await page.evaluate(() => window.scanAudio.beeps.length), 3);
+  assert.deepEqual(writes, []);
+});
+
+test('el lector global respeta formularios, diálogos, escritura lenta y su interruptor', async t => {
+  const { page, search, writes } = await openSale(t);
+  const toggle = page.getByRole('button', { name: 'Escáner de ventas', exact: true });
+  await toggle.waitFor();
+  assert.equal(await toggle.getAttribute('aria-pressed'), 'true');
+  await toggle.click();
+  await page.getByRole('heading', { name: 'Agregar productos', exact: true }).click();
+  await physicalScan(page);
+  assert.equal(await page.locator('.sale-cart tbody tr').count(), 0);
+  await toggle.click();
+  await page.getByRole('heading', { name: 'Agregar productos', exact: true }).click();
+  await physicalScan(page, product.codigo, 120);
+  assert.equal(await page.locator('.sale-cart tbody tr').count(), 0);
+  await navigateModule(page, '/inventario');
+  const filter = page.getByRole('main').getByRole('textbox').first();
+  await filter.click();
+  await physicalScan(page);
+  assert.equal(await filter.inputValue(), product.codigo);
+  await navigateModule(page, '/ventas');
+  assert.equal(await page.locator('.sale-cart tbody tr').count(), 0);
+  await mockCamera(page);
+  await page.getByRole('button', { name: 'Escanear con cámara' }).click();
+  await page.getByRole('status').filter({ hasText: /Buscando un código/ }).waitFor();
+  await physicalScan(page);
+  assert.equal(await page.locator('.sale-cart tbody tr').count(), 0);
+  await page.getByRole('button', { name: 'Cerrar cámara', exact: true }).click();
+  // The existing focused search must still accept exactly once.
+  await search.click();
+  await physicalScan(page);
+  const row = page.locator('.sale-cart tbody tr').filter({ hasText: product.nombre });
+  await row.waitFor();
+  assert.equal((await row.locator('td').nth(1).innerText()).trim(), '1');
+  // A reader's Enter must never activate a focused checkout button.
+  await page.getByRole('button', { name: 'Tarjeta', exact: true }).click();
+  await page.getByRole('button', { name: /Registrar venta/ }).focus();
+  await physicalScan(page);
+  for (const code of ['AB CD', ' ABCD', 'sint-7681 ']) await physicalScan(page, code);
+  // A prefix can start above the final average threshold and still be valid.
+  await page.evaluate(() => {
+    const target = document.activeElement;
+    let at = performance.now();
+    for (const [key, gap] of [['A', 0], [' ', 60], ['B', 10], ['C', 10], ['D', 10], ['Enter', 10]]) {
+      at += gap;
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'timeStamp', { value: at });
+      target.dispatchEvent(event);
+      if (key === ' ') window.scannerSpacePrevented = event.defaultPrevented;
+      target.dispatchEvent(new KeyboardEvent('keyup', { key, bubbles: true, cancelable: true }));
+    }
+  });
+  assert.equal(await page.evaluate(() => window.scannerSpacePrevented), true);
+  assert.equal((await row.locator('td').nth(1).innerText()).trim(), '1');
+  assert.deepEqual(writes, []);
+  // Preserve accessible activation with a single human Space.
+  await toggle.focus();
+  await page.keyboard.press('Space');
+  await page.waitForFunction(() => document.querySelector('button[aria-label="Escáner de ventas"]').getAttribute('aria-pressed') === 'false');
+});
+
+test('el Enter del lector no cierra la cámara enfocada y un Enter manual conserva su acción', async t => {
+  const { page, writes } = await openSale(t);
+  await mockCamera(page);
+  await page.getByRole('button', { name: 'Escanear con cámara' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('status').filter({ hasText: /Buscando un código/ }).waitFor();
+  const close = dialog.getByRole('button', { name: 'Cerrar cámara', exact: true });
+  await close.focus();
+  await page.evaluate(() => {
+    window.scannerEvents = [];
+    window.addEventListener('keydown', event => window.scannerEvents.push({ key: event.key, at: event.timeStamp,
+      prevented: event.defaultPrevented, focused: document.activeElement?.textContent }), true);
+  });
+  await physicalScan(page);
+  const events = await page.evaluate(() => window.scannerEvents);
+  assert.equal(events.at(-1).key, 'Enter');
+  assert.equal(events.at(-1).prevented, true, JSON.stringify(events));
+  assert.equal(await dialog.count(), 1, 'El lector pausado no activa el botón de cierre');
+  assert.equal(await page.locator('.sale-cart tbody tr').count(), 0);
+  await page.keyboard.press('Enter');
+  await dialog.waitFor({ state: 'hidden' });
+  assert.deepEqual(writes, []);
+});
+
+test('el escáner se detiene al perder foco y el borrador se separa por base y sesión', async t => {
+  const { page, snapshot, context, writes } = await openSale(t);
+  await page.getByRole('heading', { name: 'Agregar productos', exact: true }).click();
+  await physicalScan(page);
+  const rows = page.locator('.sale-cart tbody tr');
+  assert.equal(await rows.count(), 1);
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await physicalScan(page);
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    Object.defineProperty(document, 'hasFocus', { configurable: true, value: () => false });
+  });
+  await physicalScan(page);
+  await page.evaluate(() => { delete document.hasFocus; });
+  assert.equal((await rows.locator('td').nth(1).innerText()).trim(), '1');
+  snapshot.databaseId = randomUUID();
+  await page.getByRole('button', { name: 'Actualizar datos', exact: true }).click();
+  await rows.waitFor({ state: 'hidden' });
+  await page.getByRole('heading', { name: 'Agregar productos', exact: true }).click();
+  await physicalScan(page);
+  await rows.waitFor();
+  assert.equal((await rows.locator('td').nth(1).innerText()).trim(), '1');
+  await context.route('**/api/state', route => route.fulfill({ status: 401, json: { error: 'Sesión cerrada' } }));
+  await page.getByRole('button', { name: 'Actualizar datos', exact: true }).click();
+  await page.getByRole('link', { name: 'Iniciar sesión', exact: true }).waitFor();
+  await physicalScan(page);
+  assert.equal(await rows.count(), 0);
+  assert.equal(await page.getByRole('button', { name: 'Escáner de ventas' }).count(), 0);
+  assert.deepEqual(writes, []);
+});
+
+test('el control global cabe en cabecera y el aviso permite volver a Ventas', async t => {
+  const { page, writes } = await openSale(t);
+  const evidence = path.resolve('dist/verification/global-scanner');
+  await mkdir(evidence, { recursive: true });
+  for (const [width, height] of [[320, 844], [390, 844], [768, 1024], [1440, 1000]]) {
+    await page.setViewportSize({ width, height });
+    for (const theme of ['light', 'dark']) {
+      await page.evaluate(theme => document.documentElement.classList.toggle('dark', theme === 'dark'), theme);
+      const toggle = page.getByRole('button', { name: 'Escáner de ventas', exact: true });
+      assert.equal(await toggle.isVisible(), true);
+      const rect = await toggle.boundingBox();
+      assert.ok(rect.x >= 0 && rect.x + rect.width <= width);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      await page.screenshot({ path: path.join(evidence, `cabecera-${width}-${theme}.png`), animations: 'disabled' });
+    }
+  }
+  await navigateModule(page, '/inventario');
+  await page.getByRole('main').getByRole('heading').first().click();
+  await physicalScan(page);
+  const notification = page.locator('.scan-confirmation');
+  await notification.waitFor();
+  await notification.hover();
+  await page.screenshot({ path: path.join(evidence, 'agregado-desde-inventario.png'), animations: 'disabled' });
+  await notification.getByRole('button', { name: 'Ver venta' }).click();
+  await page.locator('.sale-cart tbody tr').waitFor();
+  assert.deepEqual(writes, []);
+});
 
 test('el catálogo de venta omite filtros importados y pagina sin desplazamientos internos', async t => {
   const categories = ['ALIM./PAJARROS', 'ALIMENTOS', 'ANABOLICOS', 'ANTIBIOTICOS', 'ART/PERROS', 'BAÑOS PARA ANIMALES', 'CICATRIZANTE'];

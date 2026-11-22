@@ -8,6 +8,7 @@
     "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   },
   "scripts": {
+    "agentes": "node scripts/orchestrate.mjs",
     "usuarios:crear": "powershell -NoProfile -File scripts/crear-usuario.ps1",
     "netpos:prepare": "python scripts/netpos/prepare.py",
     "netpos:import": "node scripts/netpos/import.mjs",

@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { randomBytes, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
+import { matchesStateTag } from '../pos/state-tag.js';
 
 // Windows protects cached server sessions for the current Windows user.
 // Secrets travel over stdin/stdout pipes, never command arguments or logs.
@@ -29,33 +30,72 @@ export function matchesPassword(password, profile) {
 }
 export const tokenHash = token => createHash('sha256').update(token).digest('hex');
 
+function sessionCookie(headers, name) {
+  // Older fetch implementations combine Set-Cookie; Expires contains a comma.
+  const values = headers.getSetCookie?.() ?? (headers.get('set-cookie') || '').split(/,(?=\s*[^;,\s]+=)/);
+  let result;
+  for (const value of values) {
+    const [pair, ...attributes] = value.split(';').map(part => part.trim());
+    if (!pair.startsWith(name + '=')) continue;
+    const attrs = new Map(attributes.map(part => {
+      const index = part.indexOf('=');
+      return [part.slice(0, index < 0 ? undefined : index).toLowerCase(), index < 0 ? '' : part.slice(index + 1).trim()];
+    }));
+    const age = attrs.get('max-age');
+    const expired = /^-?\d+$/.test(age ?? '') ? Number(age) <= 0 : Date.parse(attrs.get('expires')) <= Date.now();
+    result = pair === name + '=' || expired ? '' : pair;
+  }
+  return result;
+}
+
 export class RemoteClient {
   constructor(ledger, { origin = 'https://repuestos-felix-pos.repuestosfelix1994.workers.dev', secrets = windowsSecrets, fetcher = fetch } = {}) {
     const url = new URL(origin);
     if (url.pathname !== '/' || url.search || url.hash || url.username || url.password ||
         !(url.protocol === 'https:' || url.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(url.hostname))) throw new Error('Dirección del servidor no permitida.');
-    this.origin = url.origin; this.ledger = ledger; this.secrets = secrets; this.fetcher = fetcher; this.cookie = null;
+    this.origin = url.origin; this.ledger = ledger; this.secrets = secrets; this.fetcher = fetcher; this.cookie = null; this.revision = 0;
+    this.cookieName = url.protocol === 'https:' ? '__Host-felix-session' : 'felix-session';
   }
-  async request(path, { method = 'GET', body, key, authenticated = true } = {}) {
+  async request(path, { method = 'GET', body, key, authenticated = true, etag, receiptOnly = false } = {}) {
     if (!path.startsWith('/api/') && !['/login', '/logout', '/cuenta/clave'].includes(path)) throw new Error('Ruta remota no permitida.');
+    const revision = this.revision;
     if (authenticated && this.cookie === null) {
       const stored = this.ledger.get('remoteCookie');
-      this.cookie = stored ? await this.secrets.unprotect(stored) : '';
+      const loaded = stored ? await this.secrets.unprotect(stored) : '';
+      if (this.revision !== revision) throw Object.assign(new Error('La sesión cambió mientras se abrían las credenciales. Reintenta la solicitud.'), { status: 503 });
+      if (this.cookie === null) this.cookie = loaded;
     }
     let response;
     try {
       response = await this.fetcher(this.origin + path, { method, redirect: 'manual', signal: AbortSignal.timeout(25000),
-        headers: { 'Content-Type': 'application/json', Origin: this.origin, ...(authenticated && this.cookie && { Cookie: this.cookie }), ...(key && { 'Idempotency-Key': key }) },
+        headers: { 'Content-Type': 'application/json', Origin: this.origin, ...(authenticated && this.cookie && { Cookie: this.cookie }), ...(key && { 'Idempotency-Key': key }), ...(etag && { 'If-None-Match': etag }),
+          ...(receiptOnly === true && method === 'POST' && path === '/api/sync/operations' && { Prefer: 'return=receipt' }) },
         body: body && JSON.stringify(body) });
     } catch { throw Object.assign(new Error('No se pudo conectar con el servidor.'), { status: 503 }); }
-    const nextCookie = response.headers.get('set-cookie')?.split(';')[0];
-    if (nextCookie) {
-      this.cookie = nextCookie;
-      this.ledger.set('remoteCookie', await this.secrets.protect(nextCookie));
+    const notModified = response.status === 304 && path === '/api/sync/bootstrap' && method === 'GET' &&
+      etag && response.headers.get('etag') && matchesStateTag(etag, response.headers.get('etag'));
+    const result = notModified ? { notModified: true, etag: response.headers.get('etag') } : await response.json().catch(() => null);
+    if (response.status === 401 && authenticated && this.revision === revision) this.clear();
+    if ((!response.ok && !notModified) || !result) throw Object.assign(new Error(result?.error || 'El servidor no confirmó la solicitud.'), {
+      status: response.status >= 300 && response.status !== 304 ? response.status : 503,
+      ...(path === '/api/sync/retire' && response.status === 409 && result?.retirementRejection &&
+        typeof result.retirementRejection === 'object' && !Array.isArray(result.retirementRejection) && { retirementRejection: result.retirementRejection }),
+    });
+    const nextCookie = sessionCookie(response.headers, this.cookieName);
+    if (nextCookie !== undefined && this.revision === revision) {
+      if (!nextCookie) this.clear();
+      else {
+        const protectedCookie = await this.secrets.protect(nextCookie);
+        // A late response or DPAPI completion must not undo a newer login/logout.
+        if (this.revision === revision) {
+          this.ledger.set('remoteCookie', protectedCookie);
+          this.cookie = nextCookie;
+          this.revision++;
+        }
+      }
     }
-    const result = await response.json().catch(() => null);
-    if (!response.ok || !result) throw Object.assign(new Error(result?.error || 'El servidor no confirmó la solicitud.'), { status: response.status >= 300 ? response.status : 503 });
     return result;
   }
-  clear() { this.cookie = ''; this.ledger.set('remoteCookie', null); }
+  invalidatePending() { this.revision++; }
+  clear() { this.ledger.set('remoteCookie', null); this.cookie = ''; this.revision++; }
 }

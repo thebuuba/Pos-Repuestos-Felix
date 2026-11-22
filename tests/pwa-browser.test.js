@@ -100,7 +100,8 @@ test('PWA operativa instala recursos públicos, conserva navegación y espera pa
     await context.setOffline(true);
     await page.getByText(/Datos desactualizados/).waitFor();
     await page.reload();
-    await page.getByRole('main').getByText(/Sin conexión al servicio/).waitFor();
+    await page.getByRole('main').getByText('Restableciendo la conexión…', { exact: true }).waitFor();
+    await page.getByText('Volveremos a intentarlo automáticamente.', { exact: true }).waitFor();
     assert.equal(await page.evaluate(async () => fetch('/api/state').then(() => true, () => false)), false);
     assert.equal(await page.locator('.pos-sale').count(), 0, 'Sin una lectura nueva no se inventan datos');
     await context.setOffline(false);

@@ -27,6 +27,8 @@ const number = value => {
 };
 const date = value => String(value).slice(0, 10);
 const displayDate = value => { const [year, month, day] = date(value).split('-'); return `${Number(day)}/${Number(month)}/${year}`; };
+// The operational catalogue does not use audit timestamps; backups retain them.
+const productColumns = tables.productos.filter(key => !['creado_en', 'actualizado_en'].includes(key)).join(',');
 
 function itemsByDocument(details, key, present) {
   const grouped = new Map();
@@ -40,7 +42,7 @@ function itemsByDocument(details, key, present) {
 const lineFields = d => ({ id: number(d.id), productoId: number(d.producto_id), codigo: d.codigo,
   nombre: d.nombre, cant: Number(d.cantidad), subtotal: Number(d.total) });
 
-async function snapshotVersion(client, databaseLabel) {
+export async function snapshotVersion(client, databaseLabel) {
   const system = (await client.query('SELECT database_id,revision FROM pos_privado.sistema WHERE id=1')).rows[0];
   if (!system) fail('Ejecuta las migraciones de la base antes de iniciar.', 503);
   return { databaseId: system.database_id, revision: number(system.revision), databaseLabel };
@@ -48,7 +50,9 @@ async function snapshotVersion(client, databaseLabel) {
 export async function snapshot(client, databaseLabel) {
   const version = await snapshotVersion(client, databaseLabel);
   const data = {};
-  for (const table of Object.keys(tables)) data[table] = await rows(client, table);
+  for (const table of Object.keys(tables)) data[table] = table === 'productos'
+    ? (await client.query(`SELECT ${productColumns} FROM public.productos WHERE activo ORDER BY id`)).rows
+    : await rows(client, table);
   const config = data.configuracion[0];
   if (!config) fail('La configuración de la base está incompleta.', 503);
   const saleItems = itemsByDocument(data.venta_detalles, 'venta_id', d => ({ ...lineFields(d), precio: Number(d.precio), precioExacto: d.precio, base: Number(d.base), itbis: Number(d.itbis) }));
@@ -68,8 +72,9 @@ export async function snapshot(client, databaseLabel) {
         pieTicket: config.pie_ticket, permitirStockNegativo: config.permitir_stock_negativo },
       formulas: data.formulas_precios.filter(f => f.activo).map(f => ({ id: number(f.id), version: number(f.version), nombre: f.nombre,
         factorCosto: Number(f.factor_costo), recargo1: Number(f.recargo1), recargo2: Number(f.recargo2), recargo3: Number(f.recargo3) })),
-      productos: data.productos.filter(p => p.activo).map(p => ({ ...p, id: number(p.id), version: number(p.version),
-        stock: Number(p.stock), stock_minimo: Number(p.stock_minimo), stockMinimo: Number(p.stock_minimo),
+      productos: data.productos.map(p => ({ id: number(p.id), version: number(p.version), codigo: p.codigo, nombre: p.nombre,
+        marca: p.marca, categoria: p.categoria, ubicacion: p.ubicacion, gravado: p.gravado, activo: p.activo,
+        stock: Number(p.stock), stockMinimo: Number(p.stock_minimo),
         notificarMinimo: p.notificar_minimo, costo: Number(p.costo), costoExacto: p.costo,
         preciosExactos: exactPrices(p), precio1: Number(p.precio1), precio2: Number(p.precio2), precio3: Number(p.precio3) })),
       clientes: data.clientes.filter(c => c.activo).map(c => ({ id: number(c.id), version: number(c.version), nombre: c.nombre, rnc: c.rnc, tel: c.tel,
@@ -342,7 +347,7 @@ export async function writeOperation(pool, method, path, body, key, databaseLabe
       const identity = (await client.query('SELECT database_id FROM pos_privado.sistema WHERE id=1')).rows[0].database_id;
       await client.query('INSERT INTO pos_privado.solicitudes(clave,tipo,huella,resultado) VALUES($1,$2,$3,$4)', [key, type, fingerprint, { result, databaseId: identity, ...(metadata && { metadata }) }]);
     }
-    let response = { ...await snapshot(client, databaseLabel), result };
+    let response = { ...await (context.versionOnly ? snapshotVersion(client, databaseLabel) : snapshot(client, databaseLabel)), result };
     if (context.represent) response = await context.represent(client, response, metadata, Boolean(previous));
     await client.query('COMMIT');
     return { ...response, confirmation: { operationId: key, databaseId: body.databaseId, method, path, replayed: Boolean(previous) } };
