@@ -1,9 +1,11 @@
-// Isolated local design preview: no credentials, API, migrations or real database access.
+// Static inventory preview by default. --reference opts into the isolated QA demo.
+// Neither preview starts an API, runs migrations or reads business credentials.
 import { createServer } from "node:http";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { buildDesign } from "./build-design.mjs";
+import { buildOperational } from "./build-operational.mjs";
 
 const reference = JSON.parse(
   await readFile(
@@ -73,9 +75,14 @@ if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
-  const directory = await buildDesign();
+  const referenceOnly = process.argv.includes("--reference");
+  const directory = referenceOnly
+    ? await buildDesign()
+    : await buildOperational();
   const server = await serveDesign(directory);
   console.log(
-    `Revisión de diseño (datos de muestra, sin base real): ${server.origin}`,
+    referenceOnly
+      ? `Referencia de Polymet (demostración aislada): ${server.origin}`
+      : `Vista del inventario sin datos de muestra: ${server.origin}. Esta vista estática necesita la API; usa pnpm start para el sistema conectado.`,
   );
 }

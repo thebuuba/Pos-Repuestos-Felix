@@ -1,4 +1,6 @@
-﻿# Contactos y configuración de Polymet — Implementation Plan
+# Contactos y configuración de Polymet — Implementation Plan
+
+**Instrucción posterior del usuario:** centrar el trabajo en Inventario sin datos mock y esperar su Excel. Las tareas 4, 5 y 6 no se están ejecutando. Se completó únicamente la corrección de confirmación de guardados de la tarea 3, necesaria también para Inventario. El estado vigente está en `docs/inventario-excel.md`.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -87,6 +89,8 @@ updateSettings({version,databaseId,itbisRate,rounding,defaultPriceLevel,printer,
 
 El diario conserva el mismo paquete en resultados inciertos; ningún formulario reconstruye DTO desde una versión nueva durante un reintento. Un rechazo definitivo probado libera el borrador; una respuesta desconocida no se convierte en éxito. Configuración captura versión/generación al empezar a editar cada sección; cambios remotos no sobrescriben borradores sucios ni se usan para forzar su guardado. Tras éxito propio una sección limpia puede adoptar la nueva versión. Antes de la primera instantánea confirmada, usar estado de carga/error y deshabilitar escrituras; no abrir un borrador con generación/versión nulas ni presentarlo como configuración real. Los últimos datos confirmados pueden consultarse con su advertencia de desconexión.
 
+La confirmación HTTP incluye `confirmation:{operationId,databaseId,method,path,replayed}`: identidad de la solicitud original y si proviene de la búsqueda idempotente, devuelta solo después del COMMIT. El diario nuevo guarda `baseRevision` fuera del cuerpo al prepararse por primera vez y nunca la cambia al reintentar. Una respuesta confirmada debe coincidir con la solicitud y superar esa revisión original; si no es replay, verificar también presencia/versión del destino creado/editado o ausencia tras baja. Un replay puede devolver un registro ya desactivado y una revisión que otra pestaña ya observó. Los paquetes anteriores sin baseRevision conservan cuerpo/UUID y utilizan la confirmación explícita del servidor; no inventarles una revisión nueva que bloquee el replay legítimo. Mantener prueba de rechazo y fingerprint sin cambios.
+
 ### Task 1: Cálculo exacto de fórmulas y fechas documentales
 
 **Files:** Create `src/domain/pricing.js`, `tests/pricing.test.js`; modify `frontend/src/polymet/lib/pricing.js`, `frontend/src/polymet/lib/accounts.js`, `frontend/src/polymet/components/product-form-sheet.jsx`, `frontend/src/polymet/components/purchase-entry-form.jsx`, `frontend/src/polymet/components/price-formulas-editor.jsx`; create `tests/document-dates.test.js`, `tests/pricing-preview.test.js`.
@@ -139,11 +143,11 @@ Respaldo: export v4, restauración completa incluyendo inactivos y referencia de
 
 ### Task 3: Cliente durable y adaptador operativo para contactos/configuración
 
-**Files:** Modify `frontend/src/data/pos-client.js`, `frontend/src/data/operational-store.jsx`, `frontend/src/polymet/components/product-form-sheet.jsx` (frontera de ID de fórmula); create `frontend/src/data/sales-options.js`; modify `frontend/src/polymet/data/pos-data.js` para reexportar constantes; update fixtures de `tests/pos-client.test.js`/`tests/catalog-forms.test.js` por el contrato ampliado; create `tests/contact-client.test.js`.
+**Files:** Modify `frontend/src/data/pos-client.js`, `frontend/src/data/operational-store.jsx`, `frontend/src/polymet/components/product-form-sheet.jsx` (frontera de ID de fórmula), `src/pos/store.js` (confirmación explícita tras commit); create `frontend/src/data/sales-options.js`; modify `frontend/src/polymet/data/pos-data.js` para reexportar constantes; update fixtures de `tests/pos-client.test.js`/`tests/catalog-forms.test.js` y pruebas HTTP/operaciones afectadas por el contrato ampliado; create `tests/contact-client.test.js`. Un helper pequeño de fixtures compartidas es válido si evita repetir el contrato exitoso sin ocultar casos malformados.
 
 **Interfaces:** Consumes snapshot/operations Task 2, diario y protocolo de rechazo existentes. Produces métodos/DTO/settings de Contratos. No habilitar pantallas antes de su tarea UI. No importar `pos-data`, `seed-data`, `pos-store` demo al grafo operativo.
 
-- [ ] **Step 1: Añadir pruebas renderizadas de provider/cliente que fallen.** Verificar mapeo de todos los campos, null/0 separados, ID numérico de relaciones, fecha sin hora, proveedor balance desconocido, ausencia de NCF demo y límites de configuraciones. Incluir selección de fórmula numérica real en ProductFormSheet por teclado: convertir valores de Radix a string y comparar IDs en la frontera sin cambiar la identidad de servidor. Ejercitar cada ruta permitida (POST/PUT/DELETE contactos/fórmulas, PUT configuración), rechazo de `restore`, URLs ajenas y campos arbitrarios. Verificar respuesta incompleta/falsa/malformada conserva journal/instantánea anterior. Reintento con mismo objeto/UUID/cuerpo tras respuesta incierta + recarga, rechazo definitivo desbloquea, otra pestaña no duplica operación.
+- [x] **Step 1: Añadir pruebas renderizadas de provider/cliente que fallen.** Verificar mapeo de todos los campos, null/0 separados, ID numérico de relaciones, fecha sin hora, proveedor balance desconocido, ausencia de NCF demo y límites de configuraciones. Incluir selección de fórmula numérica real en ProductFormSheet por teclado: convertir valores de Radix a string y comparar IDs en la frontera sin cambiar la identidad de servidor. Ejercitar cada ruta permitida (POST/PUT/DELETE contactos/fórmulas, PUT configuración), rechazo de `restore`, URLs ajenas y campos arbitrarios. Verificar respuesta incompleta/falsa/malformada conserva journal/instantánea anterior. Reintento con mismo objeto/UUID/cuerpo tras respuesta incierta + recarga, rechazo definitivo desbloquea, otra pestaña no duplica operación.
 
 ```js
 // Esquemas permitidos son finitos por ruta; claves anidadas no se aceptan en journal.
@@ -152,9 +156,9 @@ await client.writeOperation({method:'PUT',path:'/api/configuracion',databaseId,
 // Provider traduce updateSettings({databaseId,version,business:{...}}) al patch plano.
 ```
 
-- [ ] **Step 2: Ejecutar** `node --test tests/contact-client.test.js` y registrar rojo.
-- [ ] **Step 3: Ampliar validación de snapshot y rutas/payload.** Campos reconocidos por operación y null solo donde permite contrato; no aflojar límites de catálogo ni aceptar JSON genérico. Rechazar números no finitos antes de JSON.stringify: NaN/Infinity no pueden convertirse silenciosamente en null en crédito/días/preferencias. El protocolo de errores conserva exactamente sus garantías. Reutilizar patrón WeakMap por acción mediante helper local pequeño. Métodos de guardado deben recordar el objeto original incierto; no transformar de nuevo antes de consultar su retry. `runtime.accountDetailsAvailable=false`. Agregados de ventas/compras solo de documentos reales; no calcular `suppliers.balance` desde compras ni inventar abonos. Extraer constantes de selección sin mover STORE_INFO/fixtures al bundle operativo.
-- [ ] **Step 4: Ejecutar** `node --test tests/contact-client.test.js tests/pos-client.test.js tests/catalog-forms.test.js tests/operational-build.test.js` y `pnpm build:operational`; commit `"Connect durable contact and settings operations to the shared frontend"`.
+- [x] **Step 2: Ejecutar** `node --test tests/contact-client.test.js` y registrar rojo.
+- [x] **Step 3: Ampliar validación de snapshot y rutas/payload.** Campos reconocidos por operación y null solo donde permite contrato; no aflojar límites de catálogo ni aceptar JSON genérico. Rechazar números no finitos antes de JSON.stringify: NaN/Infinity no pueden convertirse silenciosamente en null en crédito/días/preferencias. El protocolo de errores conserva exactamente sus garantías. Persistir baseRevision del primer intento y verificar confirmation/revisión/destino como se define en Contratos. Probar respuesta falsa sin avance o sin destino: conserva diario/última instantánea; replay tras confirmación en otra pestaña, baja posterior y paquete anterior sin baseRevision no duplican ni quedan bloqueados por una revisión recalculada. Reutilizar patrón WeakMap por acción mediante helper local pequeño. Métodos de guardado deben recordar el objeto original incierto; no transformar de nuevo antes de consultar su retry. `runtime.accountDetailsAvailable=false`. Agregados de ventas/compras solo de documentos reales; no calcular `suppliers.balance` desde compras ni inventar abonos. Extraer constantes de selección sin mover STORE_INFO/fixtures al bundle operativo.
+- [x] **Step 4: Ejecutar** `node --test tests/contact-client.test.js tests/pos-client.test.js tests/catalog-forms.test.js tests/operational-build.test.js` y `pnpm build:operational`; commit `"Connect durable contact and settings operations to the shared frontend"`.
 
 ### Task 4: Formularios y pantallas de clientes/suplidores confirmados
 
@@ -194,6 +198,3 @@ await client.writeOperation({method:'PUT',path:'/api/configuracion',databaseId,
 ## Verificación de cobertura previa a ejecución
 
 Campos/contactos, configuración y fórmulas: tareas 1–5. Idempotencia/versiones y saldos históricos: 2–5. Respaldo/RLS/legacy: 2. Diario/retry y respuestas completas: 3–5. Diseño/adaptación/accesibilidad: 4–6. Evidencia multiplataforma y límites: 6. La especificación completa permanece abierta tras esta etapa.
-
-
-

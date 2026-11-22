@@ -1,11 +1,17 @@
 # POS Repuestos Félix
 
-PWA instalable para teléfono y computadora, con ventas, inventario, compras, clientes, suplidores, resumen de caja y respaldos JSON. Se conserva JavaScript nativo, CSS y HTML, con una API compartida entre **Cloudflare Workers y Node.js local**, y **PostgreSQL local o Supabase**. Las contraseñas permanecen en el servidor.
+Proyecto del POS de Repuestos Félix con el diseño aprobado de Polymet. La entrada principal abre **Inventario** y utiliza exclusivamente datos de la API, sin productos, ventas, saldos ni cajeros de demostración. El siguiente trabajo es preparar la importación del Excel que proporcionará el negocio; todavía no se ha recibido ni importado.
+
+La API se comparte entre **Cloudflare Workers y Node.js local**, con **PostgreSQL local o Supabase**. La nueva PWA, Windows y los módulos restantes mantienen trabajo pendiente; su estado está en [estado del sistema](docs/estado-sistema-unificado.md). Las contraseñas permanecen en el servidor.
 
 ## Organización del proyecto
 
 ```text
-public/                  Interfaz que recibe el navegador
+frontend/                Interfaz compartida de Polymet
+  operational.jsx        Entrada de inventario con datos reales de la API
+  reference.jsx          Referencia de diseño aislada para pruebas
+dist/operational/        Compilación principal generada con pnpm build
+public/                  Interfaz anterior y recursos conservados
   assets/brand/          Imagen original de Repuestos Félix
   icons/                 Iconos de instalación de la PWA
 src/
@@ -25,13 +31,15 @@ tests/                   Pruebas y datos ficticios en fixtures/
 docs/                    Decisiones y planes de trabajo
 ```
 
-El servidor entrega únicamente los archivos públicos incluidos en su lista permitida. Las carpetas `src/`, `scripts/`, `supabase/`, las credenciales y los respaldos no se publican. Las rutas de la interfaz siguen siendo `/app.js`, `/styles.css`, `/sw.js`, etc.; `public/` es su ubicación en disco, no un prefijo de la dirección web. Los datos de ejemplo se usan únicamente en pruebas.
+El arranque Node entrega `dist/operational/`, después de compilar con `pnpm build`. El servidor sirve únicamente los archivos incluidos en su lista permitida. Las carpetas `src/`, `scripts/`, `supabase/`, las credenciales y los respaldos no se publican. Los datos de ejemplo se limitan a pruebas y a la referencia visual explícita.
 
-La cabecera utiliza la imagen proporcionada por el negocio, con su proporción original, y una paleta roja, negra y blanca. La imagen también forma parte de la caché estática de la PWA.
+El diseño conserva los componentes, la navegación lateral, los temas y las medidas de Polymet. La imagen original del negocio se conserva como recurso; no sustituye la composición aprobada.
 
-El POS utiliza todo el ancho disponible de la pantalla y el panel activo se extiende hasta completar la altura disponible. En teléfonos conserva los controles adaptables y el desplazamiento interno de las tablas.
+El contenido respeta el ancho máximo de 1480 px y los puntos de corte de la referencia. En teléfonos conserva los controles adaptables y el desplazamiento interno de las tablas.
 
 ## Instalar en Android o iPhone
+
+Esta sección describe la PWA anterior conservada en `public/`. La instalación del nuevo frontend compartido de Polymet todavía requiere su propia integración y verificación.
 
 Abre la dirección **HTTPS** del sistema e inicia sesión. En Android pulsa **Instalar app** o usa el menú del navegador. En iPhone abre la página en Safari y elige **Compartir → Añadir a pantalla de inicio**. La app también funciona directamente en el navegador. La disponibilidad del aviso automático depende del navegador; el botón incluye instrucciones alternativas.
 
@@ -45,7 +53,9 @@ El manifiesto, los iconos y la implementación siguen las [guías de instalació
 
 ## Diseño compartido de Polymet (rama de trabajo)
 
-La referencia visual aprobada, reglas y procedencia están en [la documentación del diseño](docs/design/recuperacion-polymet.md). `pnpm preview:design` compila y sirve las doce pantallas recuperadas en `http://127.0.0.1:3001`, con datos demostrativos en memoria y sin conexión a la base real. `pnpm test:design` comprueba la navegación con Edge instalado. Esta vista es una etapa de integración: todavía no reemplaza el POS operativo ni incluye la aplicación Windows o sincronización offline.
+La referencia visual aprobada, reglas y procedencia están en [la documentación del diseño](docs/design/recuperacion-polymet.md). `pnpm build` y `pnpm build:design` compilan la entrada operativa, sin datos de demostración. `pnpm preview` o `pnpm preview:design` sirven esa interfaz en `http://127.0.0.1:3001`: es una vista estática y muestra la falta de conexión si no hay API. Para el sistema conectado, ejecutar `pnpm build` y luego `pnpm start:local` o `pnpm start:supabase` con la configuración y esquema correspondientes.
+
+La demostración original se conserva únicamente para comparación y pruebas mediante `pnpm build:reference` y `pnpm preview:reference`; no se utiliza como entrada del negocio. `pnpm test:design` comprueba esa referencia aislada con Edge. El trabajo del Excel está documentado en [inventario e importación](docs/inventario-excel.md).
 
 ## Instalar
 
@@ -82,7 +92,7 @@ El proyecto usa **pnpm 10.8.0**, fijado en `packageManager`, y `pnpm-lock.yaml` 
 
 4. La primera vez, abre `psql -h 127.0.0.1 -U postgres -d pos_repuestos_felix`, ejecuta `ALTER ROLE pos_app LOGIN;` y después `\password pos_app`. Escribe una contraseña exclusiva y completa esa misma contraseña, codificada para URL, en `.env.local`. La contraseña administrativa permanece en el archivo de migraciones.
 
-5. Ejecuta `pnpm start:local` y abre **http://127.0.0.1:3000**. Una base nueva contiene la configuración y Cliente Contado, sin mercancía ni ventas de ejemplo. El servidor comprueba la estructura al arrancar; las migraciones se ejecutan explícitamente con una cuenta administrativa.
+5. Ejecuta `pnpm build`, después `pnpm start:local`, y abre **http://127.0.0.1:3000**. Una base nueva contiene la configuración y Cliente Contado, sin mercancía ni ventas de ejemplo. El servidor comprueba la estructura al arrancar; las migraciones se ejecutan explícitamente con una cuenta administrativa.
 
 ## Usar Supabase
 

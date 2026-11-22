@@ -2,6 +2,8 @@
 
 Actualizado el 21 de noviembre de 2026. Trabajo en `feat/sistema-unificado-offline`; `main` se conserva. El alcance completo sigue siendo web, PWA y Windows con el diseño aprobado de Polymet, las mismas funciones y trabajo offline durable/sincronizable en una computadora Windows.
 
+**Foco vigente:** el usuario retiró el objetivo automático y pidió quitar los datos mock para concentrarse en Inventario. El Excel todavía no se recibió. La entrada habitual ya usa exclusivamente el proveedor de la API y abre `/inventario`; los siguientes módulos del plan anterior quedan pendientes. Ver [inventario y Excel](inventario-excel.md).
+
 | Área | Evidencia actual | Trabajo pendiente |
 | --- | --- | --- |
 | Diseño compartido | 71 módulos recuperados, CSS, fuente local, 12 rutas y temas. Referencia general: matriz de 72 casos, 53 PNG idénticos, textos 72/72; [diferencias](design/validacion-visual-2026-11-21.md). Inventario operativo: seis capturas del contenido principal coinciden con Polymet; [alcance de esa comparación](design/validacion-catalogo-2026-11-21.md) | Afinar diferencias generales, desbordamientos móviles heredados y estados secundarios; integrar los módulos restantes |
@@ -13,7 +15,7 @@ Actualizado el 21 de noviembre de 2026. Trabajo en `feat/sistema-unificado-offli
 
 ## Referencia ejecutable
 
-`pnpm preview:design` sirve en `http://127.0.0.1:3001` la **demostración de diseño**, sin credenciales ni acceso a la base real. No es todavía el nuevo POS operativo. La fuente y datos de demostración están identificados en [la documentación de recuperación](design/recuperacion-polymet.md). No publicar esta entrada como aplicación del negocio.
+`pnpm build` y `pnpm build:design` generan el inventario operativo en `dist/operational/`, sin datos de demostración. El arranque Node usa esa compilación. `pnpm preview:design` sirve una vista estática de la misma interfaz en `http://127.0.0.1:3001`; muestra conexión pendiente cuando falta la API y no reemplaza la lectura por muestras. La demostración original requiere `pnpm preview:reference` y se conserva aislada para pruebas visuales; no se publica como aplicación del negocio.
 
 La revisión independiente no encontró defectos importantes en el aislamiento de la vista de diseño. Se comprobaron aperturas y foco de formularios/confirmaciones y la apertura del recibo, además de la prueba automática. Las pruebas de la API usan PostgreSQL desechable, no Supabase del negocio. La compilación Worker es un dry run, no un despliegue.
 

@@ -58,8 +58,9 @@ async function write(route, payload, method = 'POST') {
   });
 }
 async function openInventory() {
-  assert.equal((await page.goto(origin + '/inventario')).status(), 200);
-  await page.getByRole('heading', { name: 'Catálogo de artículos e inventario', exact: true }).waitFor();
+  assert.equal((await page.goto(origin + '/')).status(), 200);
+  await page.getByRole('heading', { name: 'Catálogo de artículos e inventario', exact: true }).waitFor({ timeout: 6000 });
+  assert.equal(new URL(page.url()).pathname, '/inventario');
   await page.getByRole('button', { name: 'Nuevo artículo', exact: true }).waitFor();
 }
 async function newProduct(code, description) {
