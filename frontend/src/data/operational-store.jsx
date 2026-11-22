@@ -39,6 +39,10 @@ function presentation(snapshot) {
   const databaseId = snapshot?.databaseId ?? null;
   const config = state?.configuracion;
   return {
+    cashSession: state?.caja?.session ?? { open: false, id: null, version: null, openedAt: '', cashier: '' },
+    cashSummary: state?.caja?.summary ?? {},
+    cashMovements: state?.caja?.movements ?? [],
+    closures: state?.caja?.closures ?? [],
     products: state?.productos.map(p => productFromSnapshot(p, databaseId)) ?? [],
     categories: catalogCategories(state),
     customers: state?.clientes.map(c => ({ ...recordIdentity(c, databaseId), ...readFields(c, customerFields),
@@ -51,7 +55,7 @@ function presentation(snapshot) {
     sales: state?.facturas.map(s => ({
       id: s.id, customerId: s.clienteId, customerName: s.cliente, customerRnc: s.clienteRnc, number: 'Registro ' + s.id,
       date: s.fechaISO, ncf: s.ncf, comprobante: s.tipoComprobante, condition: s.condicion === 'Credito' ? 'credito' : 'contado',
-      status: null, subtotal: s.base, itbis: s.itbis, total: s.total,
+      paymentMethod: s.metodoPago, cashSessionId: s.cajaId, status: null, subtotal: s.base, itbis: s.itbis, total: s.total,
       lines: s.items.map(line => ({ ...documentLine(line), price: line.precio, priceExact: line.precioExacto, base: line.base, itbis: line.itbis })),
     })).sort(newestFirst) ?? [],
     purchases: state?.compras.map(c => ({
@@ -109,7 +113,9 @@ function durableAction(client, operation) {
 }
 function actions(client) {
   const record = (resource, fields) => durableAction(client, dto => recordOperation(resource, dto, fields));
+  const cash = action => durableAction(client, ({ databaseId, ...payload }) => ({ databaseId, method: 'POST', path: '/api/caja/' + action, payload }));
   return {
+    openCash: cash('abrir'), closeCash: cash('cerrar'), addCashMovement: cash('movimiento'),
     registerSale: durableAction(client, ({ databaseId, ...payload }) => ({ databaseId, method: 'POST', path: '/api/ventas', payload })),
     registerPurchase: durableAction(client, purchaseOperation),
     saveProduct: record('productos', productPayload), deleteProduct: record('productos'),

@@ -29,7 +29,8 @@ async function main() {
   const secretFile = join(directory, `worker-secrets-${randomUUID()}.json`);
   try {
     await writeFile(secretFile, JSON.stringify({ SUPABASE_URL: auth.url, SUPABASE_PUBLISHABLE_KEY: auth.key,
-      POS_SESSION_SECRET: process.env.POS_SESSION_SECRET }), { mode: 0o600, flag: 'wx' });
+      POS_SESSION_SECRET: process.env.POS_SESSION_SECRET,
+      ...(auth.adminKey && { SUPABASE_SECRET_KEY: auth.adminKey }) }), { mode: 0o600, flag: 'wx' });
     const require = createRequire(import.meta.url);
     const executable = join(dirname(require.resolve('wrangler/package.json')), 'bin/wrangler.js');
     await new Promise((done, reject) => {

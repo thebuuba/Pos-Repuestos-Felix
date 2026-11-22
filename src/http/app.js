@@ -18,7 +18,7 @@ const publicFiles = {
 };
 const securityHeaders = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY' };
 const maxBodyBytes = 10 * 1024 * 1024;
-const snapshotRepresentationVersion = 3;
+const snapshotRepresentationVersion = 4;
 
 function stateTag({ databaseId, revision, databaseLabel }) {
   const version = JSON.stringify([snapshotRepresentationVersion, databaseId, revision, databaseLabel]);
@@ -121,6 +121,20 @@ async function route(request, { pool, hosting, databaseLabel = 'PostgreSQL', rea
       return json(401, { error: 'Inicia sesión para acceder al sistema.' });
     }
     if (pathname.startsWith('/api/')) {
+      if (pathname === '/api/account') {
+        if (request.method === 'GET') return json(200, {
+          id: account?.user?.id || 'local', username: account?.user?.email.split('@')[0] || hosting.username || 'Usuario local',
+          canChangeUsername: !!hosting.auth?.adminKey, canChangePassword: !!account,
+        });
+        if (request.method !== 'PUT') return json(405, { error: 'Método no permitido.' });
+        if (request.headers.get('origin') !== (hosting.origin || url.origin) || request.headers.get('sec-fetch-site') === 'cross-site') {
+          return json(403, { error: 'Origen no permitido.' });
+        }
+        if (!account) return json(400, { error: 'Esta instalación no utiliza cuentas individuales. Configura Supabase Auth para cambiar tu cuenta.' });
+        if (request.headers.get('content-type')?.split(';')[0].trim() !== 'application/json') return json(415, { error: 'Se requiere application/json.' });
+        await account.update(await readBody(request, 8192));
+        return json(200, { redirect: '/login' });
+      }
       if (pathname === '/api/state' && request.method === 'PUT') {
         return json(410, { error: 'La escritura global fue retirada. Cierra y vuelve a abrir la aplicación para actualizarla.' });
       }
@@ -145,7 +159,9 @@ async function route(request, { pool, hosting, databaseLabel = 'PostgreSQL', rea
         return json(415, { error: 'Se requiere application/json.' });
       }
       const body = await readBody(request);
-      return json(200, await writeOperation(pool, request.method, pathname, body, request.headers.get('idempotency-key'), databaseLabel));
+      const actor = account?.user ? { id: account.user.id, name: account.user.email.split('@')[0] } :
+        { id: 'local', name: hosting.username || 'Usuario local' };
+      return json(200, await writeOperation(pool, request.method, pathname, body, request.headers.get('idempotency-key'), databaseLabel, actor));
     }
     const asset = isPage ? pageAsset : publicFiles[pathname];
     if (!asset || !['GET', 'HEAD'].includes(request.method)) return json(404, { error: 'No encontrado.' });

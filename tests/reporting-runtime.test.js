@@ -61,7 +61,8 @@ test('real reports export a confirmed sale and versioned settings and formulas s
   const productoId = await post('productos', { nombre: 'Arandela', codigo: 'REP-1', stock: 3,
     costo: 1, precio1: 118, precio2: 118, precio3: 118, gravado: true });
   const clienteId = await post('clientes', { nombre: 'Cliente de reportes', limiteCredito: 500 });
-  await post('ventas', { clienteId, condicion: 'Credito', tipoComprobante: 'B02',
+  const cajaId = await post('caja/abrir', { monto: 0 });
+  await post('ventas', { cajaId, metodoPago: 'credito', clienteId, condicion: 'Credito', tipoComprobante: 'B02',
     items: [{ productoId, cantidad: 1, nivelPrecio: 'precio1' }] });
   browser = await chromium.launch({ channel: 'msedge', headless: true });
   const page = await browser.newPage({ timezoneId: 'Asia/Tokyo', locale: 'es-DO' });

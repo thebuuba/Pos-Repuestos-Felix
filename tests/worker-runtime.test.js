@@ -79,13 +79,16 @@ test('el runtime Workers ejecuta transacciones reales por Hyperdrive local y per
 test('dos ventas concurrentes en Workers no duplican la última unidad y calculan ITBIS en el servidor', async () => {
   const current = await (await call('/api/state')).json();
   const write = (path, body) => call(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ databaseId: current.databaseId, ...body }) });
+  const opened = await write('/api/caja/abrir', { monto: 0 });
+  assert.equal(opened.status, 200);
+  const cajaId = (await opened.json()).result.id;
   const product = await write('/api/productos', { codigo: 'ULTIMA-WORKER', nombre: 'Pieza runtime', stock: 1, costo: 50, precio1: 118, precio2: 110, precio3: 100 });
   assert.equal(product.status, 200);
   const productId = (await product.json()).result.id;
   const customer = await write('/api/clientes', { nombre: 'Crédito runtime', limiteCredito: 200 });
   assert.equal(customer.status, 200);
   const customerId = (await customer.json()).result.id;
-  const sale = { clienteId: customerId, condicion: 'Credito', tipoComprobante: 'B02', total: 0,
+  const sale = { cajaId, metodoPago: 'credito', clienteId: customerId, condicion: 'Credito', tipoComprobante: 'B02', total: 0,
     items: [{ productoId: productId, cantidad: 1, nivelPrecio: 'precio1', precio: 0 }] };
   const results = await Promise.all([write('/api/ventas', sale), write('/api/ventas', sale)]);
   assert.deepEqual(results.map(r => r.status).sort(), [200, 409]);

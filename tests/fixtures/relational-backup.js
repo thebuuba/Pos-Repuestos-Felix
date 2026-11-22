@@ -11,11 +11,16 @@ function centAmount(value) {
 }
 
 export function historicalBackup(backup, version) {
-  assert.equal(backup.version, 5);
+  assert.equal(backup.version, 6);
   assert.ok([2, 3, 4].includes(version));
   const historical = structuredClone(backup);
   historical.version = version;
   const { tables } = historical;
+  delete tables.turnos_caja;
+  delete tables.movimientos_caja;
+  for (const row of tables.ventas) { delete row.caja_id; delete row.metodo_pago; }
+  for (const entries of Object.values(tables)) for (const row of entries) for (const key of Object.keys(row))
+    if (key.endsWith('_en') && row[key] !== null) row[key] = new Date(row[key]).toISOString();
   for (const row of tables.productos) {
     delete row.notificar_minimo;
     row.stock = integralQuantity(row.stock);

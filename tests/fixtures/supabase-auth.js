@@ -12,9 +12,19 @@ export async function testAuthService() {
     let result;
     if (req.url === '/auth/v1/token?grant_type=password' && data.email === user.email && data.password === password) {
       result = { access_token: 'fixture-access', refresh_token: 'fixture-refresh', expires_in: 3600, user };
+    } else if (req.url === '/auth/v1/admin/users/fixture-user' && req.method === 'PUT' &&
+        req.headers.apikey === 'sb_secret_fixture' && !req.headers.authorization) {
+      if (data.email === 'ocupado@usuarios.repuestosfelix.invalid') {
+        res.writeHead(422, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ code: 'email_exists' }));
+        return;
+      }
+      user.email = data.email;
+      if (data.password) password = data.password;
+      result = user;
     } else if (req.headers.authorization === 'Bearer fixture-access') {
       if (req.url === '/auth/v1/user') {
-        if (req.method === 'PUT') password = data.password;
+        if (req.method === 'PUT' && data.password) password = data.password;
         result = user;
       } else if (req.url === '/auth/v1/logout?scope=local') result = {};
     }

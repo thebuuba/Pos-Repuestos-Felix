@@ -1,3 +1,4 @@
+import { openTestCash } from './fixtures/cash.js';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -23,6 +24,7 @@ before(async () => {
   const admin = new pg.Pool({ connectionString: database.connectionString });
   try { await migrateDatabase(admin); } finally { await admin.end(); }
   pool = new pg.Pool({ connectionString: database.connectionString, options: '-c role=pos_app' });
+  await openTestCash(pool);
   server = await createApp(pool, { assetsDirectory: pathToFileURL(directory + path.sep) });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   origin = `http://127.0.0.1:${server.address().port}`;
@@ -51,6 +53,7 @@ after(async () => {
 const snapshot = async () => (await fetch(origin + '/api/state')).json();
 const confirmedProduct = async code => (await snapshot()).state.productos.find(p => p.codigo === code);
 async function write(route, payload, method = 'POST') {
+  if (route === 'ventas') payload = { cajaId: await openTestCash(pool), metodoPago: payload.condicion === 'Credito' ? 'credito' : 'efectivo', ...payload };
   return fetch(origin + '/api/' + route, {
     method,
     headers: { 'Content-Type': 'application/json', 'Idempotency-Key': randomUUID() },

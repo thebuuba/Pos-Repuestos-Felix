@@ -1,3 +1,4 @@
+import { openTestCash } from './fixtures/cash.js';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -14,6 +15,7 @@ before(async () => {
   await pool.end();
   // Exercise the complete runtime with the restricted production role.
   pool = new pg.Pool({ connectionString: database.connectionString, options: '-c role=pos_app' });
+  await openTestCash(pool);
   server = await createApp(pool);
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   base = `http://127.0.0.1:${server.address().port}`;
@@ -26,6 +28,7 @@ const get = async () => (await fetch(base + '/api/state')).json();
 
 async function write(path, body, key = randomUUID(), method = 'POST') {
   const snapshot = await get();
+  if (path === 'ventas') body = { cajaId: await openTestCash(pool), metodoPago: body.condicion === 'Credito' ? 'credito' : 'efectivo', ...body };
   return fetch(base + '/api/' + path, { method, headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key }, body: JSON.stringify({ databaseId: snapshot.databaseId, ...body }) });
 }
 
@@ -142,7 +145,7 @@ test('a SQL failure on the second purchase detail rolls back the header, product
 test('backup restores complete relational data, rotates identity and preserves failed restore atomically', async () => {
   const original = await get();
   const backup = await (await fetch(base + '/api/backup')).json();
-  assert.equal(backup.version, 5);
+  assert.equal(backup.version, 6);
   assert.ok(backup.tables.productos.some(p => !p.activo));
   const invalid = structuredClone(backup); invalid.tables.venta_detalles[0].producto_id = 999999;
   assert.equal((await write('restore', { backup: invalid, revision: original.revision })).status, 400);
@@ -198,6 +201,7 @@ test('legacy backup restore imports through relational constraints using restric
 });
 
 test('idempotent replay is a coherent snapshot while another sale commits', async () => {
+  await openTestCash(pool);
   const snapshot = await get(); const key = randomUUID();
   const body = { databaseId: snapshot.databaseId, codigo: 'REPLAY', nombre: 'Consistencia', costo: 1, stock: 2, precio1: 2, precio2: 2, precio3: 2 };
   const created = await writeOperation(pool, 'POST', '/api/productos', body, key, 'Pruebas');
@@ -209,7 +213,7 @@ test('idempotent replay is a coherent snapshot while another sale commits', asyn
     return { release: () => client.release(), async query(sql, params) {
       const result = await client.query(sql, params);
       if (sql.includes('FROM public.productos ORDER BY id')) {
-        writer = writeOperation(writerPool, 'POST', '/api/ventas', { databaseId: snapshot.databaseId, clienteId: snapshot.state.clientes[0].id, condicion: 'Contado', tipoComprobante: 'B02', items: [{ productoId: created.result.id, cantidad: 1, nivelPrecio: 'precio1' }] }, randomUUID(), 'Pruebas').finally(() => { finished = true; });
+        writer = writeOperation(writerPool, 'POST', '/api/ventas', { cajaId: snapshot.state.caja.session.id, metodoPago: 'efectivo', databaseId: snapshot.databaseId, clienteId: snapshot.state.clientes[0].id, condicion: 'Contado', tipoComprobante: 'B02', items: [{ productoId: created.result.id, cantidad: 1, nivelPrecio: 'precio1' }] }, randomUUID(), 'Pruebas').finally(() => { finished = true; });
         const deadline = Date.now() + 10000;
         while (!finished) {
           const waiting = await pool.query('SELECT 1 FROM pg_locks WHERE pid=$1 AND NOT granted', [writerPid || null]);

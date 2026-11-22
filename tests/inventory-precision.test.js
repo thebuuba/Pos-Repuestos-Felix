@@ -1,3 +1,4 @@
+import { openTestCash } from './fixtures/cash.js';
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -16,6 +17,7 @@ before(async () => {
   try { await migrateDatabase(admin); }
   finally { await admin.end(); }
   pool = new pg.Pool({ connectionString: database.connectionString, options: '-c role=pos_app' });
+  await openTestCash(pool);
 });
 after(async () => {
   await pool?.end();
@@ -23,8 +25,10 @@ after(async () => {
 });
 
 const snapshot = (backup = false) => readSnapshot(pool, 'Pruebas', backup);
-const write = async (path, payload, { key = randomUUID(), method = 'POST', databaseId } = {}) =>
-  writeOperation(pool, method, '/api/' + path, { databaseId: databaseId ?? (await snapshot()).databaseId, ...payload }, key, 'Pruebas');
+const write = async (path, payload, { key = randomUUID(), method = 'POST', databaseId } = {}) => {
+  if (path === 'ventas') payload = { cajaId: await openTestCash(pool), metodoPago: payload.condicion === 'Credito' ? 'credito' : 'efectivo', ...payload };
+  return writeOperation(pool, method, '/api/' + path, { databaseId: databaseId ?? (await snapshot()).databaseId, ...payload }, key, 'Pruebas');
+};
 const item = { codigo: 'caso', nombre: 'Repuesto', stock: '1.25', stockMinimo: '0.50',
   costo: '12.3456', precio1: '23.45', precio2: '0.00', precio3: '0.00', notificarMinimo: false };
 
@@ -114,7 +118,7 @@ test('fractional inventory survives catalog edits, sales, purchases and v5 backu
   // Restore that ledger from v5 and verify the legacy layout rejects its precision.
   const beforeRestore = await snapshot();
   const backup = JSON.parse(JSON.stringify(await snapshot(true)));
-  assert.equal(backup.version, 5);
+  assert.equal(backup.version, 6);
   const backedUpProduct = backup.tables.productos.find(p => p.codigo === 'caso');
   assert.deepEqual([backedUpProduct.stock, backedUpProduct.stock_minimo, backedUpProduct.costo, backedUpProduct.notificar_minimo],
     ['1.05', '0.50', '12.3456', false]);

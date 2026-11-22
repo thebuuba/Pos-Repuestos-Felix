@@ -13,6 +13,7 @@ import { migrateDatabase } from '../src/db/migrations.js';
 import { createApp } from '../src/server.js';
 import { temporaryPostgres } from './postgres.js';
 import { buildOperational } from '../scripts/build-operational.mjs';
+import { openTestCash } from './fixtures/cash.js';
 
 let database, pool, server, origin, browser, script, assets;
 
@@ -26,6 +27,7 @@ before(async () => {
   const admin = new pg.Pool({ connectionString: database.connectionString });
   try { await migrateDatabase(admin); } finally { await admin.end(); }
   pool = new pg.Pool({ connectionString: database.connectionString, options: '-c role=pos_app' });
+  await openTestCash(pool);
   assets = await mkdtemp(path.join(tmpdir(), 'felix-pos-client-'));
   await buildOperational(assets);
   server = await createApp(pool, { assetsDirectory: pathToFileURL(assets + path.sep) });
@@ -465,7 +467,7 @@ for (const resource of ['ventas', 'compras']) for (const mismatch of ['missing',
     let supplier;
     if (!sale) supplier = await page.evaluate(() => client.writeOperation({method:'POST',path:'/api/suplidores',
       databaseId:client.getState().snapshot.databaseId,payload:{nombre:'Suplidor de confirmación'}}));
-    const payload = sale ? { clienteId:created.state.clientes[0].id,condicion:'Contado',tipoComprobante:'B02',
+    const payload = sale ? { cajaId:created.state.caja.session.id,metodoPago:'efectivo',clienteId:created.state.clientes[0].id,condicion:'Contado',tipoComprobante:'B02',
       items:[{productoId:product.id,cantidad:'1.25',nivelPrecio:'precio1'}] } : {
       suplidorId:supplier.result.id,numero:'Confirmación '+mismatch,
       items:[{codigo:product.codigo,nombre:product.nombre,cantidad:'1.25',costo:'1.0001',precio1:'2',precio2:'0',precio3:'0'}] };

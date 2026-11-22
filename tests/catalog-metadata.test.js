@@ -1,3 +1,4 @@
+import { openTestCash } from './fixtures/cash.js';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -14,6 +15,7 @@ before(async () => {
   const admin = new pg.Pool({ connectionString: database.connectionString });
   try { await migrateDatabase(admin); } finally { await admin.end(); }
   pool = new pg.Pool({ connectionString: database.connectionString, options: '-c role=pos_app' });
+  await openTestCash(pool);
   server = await createApp(pool);
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   origin = `http://127.0.0.1:${server.address().port}`;
@@ -24,6 +26,7 @@ after(async () => {
 });
 const state = async () => (await fetch(origin + '/api/state')).json();
 async function write(route, data, method = 'POST', key = randomUUID()) {
+  if (route === 'ventas') data = { cajaId: await openTestCash(pool), metodoPago: data.condicion === 'Credito' ? 'credito' : 'efectivo', ...data };
   return fetch(origin + '/api/' + route, { method, headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key }, body: JSON.stringify({ databaseId: (await state()).databaseId, ...data }) });
 }
 const basic = p => ({ codigo: p.codigo, nombre: p.nombre, stock: p.stock, costo: p.costo, precio1: p.precio1, precio2: p.precio2, precio3: p.precio3, version: p.version });
@@ -79,7 +82,7 @@ test('tax exempt catalog prices retain the same gross amount and produce zero IT
 test('v5 backups preserve metadata and older versions use the SQL defaults', async () => {
   const original = await state();
   const backup = await (await fetch(origin + '/api/backup')).json();
-  assert.equal(backup.version, 5);
+  assert.equal(backup.version, 6);
   const row = backup.tables.productos.find(p => Number(p.id) === productId);
   assert.equal(row.stock_minimo, '7.00');
   assert.equal(row.gravado, false);
@@ -138,7 +141,7 @@ test('additive catalog migration preserves populated prior schema and historical
     const oldProduct = (await admin.query('SELECT * FROM productos')).rows[0];
     const oldDocuments = (await admin.query('SELECT row_to_json(v) AS document FROM ventas v ORDER BY id')).rows;
     const oldMovements = (await admin.query('SELECT row_to_json(m) AS document FROM movimientos_inventario m ORDER BY id')).rows;
-    assert.deepEqual(await migrateDatabase(admin), ['20261121220000', '20261122000000', '20261122010000', '20261122015000', '20261122020000']);
+    assert.deepEqual(await migrateDatabase(admin), ['20261121220000', '20261122000000', '20261122010000', '20261122015000', '20261122020000', '20261122030000']);
     assert.equal((await admin.query('SELECT es_contado FROM clientes')).rows[0].es_contado, false);
     const migrated = (await admin.query('SELECT * FROM productos')).rows[0];
     assert.deepEqual(Object.fromEntries(Object.keys(oldProduct).map(key => [key, migrated[key]])),
@@ -148,7 +151,8 @@ test('additive catalog migration preserves populated prior schema and historical
     assert.equal(migrated.stock_minimo, '0.00');
     assert.equal(migrated.notificar_minimo, true);
     assert.equal(migrated.categoria, '');
-    assert.deepEqual((await admin.query('SELECT row_to_json(v) AS document FROM ventas v ORDER BY id')).rows, oldDocuments);
+    assert.deepEqual((await admin.query('SELECT row_to_json(v) AS document FROM ventas v ORDER BY id')).rows,
+      oldDocuments.map(row => ({ document: { ...row.document, caja_id: null, metodo_pago: null } })));
     assert.deepEqual((await admin.query('SELECT row_to_json(m) AS document FROM movimientos_inventario m ORDER BY id')).rows, oldMovements);
     assert.deepEqual(await migrateDatabase(admin), []);
     await assert.rejects(admin.query('UPDATE productos SET stock_minimo=-1'), error => error.code === '23514');

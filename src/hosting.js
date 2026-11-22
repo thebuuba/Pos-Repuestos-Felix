@@ -18,7 +18,7 @@ export function hostingConfig(env = process.env, { requireSupabase = false } = {
   // Activating Supabase removes the two legacy settings from that profile.
   const existingLocalLogin = local && !origin && env.APP_USERNAME && env.APP_PASSWORD;
   if (requireSupabase || (databaseHost && !existingLocalLogin && !['127.0.0.1', 'localhost', '[::1]'].includes(databaseHost)) ||
-      'SUPABASE_URL' in env || 'SUPABASE_PUBLISHABLE_KEY' in env || 'POS_SESSION_SECRET' in env) {
+      'SUPABASE_URL' in env || 'SUPABASE_PUBLISHABLE_KEY' in env || 'SUPABASE_SECRET_KEY' in env || 'POS_SESSION_SECRET' in env) {
     const auth = authConfig(env);
     const direct = /^db\.([a-z0-9]+)\.supabase\.co$/.exec(databaseHost);
     const pooler = databaseHost?.endsWith('.pooler.supabase.com');

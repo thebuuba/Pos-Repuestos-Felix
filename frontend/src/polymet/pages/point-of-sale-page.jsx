@@ -361,12 +361,14 @@ function PointOfSalePage() {
 export { PointOfSalePage };
 
 export function OperationalPointOfSalePage() {
-  const { products, customers, categories, settings, runtime, registerSale } =
+  const { products, customers, categories, settings, cashSession, runtime, registerSale } =
     usePosStore();
   const cashCustomer = customers.find((row) => row.isCashCustomer);
   const [customerId, setCustomerId] = useState(() => cashCustomer?.id ?? null);
   const [comprobante, setComprobante] = useState("B02");
   const [condition, setCondition] = useState("contado");
+  const [paymentMethod, setPaymentMethod] = useState("efectivo");
+  const [received, setReceived] = useState("");
   const [priceLevel, setPriceLevel] = useState(
     settings.defaultPriceLevel ?? "p1",
   );
@@ -397,6 +399,8 @@ export function OperationalPointOfSalePage() {
     disabledReason = "Conecta con el servicio para registrar la venta.";
   else if (runtime.pending)
     disabledReason = "Hay una solicitud pendiente de confirmación.";
+  else if (runtime.busy) disabledReason = "Espera a que termine la operación en curso.";
+  else if (!cashSession?.open) disabledReason = "La caja está cerrada. Ábrela para facturar.";
   else if (!customer) disabledReason = "Selecciona un cliente activo.";
   else if (comprobante !== "B02" && !customer.rnc)
     disabledReason = "Selecciona un cliente con RNC.";
@@ -426,6 +430,8 @@ export function OperationalPointOfSalePage() {
     setCustomerId(cashCustomer?.id ?? null);
     setComprobante("B02");
     setCondition("contado");
+    setPaymentMethod("efectivo");
+    setReceived("");
     setFailure(null);
   }
   function editQuantity(product, level, quantity, replace = false) {
@@ -444,13 +450,18 @@ export function OperationalPointOfSalePage() {
   async function checkout(retry = false) {
     if (inFlight.current || receipt) return;
     if (!retry && (disabledReason || locked || !items.length)) return;
+    if (!retry && condition === "contado" && paymentMethod === "efectivo" &&
+        (!Number.isFinite(Number(received)) || Number(received) < totals.total)) {
+      ue.warning("El monto recibido es menor al total");
+      return;
+    }
     inFlight.current = true;
     setSending(true);
     try {
       const snapshot = retry
         ? await failure.retry()
         : await registerSale(
-            saleRequest(items, settings, customerId, condition, comprobante),
+            saleRequest(items, settings, customerId, condition, comprobante, cashSession, paymentMethod),
           );
       const config = snapshot.state.configuracion;
       setReceipt({
@@ -535,6 +546,14 @@ export function OperationalPointOfSalePage() {
           )}
         </div>
       )}
+      {!cashSession?.open && <div className="flex flex-col gap-3 rounded-2xl border border-primary/30 bg-accent p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground"><Lock className="h-4 w-4" /></div>
+          <div><p className="text-sm font-semibold text-accent-foreground">La caja está cerrada</p>
+            <p className="text-xs text-accent-foreground/80">Abre la caja con el fondo inicial para empezar a facturar.</p></div>
+        </div>
+        <Button asChild className="rounded-xl"><Link to="/caja">Abrir caja</Link></Button>
+      </div>}
       <SaleLayout
         locked={locked}
         invoice={
@@ -595,6 +614,10 @@ export function OperationalPointOfSalePage() {
             condition={condition}
             totals={totals}
             discountPct={0}
+            paymentMethod={paymentMethod}
+            onPaymentMethodChange={setPaymentMethod}
+            received={received}
+            onReceivedChange={setReceived}
             itbisRate={settings.itbisRate}
             onCancel={resetSale}
             disabledReason={disabledReason}

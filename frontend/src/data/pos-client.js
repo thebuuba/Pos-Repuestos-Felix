@@ -60,6 +60,7 @@ const resourceFields = { productos: productFields, clientes: customerFields, sup
   configuracion: settingsFields };
 
 function checkTarget(method, path) {
+  if (method === 'POST' && ['/api/caja/abrir','/api/caja/cerrar','/api/caja/movimiento'].includes(path)) return { resource: path.slice(5), target: null };
   if (method === 'POST' && ['/api/ventas', '/api/compras'].includes(path)) return { resource: path.slice(5), target: null };
   if (method === 'PUT' && path === '/api/configuracion') return { resource: 'configuracion', target: 1 };
   const match = typeof path === 'string' && /^\/api\/(productos|clientes|suplidores|formulas)(?:\/([1-9]\d*))?$/.exec(path);
@@ -73,10 +74,17 @@ function checkPayload(method, resource, payload) {
   const mutable = resourceFields[resource];
   const invalid = () => { throw new Error('Los campos de la solicitud no son válidos.'); };
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) invalid();
+  if (resource.startsWith('caja/')) {
+    const fields = resource === 'caja/abrir' ? { monto: amount } : resource === 'caja/cerrar'
+      ? { cajaId: id, version: id, conteo: amount }
+      : { cajaId: id, version: id, tipo: oneOf('entrada','salida'), monto: value => amount(value) && Number(value) > 0, concepto: name };
+    if (Object.keys(payload).length !== Object.keys(fields).length || !complete(payload, fields)) invalid();
+    return;
+  }
   if (resource === 'ventas' || resource === 'compras') {
     const sale = resource === 'ventas';
     const header = sale ? { clienteId: id, condicion: oneOf('Contado','Credito'), tipoComprobante: oneOf('B01','B02','B14'),
-      versionConfiguracion: id } : { suplidorId: id, numero: name };
+      versionConfiguracion: id, cajaId: id, metodoPago: oneOf('efectivo','tarjeta','transferencia','credito') } : { suplidorId: id, numero: name };
     const fields = sale ? { productoId: id, cantidad: v => decimalQuantity(v) && Number(v) > 0,
       nivelPrecio: oneOf('precio1','precio2','precio3'), versionProducto: id } :
       { codigo: name, nombre: name, cantidad: v => decimalQuantity(v) && Number(v) > 0, costo: cost, precio1: cost, precio2: cost, precio3: cost,
@@ -84,7 +92,10 @@ function checkPayload(method, resource, payload) {
     const required = sale ? ['productoId','cantidad','nivelPrecio'] : ['codigo','nombre','cantidad','costo','precio1','precio2','precio3'];
     if (!Array.isArray(payload.items) || !payload.items.length || payload.items.length > 1000 ||
         Object.entries(payload).some(([key,value]) => key !== 'items' && (!header[key] || !header[key](value))) ||
-        Object.keys(header).some(key => !key.startsWith('version') && !Object.hasOwn(payload,key))) invalid();
+        Object.keys(header).some(key => !key.startsWith('version') && !['cajaId','metodoPago'].includes(key) && !Object.hasOwn(payload,key))) invalid();
+    // Old pending journals must reach the server to obtain a definitive rejection.
+    if (sale && (Object.hasOwn(payload,'cajaId') !== Object.hasOwn(payload,'metodoPago') ||
+        (payload.metodoPago && (payload.condicion === 'Credito') !== (payload.metodoPago === 'credito')))) invalid();
     for (const row of payload.items) {
       if (!row || typeof row !== 'object' || Array.isArray(row) ||
           Object.entries(row).some(([key,value]) => !fields[key] || !fields[key](value)) ||
@@ -155,6 +166,7 @@ function validDocument(row, sale) {
       : validUnit(line.costo,line.costoExacto) && validPrices(line,['p1','p2','p3'])));
 }
 function validOperationalState(state) {
+  if (state.caja !== undefined && !validCash(state.caja)) return false;
   const config = state.configuracion;
   if (!complete(config, settingsFields) || !id(config.version) || typeof config.itbisPorcentaje !== 'number' ||
       state.empresa !== config.empresa || state.configuracionVersion !== config.version || !Number.isFinite(state.itbisRate) ||
@@ -167,6 +179,17 @@ function validOperationalState(state) {
     state.clientes.filter(row => row.esContado).length <= 1 &&
     records(state.suplidores, row => id(row.version) && complete(row, supplierFields) && (row.formulaId === null || formulas.has(row.formulaId))) &&
     records(state.facturas, row => validDocument(row, true)) && records(state.compras, row => validDocument(row, false));
+}
+
+function validCash(cash) {
+  const instant = value => typeof value === 'string' && Number.isFinite(Date.parse(value));
+  return cash && cash.session && bool(cash.session.open) && (cash.session.open
+    ? complete(cash.session, { id, version: id, openedAt: instant, cashier: name, openingAmount: money })
+    : cash.session.id === null) && complete(cash.summary, {
+      opening: money, cashSales: money, cardSales: money, transferSales: money, creditSales: money,
+      entradas: money, salidas: money, cobros: money, pagos: money, expected: money, invoices: integerQuantity,
+    }) && records(cash.movements, row => complete(row, { sessionId: id, type: oneOf('entrada','salida'), amount: money, description: name, date: instant })) &&
+    records(cash.closures, row => complete(row, { openedAt: instant, closedAt: instant, cashier: name, opening: money, expected: money, counted: money, sales: money }));
 }
 
 function checkSnapshot(snapshot) {
@@ -200,6 +223,19 @@ function checkConfirmation(snapshot, packet, resource, expected, payload) {
   // Older journals have no baseline. Their exact operation can still be confirmed by the server.
   if (Object.hasOwn(packet, 'baseRevision') && (!Number.isSafeInteger(packet.baseRevision) ||
       packet.baseRevision < 0 || snapshot.revision <= packet.baseRevision)) throw new Error(unconfirmed);
+  if (resource.startsWith('caja/')) {
+    if (!validCash(snapshot.state.caja)) throw new Error(unconfirmed);
+    // A replay may now show a later turn; the durable receipt proves the original command.
+    if (resource === 'caja/cerrar' && (target !== payload.cajaId || snapshot.result.counted !== Number(payload.conteo))) throw new Error(unconfirmed);
+    if (!proof.replayed) {
+      const cash = snapshot.state.caja;
+      if (resource === 'caja/abrir' && (!cash.session.open || cash.session.id !== target || cash.session.openingAmount !== Number(payload.monto))) throw new Error(unconfirmed);
+      if (resource === 'caja/movimiento' && !cash.movements.some(row => row.id === target && row.sessionId === payload.cajaId &&
+        row.type === payload.tipo && row.amount === Number(payload.monto) && row.description === payload.concepto.trim())) throw new Error(unconfirmed);
+      if (resource === 'caja/cerrar' && !cash.closures.some(row => row.id === target && row.counted === Number(payload.conteo))) throw new Error(unconfirmed);
+    }
+    return;
+  }
   if (resource === 'ventas' || resource === 'compras') {
     // Documents are immutable, including when recovering a lost response.
     const sale = resource === 'ventas';
@@ -208,6 +244,7 @@ function checkConfirmation(snapshot, packet, resource, expected, payload) {
     if (!row || row.items.length !== payload.items.length || (sale
       ? row.clienteId !== payload.clienteId || row.condicion !== payload.condicion || row.tipoComprobante !== payload.tipoComprobante
       : row.suplidorId !== payload.suplidorId || row.numero !== payload.numero.trim())) throw new Error(unconfirmed);
+    if (sale && payload.cajaId !== undefined && (row.cajaId !== payload.cajaId || row.metodoPago !== payload.metodoPago)) throw new Error(unconfirmed);
     for (const [index, item] of payload.items.entries()) {
       const saved = row.items[index];
       if (quantityUnits(saved.cant) !== quantityUnits(item.cantidad) || (sale

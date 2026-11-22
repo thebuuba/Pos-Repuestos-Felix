@@ -32,7 +32,7 @@ async function verifyPrintLayout(page, width, letter = false) {
   assert.equal(await settledWidth(), screenWidth);
 }
 
-test('el POS busca en 7681 productos y recupera una venta confirmada tras perder la respuesta', { timeout: 90000 }, async () => {
+test('el POS abre caja, recupera una venta confirmada, registra movimientos y conserva el cierre', { timeout: 90000 }, async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'felix-sale-browser-'));
   let database, admin, pool, browser, server;
   try {
@@ -58,7 +58,12 @@ test('el POS busca en 7681 productos y recupera una venta confirmada tras perder
       assert.equal(response.status(), 200, await response.text());
       await route.abort('failed');
     });
-    await page.goto('http://127.0.0.1:' + server.address().port + '/ventas');
+    const origin = 'http://127.0.0.1:' + server.address().port;
+    await page.goto(origin + '/caja');
+    await page.getByLabel('Fondo inicial').fill('0');
+    await page.getByRole('main').getByRole('button', { name: 'Abrir caja', exact: true }).click();
+    await page.getByText('Caja abierta', { exact: true }).waitFor();
+    await page.goto(origin + '/ventas');
     const search = page.getByPlaceholder('Escanea o escribe… ej. BUJ-C7HSA');
     await search.waitFor();
     assert.equal(await page.getByRole('button', { name: /Artículo sintético/ }).count(), 48);
@@ -69,6 +74,7 @@ test('el POS busca en 7681 productos y recupera una venta confirmada tras perder
     assert.match(await row.innerText(), /10\.003/);
     assert.match(await row.innerText(), /25\.01/);
     const checkout = page.getByRole('button', { name: /Registrar venta/ });
+    await page.getByRole('button', { name: 'Tarjeta', exact: true }).click();
     await checkout.click();
     const retry = page.getByRole('button', { name: 'Reintentar venta' });
     await retry.waitFor();
@@ -85,6 +91,8 @@ test('el POS busca en 7681 productos y recupera una venta confirmada tras perder
     await verifyPrintLayout(page, 80 * 96 / 25.4);
     assert.equal(packets.length, 2);
     assert.deepEqual(packets[0], packets[1]);
+    assert.equal(JSON.parse(packets[0].body).metodoPago, 'tarjeta');
+    assert.ok(JSON.parse(packets[0].body).cajaId > 0);
     assert.equal((await admin.query('SELECT count(*) AS n FROM ventas')).rows[0].n, '1');
     assert.equal((await admin.query("SELECT stock FROM productos WHERE codigo='sint-7681 '")).rows[0].stock, '0.50');
     for (const [format, width, letter] of [
@@ -96,10 +104,39 @@ test('el POS busca en 7681 productos y recupera una venta confirmada tras perder
       await page.reload();
       await search.fill('SINT-3');
       await search.press('Enter');
+      await page.getByRole('button', { name: 'Tarjeta', exact: true }).click();
       await checkout.click();
       await dialog.getByRole('heading', { name: 'Venta registrada' }).waitFor();
       await verifyPrintLayout(page, width, letter);
     }
+    await page.goto(origin + '/caja');
+    for (const [type, amount, concept] of [['Entrada', '100.01', 'Fondo confirmado'], ['Salida', '25', 'Retiro confirmado']]) {
+      await page.getByRole('button', { name: 'Entrada / salida' }).click();
+      await dialog.getByRole('button', { name: type, exact: true }).click();
+      await dialog.getByLabel('Monto RD$').fill(amount);
+      await dialog.getByLabel('Concepto').fill(concept);
+      await dialog.getByRole('button', { name: 'Registrar ' + type.toLowerCase() }).click();
+      await dialog.waitFor({ state: 'hidden' });
+      await page.getByText(type + ' registrada', { exact: true }).waitFor();
+    }
+    await page.reload();
+    await page.getByText('Fondo confirmado', { exact: true }).waitFor();
+    await page.setViewportSize({ width: 320, height: 600 });
+    await page.getByRole('main').getByRole('button', { name: 'Cerrar caja', exact: true }).click();
+    await dialog.evaluate(async element => { await Promise.allSettled(element.getAnimations({ subtree: true }).map(animation => animation.finished)); });
+    const bounds = await dialog.boundingBox();
+    assert.ok(bounds.y >= 15 && bounds.y + bounds.height <= 585, 'El conteo debe caber en un teléfono bajo y desplazarse dentro del diálogo.');
+    await dialog.getByLabel('Cantidad de 25', { exact: true }).fill('3');
+    await dialog.getByRole('button', { name: /Cerrar caja con/ }).click();
+    await dialog.waitFor({ state: 'hidden' });
+    await page.getByText('Caja cerrada', { exact: true }).waitFor();
+    await page.reload();
+    const history = page.getByRole('row').last();
+    await history.getByText(/0\.01/).waitFor();
+    assert.equal(await page.getByText('Cuadrada', { exact: true }).count(), 0);
+    assert.deepEqual((await admin.query('SELECT fondo,esperado,contado,ventas FROM turnos_caja')).rows,
+      [{ fondo: '0.00', esperado: '75.01', contado: '75.00', ventas: '55.01' }]);
+    assert.equal((await admin.query('SELECT count(*) AS n FROM movimientos_caja')).rows[0].n, '2');
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();

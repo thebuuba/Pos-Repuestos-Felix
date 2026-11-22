@@ -9,6 +9,8 @@ import { Building } from "lucide-react";
 import { Calculator } from "lucide-react";
 import { FileBadge } from "lucide-react";
 import { Printer } from "lucide-react";
+import { UserRound } from "lucide-react";
+import { AccountSettings } from "../components/account-settings.jsx";
 import { TabsContent2 } from "../../components/ui/tabs.jsx";
 import { SectionCard } from "../components/section-card.jsx";
 import { Field } from "../components/form-field.jsx";
@@ -131,7 +133,11 @@ function SettingsPage() {
             <Printer className="h-4 w-4" />
             {"Facturación"}
           </TabsTrigger2>
+          {runtime && <TabsTrigger2 value="cuenta" className={TAB_CLASS}>
+            <UserRound className="h-4 w-4" />Mi cuenta
+          </TabsTrigger2>}
         </TabsList2>
+        {runtime && <TabsContent2 value="cuenta" className="mt-0"><AccountSettings /></TabsContent2>}
         <TabsContent2 value="negocio" className="mt-0">
           <SectionCard
             title="Datos del negocio"

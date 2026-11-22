@@ -7,6 +7,18 @@ const product = { id: 19, version: 7, databaseId: 'catalog', taxable: true, stoc
 const second = { ...product, id: 20, taxable: false, pricesExact: { p1: '4.9999' } };
 const settings = { version: 3, itbisRate: 18, databaseId: 'catalog' };
 
+test('la venta identifica el turno y su medio de pago sin inventar métodos históricos', () => {
+  const cart = updateSaleLine([], product, 'p1', 1);
+  const cashSession = { id: 8, version: 2, open: true };
+  for (const method of ['efectivo', 'tarjeta', 'transferencia']) {
+    const dto = saleRequest(cart, settings, 9, 'contado', 'B02', cashSession, method);
+    assert.equal(dto.cajaId, 8);
+    assert.equal(dto.metodoPago, method);
+  }
+  assert.equal(saleRequest(cart, settings, 9, 'credito', 'B02', cashSession, 'efectivo').metodoPago, 'credito');
+  assert.throws(() => saleRequest(cart, settings, 9, 'contado', 'B02', { open: false }, 'efectivo'), /caja/i);
+});
+
 test('los totales incluyen el ITBIS por línea y usan cuatro decimales de precio y centésimas de unidad', () => {
   let cart = updateSaleLine([], product, 'p1', '2.50');
   cart = updateSaleLine(cart, second, 'p1', '0.01');
@@ -47,4 +59,5 @@ test('el recibo usa el registro confirmado por el servidor, sin inventar tiempo,
   assert.equal(receipt.ncf, null);
   assert.equal(receipt.received, undefined);
   assert.equal(receipt.paymentLabel, undefined);
+  assert.equal(receiptFromConfirmation({ ...snapshot, state: { facturas: [{ ...doc, metodoPago: 'tarjeta' }] } }).paymentLabel, 'Tarjeta');
 });

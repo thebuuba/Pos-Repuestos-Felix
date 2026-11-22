@@ -16,7 +16,11 @@ export function authConfig(env) {
       (env.POS_SESSION_SECRET || '').length < 32) {
     throw new Error('Configura la URL de Supabase, su clave publicable y POS_SESSION_SECRET de al menos 32 caracteres.');
   }
+  if (env.SUPABASE_SECRET_KEY && !/^sb_secret_[\w-]+$/.test(env.SUPABASE_SECRET_KEY)) {
+    throw new Error('SUPABASE_SECRET_KEY debe ser una clave secreta de Supabase, disponible solo en el servidor.');
+  }
   return { url: url.origin, key: env.SUPABASE_PUBLISHABLE_KEY,
+    adminKey: env.SUPABASE_SECRET_KEY || null,
     cookieKey: createHash('sha256').update(env.POS_SESSION_SECRET).digest(), fetch: fetch.bind(globalThis) };
 }
 
@@ -48,6 +52,12 @@ function permitted(user) {
     !(Date.parse(user.banned_until) > Date.now());
 }
 
+function validatePassword(next, current) {
+  if (typeof next !== 'string' || [...next].length < 6 || Buffer.byteLength(next) > 72 || next === current) {
+    throw Object.assign(new Error('Elige otra contraseña de al menos 6 caracteres y hasta 72 bytes. No se exige combinar letras, números ni símbolos.'), { status: 400 });
+  }
+}
+
 // The upstream tokens are opaque. Bind them, the ID and the absolute session
 // deadline to this host so the browser cannot extend or switch the session.
 export function accountSession(hosting, request) {
@@ -58,7 +68,7 @@ export function accountSession(hosting, request) {
   const now = () => Math.floor(Date.now() / 1000);
   const context = Buffer.from('felix-auth-v2\0' + auth.url + '\0' + scope);
   const raw = (request.headers.get('cookie') || '').split(';').map(item => item.trim()).find(item => item.startsWith(name + '='));
-  let session, cookie;
+  let session, cookie, user;
   if (raw && raw.length < 4070) {
     try {
       const token = raw.slice(name.length + 1);
@@ -71,7 +81,7 @@ export function accountSession(hosting, request) {
       }
     } catch { /* A modified ticket or a different origin cannot open this cookie. */ }
   }
-  const clear = () => { cookie = name + '=' + attrs + '; Max-Age=0'; session = null; };
+  const clear = () => { cookie = name + '=' + attrs + '; Max-Age=0'; session = null; user = null; };
   function save(tokens, deadline, remember) {
     if (!tokens?.access_token || !tokens.refresh_token || !Number.isFinite(tokens.expires_in) || tokens.expires_in <= 0) throw serviceError();
     session = { id: tokens.user.id, access: tokens.access_token, refresh: tokens.refresh_token,
@@ -87,15 +97,14 @@ export function accountSession(hosting, request) {
   }
   return {
     get cookie() { return cookie; },
+    get user() { return user; },
     async signIn(username, password, remember, newPassword) {
       const email = accountEmail(username);
       if (!email || typeof password !== 'string' || !password || password.length > 2000) return false;
       const credentials = await authRequest(auth, 'token?grant_type=password', { body: { email, password } });
       if (!permitted(credentials?.user) || credentials.user.email !== email) return false;
       if (newPassword !== undefined) {
-        if (typeof newPassword !== 'string' || newPassword.length < 12 || Buffer.byteLength(newPassword) > 72 || newPassword === password) {
-          throw Object.assign(new Error('Elige otra contraseña de al menos 12 caracteres y hasta 72 bytes.'), { status: 400 });
-        }
+        validatePassword(newPassword, password);
         const updated = await authRequest(auth, 'user', { method: 'PUT', token: credentials.access_token, body: { password: newPassword } });
         if (!updated) throw Object.assign(new Error('Supabase rechazó la nueva contraseña. Elige otra y vuelve a intentar.'), { status: 400 });
       }
@@ -108,11 +117,54 @@ export function accountSession(hosting, request) {
         const refreshed = await authRequest(auth, 'token?grant_type=refresh_token', { body: { refresh_token: session.refresh } });
         if (!permitted(refreshed?.user) || refreshed.user.id !== session.id) { clear(); return false; }
         save(refreshed, session.deadline, session.remember);
+        user = refreshed.user;
         return true;
       }
-      const user = await authRequest(auth, 'user', { method: 'GET', token: session.access });
+      user = await authRequest(auth, 'user', { method: 'GET', token: session.access });
       if (!permitted(user) || user.id !== session.id) { clear(); return false; }
       return true;
+    },
+    async update(body) {
+      if (!session || !permitted(user) || user.id !== session.id) {
+        throw Object.assign(new Error('Inicia sesión para cambiar tu cuenta.'), { status: 401 });
+      }
+      const invalid = message => Object.assign(new Error(message), { status: 400 });
+      if (!body || typeof body !== 'object' || Array.isArray(body) ||
+          Object.keys(body).some(key => !['currentPassword', 'newUsername', 'newPassword'].includes(key))) {
+        throw invalid('La solicitud de cambio de cuenta no es válida.');
+      }
+      const { currentPassword, newPassword, newUsername } = body;
+      if (typeof currentPassword !== 'string' || !currentPassword || currentPassword.length > 2000) throw invalid('Indica tu contraseña actual.');
+      const email = newUsername === undefined ? user.email : accountEmail(newUsername);
+      if (!email) throw invalid('Usa entre 2 y 40 letras sin tildes, números, puntos, guiones o guiones bajos para el usuario.');
+      if (newPassword !== undefined) validatePassword(newPassword, currentPassword);
+      const rename = email !== user.email;
+      if (!rename && newPassword === undefined) throw invalid('Indica un usuario o una contraseña diferente.');
+      if (rename && !auth.adminKey) throw Object.assign(new Error('El cambio de usuario no está habilitado en este servidor. Puedes cambiar tu contraseña.'), { status: 503 });
+      const credentials = await authRequest(auth, 'token?grant_type=password', { body: { email: user.email, password: currentPassword } });
+      if (!permitted(credentials?.user) || credentials.user.id !== session.id || credentials.user.email !== user.email) {
+        throw Object.assign(new Error('La contraseña actual no es correcta o tu cuenta cambió. Vuelve a iniciar sesión si el problema continúa.'), { status: 403 });
+      }
+      try {
+        // Synthetic addresses cannot receive confirmation email. This server-only
+        // call is scoped to the reauthenticated UUID, never to a client-supplied ID.
+        const updated = rename
+          ? await authRequest({ ...auth, key: auth.adminKey }, 'admin/users/' + encodeURIComponent(user.id), {
+            method: 'PUT', body: { email, email_confirm: true, ...(newPassword !== undefined && { password: newPassword }) },
+          })
+          : await authRequest(auth, 'user', { method: 'PUT', token: credentials.access_token, body: { password: newPassword } });
+        if (!updated) throw invalid(rename ? 'No se pudo usar ese nombre de usuario. Puede estar ocupado; revisa los datos e inténtalo de nuevo.' :
+          'Supabase rechazó la nueva contraseña. Elige otra y vuelve a intentar.');
+        if (!permitted(updated) || updated.id !== session.id || updated.email !== email) throw serviceError();
+        const previousAccess = session.access;
+        clear();
+        try { await authRequest(auth, 'logout?scope=local', { token: previousAccess }); } catch { /* Cookie is already cleared. */ }
+      } catch (error) {
+        if (error.status === 503) throw Object.assign(new Error('No se confirmó el cambio de cuenta. Inicia sesión y comprueba tus datos antes de reintentar.'), { status: 503 });
+        throw error;
+      } finally {
+        try { await authRequest(auth, 'logout?scope=local', { token: credentials.access_token }); } catch { /* Never retain the reauthentication session. */ }
+      }
     },
     async signOut() {
       try {

@@ -7,6 +7,7 @@ import { temporaryPostgres } from './postgres.js';
 import { createApp } from '../src/server.js';
 import { migrateDatabase } from '../src/db/migrations.js';
 import { initialState } from './fixtures/legacy-state.js';
+import { openTestCash } from './fixtures/cash.js';
 
 let database, pool, server, base, dom, interval;
 const nativeFetch = globalThis.fetch;
@@ -31,6 +32,7 @@ before(async () => {
   database = await temporaryPostgres();
   pool = new pg.Pool({ connectionString: database.connectionString });
   await migrateDatabase(pool);
+  await openTestCash(pool);
   server = await createApp(pool);
   await new Promise((done) => server.listen(0, '127.0.0.1', done));
   base = `http://127.0.0.1:${server.address().port}`;
@@ -263,6 +265,7 @@ test('restaura un archivo JSON y rechaza un respaldo inválido sin cambiar los d
 });
 
 test('un artículo exento muestra el mismo ITBIS y total antes y después de confirmar', async () => {
+  await openTestCash(pool);
   await write('POST', '/api/productos', { codigo: 'EXENTO', nombre: 'Artículo exento', stock: 2, costo: 10,
     precio1: 118, precio2: 110, precio3: 100, gravado: false });
   await window.actualizarDatos();

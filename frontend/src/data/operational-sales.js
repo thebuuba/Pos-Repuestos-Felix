@@ -41,11 +41,15 @@ export function quoteSale(items, percent) {
     discount: 0, itbis: Number(money(total - base)), total: Number(money(total)) } };
 }
 
-export function saleRequest(items, settings, customerId, condition, comprobante) {
+export function saleRequest(items, settings, customerId, condition, comprobante, cashSession, paymentMethod) {
   if (!items.length || items.some(item => item.product.databaseId !== settings.databaseId)) {
     throw new Error('Revisa la base y los artículos de la venta.');
   }
+  if (cashSession && (!cashSession.open || !Number.isSafeInteger(cashSession.id))) {
+    throw new Error('La caja está cerrada. Ábrela para facturar.');
+  }
   return { databaseId: settings.databaseId, clienteId: customerId,
+    ...(cashSession ? { cajaId: cashSession.id, metodoPago: condition === 'credito' ? 'credito' : paymentMethod } : {}),
     condicion: condition === 'credito' ? 'Credito' : 'Contado', tipoComprobante: comprobante,
     versionConfiguracion: settings.version,
     items: items.map(({ product, priceLevel, quantity }) => ({ productoId: product.id, versionProducto: product.version,
@@ -58,6 +62,7 @@ export function receiptFromConfirmation(snapshot) {
   return { invoiceNumber: 'Registro ' + doc.id, dateOnly: doc.fechaISO, customerName: doc.cliente,
     customerRnc: doc.clienteRnc, ncf: doc.ncf, comprobante: doc.tipoComprobante, itbisRate: null,
     conditionLabel: doc.condicion === 'Credito' ? 'Crédito' : 'Contado',
+    paymentLabel: { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia', credito: 'Crédito' }[doc.metodoPago],
     totals: { subtotal: doc.base, itbis: doc.itbis, total: doc.total },
     lines: doc.items.map(row => ({ key: row.id, product: { name: row.nombre }, quantity: row.cant,
       unitPrice: row.precioExacto ?? row.precio, subtotal: row.subtotal })) };

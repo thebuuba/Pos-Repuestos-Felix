@@ -4,6 +4,7 @@ import { validateState } from './legacy-state.js';
 import { OperationError, fail, text, productCode, id, money, cents, quantityUnits, costUnits, decimalUnits } from './operation-fields.js';
 import { contactOperation, settingsOperation } from './contact-operations.js';
 import { backupLayout, exportBackup, rows, tables } from './relational-backup.js';
+import { cashOperation, cashPresentation, lockCash, validateCashRestore } from './cash-operations.js';
 export { fail } from './operation-fields.js';
 
 const maintenanceLock = 74198232;
@@ -58,6 +59,7 @@ async function snapshot(client, databaseLabel) {
   return {
     ...version,
     state: {
+      caja: cashPresentation(data),
       catalogo: (await client.query('SELECT pos_privado.netpos_opciones() AS opciones')).rows[0].opciones,
       empresa: config.empresa, itbisRate: Number(config.tasa_itbis), configuracionVersion: number(config.version),
       configuracion: { version: number(config.version), empresa: config.empresa, rnc: config.rnc, tel: config.tel,
@@ -75,7 +77,7 @@ async function snapshot(client, databaseLabel) {
         esContado: c.es_contado, deuda: balances.get(c.id) })),
       suplidores: data.suplidores.filter(s => s.activo).map(s => ({ id: number(s.id), version: number(s.version), nombre: s.nombre, rnc: s.rnc, tel: s.tel,
         correo: s.correo, contacto: s.contacto, diasCredito: s.dias_credito, formulaId: s.formula_id === null ? null : number(s.formula_id) })),
-      facturas: data.ventas.map(v => ({ id: number(v.id), clienteId: number(v.cliente_id), cliente: v.cliente_nombre, clienteRnc: v.cliente_rnc, ncf: v.ncf, tipoComprobante: v.tipo_comprobante, fecha: displayDate(v.fecha), fechaISO: date(v.fecha), condicion: v.condicion, base: Number(v.base), itbis: Number(v.itbis), total: Number(v.total), items: saleItems.get(v.id) ?? [] })),
+      facturas: data.ventas.map(v => ({ id: number(v.id), cajaId: v.caja_id === null ? null : number(v.caja_id), metodoPago: v.metodo_pago, clienteId: number(v.cliente_id), cliente: v.cliente_nombre, clienteRnc: v.cliente_rnc, ncf: v.ncf, tipoComprobante: v.tipo_comprobante, fecha: displayDate(v.fecha), fechaISO: date(v.fecha), condicion: v.condicion, base: Number(v.base), itbis: Number(v.itbis), total: Number(v.total), items: saleItems.get(v.id) ?? [] })),
       compras: data.compras.map(c => ({ id: number(c.id), suplidorId: number(c.suplidor_id), suplidor: c.suplidor_nombre, numero: c.numero, fecha: displayDate(c.fecha), fechaISO: date(c.fecha), total: Number(c.total), items: purchaseItems.get(c.id) ?? [] })),
       movimientos: data.movimientos_inventario.map(m => ({ ...m, id: number(m.id), productoId: number(m.producto_id),
         cantidad: Number(m.cantidad), existencia_posterior: Number(m.existencia_posterior) })),
@@ -151,6 +153,8 @@ async function productOperation(client, method, productId, body) {
   return { id: savedId };
 }
 async function sale(client, body) {
+  const turn = await lockCash(client, body.cajaId);
+  if (body.condicion === 'Credito' ? body.metodoPago !== 'credito' : !['efectivo','tarjeta','transferencia'].includes(body.metodoPago)) fail('Selecciona un método de pago válido para la venta.');
   const customer = (await client.query('SELECT * FROM clientes WHERE id=$1 AND activo FOR UPDATE', [id(body.clienteId)])).rows[0];
   if (!customer) fail('Selecciona un cliente activo.');
   if (!['Contado', 'Credito'].includes(body.condicion) || !['B01', 'B02', 'B14'].includes(body.tipoComprobante)) fail('Condición o tipo de comprobante inválido.');
@@ -186,8 +190,8 @@ async function sale(client, body) {
     const debtCents = debt.startsWith('-') ? -cents(debt.slice(1)) : cents(debt);
     if (debtCents + totals.total > cents(customer.limite_credito)) fail('La venta supera el crédito disponible del cliente.', 409);
   }
-  const header = (await client.query(`INSERT INTO ventas(cliente_id,cliente_nombre,cliente_rnc,condicion,tipo_comprobante,base,itbis,total)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`, [customer.id, customer.nombre, customer.rnc, body.condicion, body.tipoComprobante, money(totals.base), money(totals.tax), money(totals.total)])).rows[0];
+  const header = (await client.query(`INSERT INTO ventas(cliente_id,cliente_nombre,cliente_rnc,condicion,tipo_comprobante,base,itbis,total,caja_id,metodo_pago,creado_en)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,clock_timestamp()) RETURNING id`, [customer.id, customer.nombre, customer.rnc, body.condicion, body.tipoComprobante, money(totals.base), money(totals.tax), money(totals.total), turn.id, body.metodoPago])).rows[0];
   for (const line of lines) {
     const { item, p } = line;
     const detail = (await client.query(`INSERT INTO venta_detalles(venta_id,producto_id,codigo,nombre,cantidad,nivel_precio,precio,base,itbis,total)
@@ -196,6 +200,7 @@ async function sale(client, body) {
     await client.query('UPDATE productos SET stock=$2,version=version+1,actualizado_en=now() WHERE id=$1', [p.id, quantityText(p.stock)]);
     await movement(client, p.id, -item.quantity, p.stock, 'venta', detail.id);
   }
+  await client.query('UPDATE turnos_caja SET version=version+1 WHERE id=$1', [turn.id]);
   return { id: number(header.id) };
 }
 async function purchase(client, body) {
@@ -274,6 +279,7 @@ async function restore(client, body) {
       UNION ALL SELECT 1 FROM movimientos_inventario m JOIN venta_detalles d ON d.id=m.venta_detalle_id WHERE m.producto_id<>d.producto_id OR m.cantidad<>-d.cantidad
       UNION ALL SELECT 1 FROM movimientos_inventario m JOIN compra_detalles d ON d.id=m.compra_detalle_id WHERE m.producto_id<>d.producto_id OR m.cantidad<>d.cantidad LIMIT 1`);
     if (invalid.rowCount) fail('El respaldo contiene totales o movimientos inconsistentes.');
+    await validateCashRestore(client);
     for (const table of Object.keys(tables).filter(table => table !== 'configuracion')) await client.query(`SELECT setval(pg_get_serial_sequence('public.${table}','id'),COALESCE((SELECT max(id) FROM public.${table}),1),(SELECT count(*)>0 FROM public.${table}))`);
   }
   const databaseId = randomUUID();
@@ -282,7 +288,8 @@ async function restore(client, body) {
   return { id: databaseId };
 }
 
-async function execute(client, method, path, body) {
+async function execute(client, method, path, body, actor) {
+  if (method === 'POST' && ['/api/caja/abrir','/api/caja/cerrar','/api/caja/movimiento'].includes(path)) return cashOperation(client, path, body, actor);
   const productMatch = path.match(/^\/api\/productos\/(\d+)$/);
   if ((path === '/api/productos' && method === 'POST') || (productMatch && ['PUT', 'DELETE'].includes(method))) return productOperation(client, method, productMatch ? id(Number(productMatch[1])) : null, body);
   const contactMatch = path.match(/^\/api\/(clientes|suplidores|formulas)(?:\/(\d+))?$/);
@@ -294,7 +301,7 @@ async function execute(client, method, path, body) {
   if (method === 'POST' && path === '/api/restore') return restore(client, body);
   fail('Ruta de operación no encontrada.', 404);
 }
-export async function writeOperation(pool, method, path, body, key, databaseLabel) {
+export async function writeOperation(pool, method, path, body, key, databaseLabel, actor = { id: 'local', name: 'Usuario local' }) {
   if (!body || typeof body !== 'object' || Array.isArray(body) || !uuid.test(body.databaseId) || !uuid.test(key || '')) fail('Se requiere databaseId e Idempotency-Key UUID válidos.');
   const type = method + ' ' + path;
   const fingerprint = createHash('sha256').update(canonical(body)).digest('hex');
@@ -319,7 +326,7 @@ export async function writeOperation(pool, method, path, body, key, databaseLabe
       if (body.databaseId !== system.database_id) fail('La base cambió. Actualiza los datos antes de guardar.', 409);
       // Only this call can reject a new operation after the guarded key miss.
       executingNewOperation = true;
-      result = await execute(client, method, path, body);
+      result = await execute(client, method, path, body, actor);
       executingNewOperation = false;
       await client.query('UPDATE pos_privado.sistema SET revision=revision+1 WHERE id=1');
       const identity = (await client.query('SELECT database_id FROM pos_privado.sistema WHERE id=1')).rows[0].database_id;

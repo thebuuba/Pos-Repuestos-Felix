@@ -63,6 +63,8 @@ test('cuenta individual, permiso administrativo, renovación y salida en el POS'
 });
 
 test('un proyecto Supabase incompleto nunca acepta el acceso compartido', () => {
+  assert.throws(() => hostingConfig({ SUPABASE_SECRET_KEY: 'sb_secret_fixture' }), /Supabase/);
+  assert.throws(() => hostingConfig({ ...env, SUPABASE_SECRET_KEY: 'clave-invalida' }), /SUPABASE_SECRET_KEY/);
   assert.throws(() => hostingConfig({ ...env, SUPABASE_PUBLISHABLE_KEY: '', APP_PASSWORD: 'x'.repeat(48) }), /Supabase/);
   assert.throws(() => hostingConfig({ ...env, SUPABASE_PUBLISHABLE_KEY: 'sb_secret_solo_administrador' }), /Supabase/);
   for (const url of ['postgresql://pos_app.otro@aws-0-us-east-1.pooler.supabase.com/postgres', 'postgresql://pos_app@db.otro.supabase.co/postgres']) {

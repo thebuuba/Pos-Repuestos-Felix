@@ -23,19 +23,28 @@ const v4 = {
   productos: v3.productos, ventas: v3.ventas, venta_detalles: v3.venta_detalles,
   compras: v3.compras, compra_detalles: v3.compra_detalles, movimientos_inventario: v3.movimientos_inventario,
 };
-export const tables = { ...v4, productos: [...v4.productos, 'notificar_minimo'] };
+const v5 = { ...v4, productos: [...v4.productos, 'notificar_minimo'] };
+// Parent turns precede sales; reverse order is safe for transactional restore.
+export const tables = {
+  turnos_caja: ['id','usuario','cajero','fondo','abierto_en','cerrado_en','cerrado_por','esperado','contado','ventas','version'],
+  ...v5,
+  ventas: [...v5.ventas, 'caja_id', 'metodo_pago'],
+  movimientos_caja: ['id','caja_id','tipo','monto','concepto','usuario','creado_en'],
+};
 function exactKeys(value, keys) {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
 }
 const preferenceFields = { redondeo: 'redondeo', nivel_precio_predeterminado: 'nivelPrecioPredeterminado',
   formato_impresion: 'formatoImpresion', permitir_stock_negativo: 'permitirStockNegativo' };
-const moneyColumns = new Set(['costo', 'precio', 'precio1', 'precio2', 'precio3', 'base', 'itbis', 'total']);
+const moneyColumns = new Set(['costo', 'precio', 'precio1', 'precio2', 'precio3', 'base', 'itbis', 'total','fondo','esperado','contado','ventas','monto']);
 function validateBackupRow(table, row, columns, version) {
   if (!exactKeys(row, columns)) fail(`Fila inválida en ${table}.`);
   if (table === 'formulas_precios') formulaValues(row.factor_costo, row.recargo1, row.recargo2, row.recargo3);
   for (const key of columns) {
     const value = row[key];
+    if (value === null && ((table === 'turnos_caja' && ['cerrado_en','cerrado_por','esperado','contado','ventas'].includes(key)) ||
+      (table === 'ventas' && ['caja_id','metodo_pago'].includes(key)))) continue;
     if (key === 'id' || key === 'version' || key.endsWith('_id')) {
       if (value === null && ['venta_detalle_id', 'compra_detalle_id', 'formula_id'].includes(key)) continue;
       if (!['number', 'string'].includes(typeof value) || !/^[1-9]\d*$/.test(String(value)) || !Number.isSafeInteger(Number(value))) fail(`Identificador inválido en ${table}.`);
@@ -43,8 +52,8 @@ function validateBackupRow(table, row, columns, version) {
     else if (Object.hasOwn(preferenceFields, key)) settingValue(preferenceFields[key], value);
     else if (key === 'dias_credito') { if (value !== null) integer(value, key, 0); }
     else if (key === 'limite_credito') { if (value !== null) cents(value, key); }
-    else if (key === 'codigo' && version === 5) productCode(value);
-    else if (version === 5 && ['costo','precio','precio1','precio2','precio3'].includes(key)) costUnits(value, key);
+    else if (key === 'codigo' && version >= 5) productCode(value);
+    else if (version >= 5 && ['costo','precio','precio1','precio2','precio3'].includes(key)) costUnits(value, key);
     else if (moneyColumns.has(key)) cents(value, key);
     else if (key === 'saldo_apertura') {
       if (!['string', 'number'].includes(typeof value)) fail('Saldo de apertura inválido.');
@@ -52,7 +61,7 @@ function validateBackupRow(table, row, columns, version) {
     } else if (key === 'tasa_itbis') {
       if (!['string', 'number'].includes(typeof value) || !/^(?:0(?:\.\d{1,6})?|1(?:\.0{1,6})?)$/.test(String(value))) fail('Tasa ITBIS inválida.');
     } else if (['stock', 'cantidad', 'existencia_posterior', 'stock_minimo'].includes(key)) {
-      if (version === 5) {
+      if (version >= 5) {
         const signed = table === 'movimientos_inventario' && key === 'cantidad';
         const raw = signed && ['string', 'number'].includes(typeof value) ? String(value).replace(/^-/, '') : value;
         quantityUnits(raw, key, key === 'cantidad' ? 0.01 : 0);
@@ -64,24 +73,26 @@ function validateBackupRow(table, row, columns, version) {
     else if (key === 'fecha') {
       if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(value + 'T00:00:00Z')) || new Date(value + 'T00:00:00Z').toISOString().slice(0, 10) !== value) fail('Fecha documental inválida.');
     } else if (key.endsWith('_en')) {
-      if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) || !Number.isFinite(Date.parse(value))) fail('Fecha de registro inválida.');
+      const timestamp = version === 6 ? /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3,6}Z$/ : /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+      if (typeof value !== 'string' || !timestamp.test(value) || !Number.isFinite(Date.parse(value))) fail('Fecha de registro inválida.');
     } else if (!(key === 'ncf' && value === null)) text(value, key, !['rnc', 'tel', 'cliente_rnc', 'motivo', 'correo', 'direccion', 'contacto', 'pie_ticket', 'marca', 'categoria', 'ubicacion'].includes(key));
   }
 }
 
-export async function rows(client, table) {
-  const columns = tables[table].map(key => key === 'fecha' ? 'fecha::text AS fecha' : key).join(',');
+export async function rows(client, table, preciseDates = false) {
+  const columns = tables[table].map(key => key === 'fecha' ? 'fecha::text AS fecha' : preciseDates && key.endsWith('_en')
+    ? `to_char(${key} AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS ${key}` : key).join(',');
   return (await client.query(`SELECT ${columns} FROM public.${table} ORDER BY id`)).rows;
 }
 export async function exportBackup(client) {
   const data = {};
-  for (const table of Object.keys(tables)) data[table] = await rows(client, table);
-  return { version: 5, format: 'repuestos-felix-relacional', exportedAt: new Date().toISOString(), tables: data };
+  for (const table of Object.keys(tables)) data[table] = await rows(client, table, true);
+  return { version: 6, format: 'repuestos-felix-relacional', exportedAt: new Date().toISOString(), tables: data };
 }
 
 // INSERT usa los valores predeterminados de SQL para las columnas ausentes.
 export function backupLayout(backup) {
-  const layout = backup.version === 5 ? tables : backup.version === 4 ? v4 : backup.version === 3 ? v3 : backup.version === 2 ? v2 : null;
+  const layout = backup.version === 6 ? tables : backup.version === 5 ? v5 : backup.version === 4 ? v4 : backup.version === 3 ? v3 : backup.version === 2 ? v2 : null;
   if (!layout || backup.format !== 'repuestos-felix-relacional' || !exactKeys(backup.tables, Object.keys(layout)))
     fail('Formato de respaldo inválido.');
   for (const [table, columns] of Object.entries(layout)) {

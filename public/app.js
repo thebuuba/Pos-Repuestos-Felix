@@ -322,6 +322,7 @@ window.procesarFactura = async function () {
   if (!carrito.length) return alert('Agrega artículos primero.');
   if (cartDatabaseId !== databaseId) return alert('La base cambió. Vacía y reconstruye la venta antes de guardarla.');
   await guardarOperacion('POST', '/api/ventas', {
+    cajaId: window.db.caja?.session?.id, metodoPago: $('fac-condicion').value === 'Credito' ? 'credito' : 'efectivo',
     clienteId: Number($('fac-cliente').value), tipoComprobante: $('fac-ncf').value, condicion: $('fac-condicion').value,
     items: carrito.map((item) => ({ productoId: item.productoId, cantidad: item.cant, nivelPrecio: item.nivelPrecio })),
   }, (result) => {

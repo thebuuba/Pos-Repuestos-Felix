@@ -6,6 +6,7 @@ import { historicalBackup } from './fixtures/relational-backup.js';
 import { temporaryPostgres } from './postgres.js';
 import { migrateDatabase } from '../src/db/migrations.js';
 import { createApp } from '../src/server.js';
+import { openTestCash } from './fixtures/cash.js';
 
 let database, pool, server, origin;
 before(async () => {
@@ -13,6 +14,7 @@ before(async () => {
   const admin = new pg.Pool({ connectionString: database.connectionString });
   try { await migrateDatabase(admin); } finally { await admin.end(); }
   pool = new pg.Pool({ connectionString: database.connectionString, options: '-c role=pos_app' });
+  await openTestCash(pool);
   server = await createApp(pool);
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   origin = 'http://127.0.0.1:' + server.address().port + '/api/';
@@ -24,6 +26,7 @@ after(async () => {
 });
 const get = async (path = 'state') => (await fetch(origin + path)).json();
 async function write(path, body, method = 'POST', key = randomUUID()) {
+  if (path === 'ventas') body = { cajaId: await openTestCash(pool), metodoPago: body.condicion === 'Credito' ? 'credito' : 'efectivo', ...body };
   return fetch(origin + path, { method, headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
     body: JSON.stringify({ databaseId: (await get()).databaseId, ...body }) });
 }
@@ -145,8 +148,8 @@ test('v5 restores inactive records, references and cash identity while archiving
   const supplierId = (await confirmed('suplidores', { nombre: 'Archivado', formulaId })).result.id;
   await confirmed('suplidores/' + supplierId, { version: 1 }, 'DELETE');
   const backup = await get('backup');
-  assert.equal(backup.version, 5);
-  assert.deepEqual(Object.keys(backup.tables), ['configuracion', 'clientes', 'formulas_precios', 'suplidores', 'productos', 'ventas', 'venta_detalles', 'compras', 'compra_detalles', 'movimientos_inventario']);
+  assert.equal(backup.version, 6);
+  assert.deepEqual(Object.keys(backup.tables), ['turnos_caja', 'configuracion', 'clientes', 'formulas_precios', 'suplidores', 'productos', 'ventas', 'venta_detalles', 'compras', 'compra_detalles', 'movimientos_inventario', 'movimientos_caja']);
   const marked = backup.tables.clientes.find(c => c.es_contado);
   marked.id = '8500';
   backup.tables.clientes.sort((a, b) => Number(a.id) - Number(b.id));
@@ -155,7 +158,7 @@ test('v5 restores inactive records, references and cash identity while archiving
   assert.notEqual(restored.databaseId, original.databaseId);
   assert.deepEqual((await get('backup')).tables, backup.tables);
   const archived = (await pool.query("SELECT datos FROM pos_privado.respaldos WHERE motivo='Antes de restaurar' ORDER BY id DESC LIMIT 1")).rows[0].datos;
-  assert.equal(archived.version, 5);
+  assert.equal(archived.version, 6);
   assert.notEqual(archived.tables.clientes.find(c => c.es_contado).id, '8500');
   for (const method of ['PUT', 'DELETE'])
     await rejected(409, 'clientes/8500', method === 'PUT' ? { nombre: 'Cambio', version: 1 } : { version: 1 }, method);

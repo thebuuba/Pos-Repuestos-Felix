@@ -1,0 +1,476 @@
+{
+  "checkedAt": "2026-11-22T14:15:50.922Z",
+  "version": "99fdb61658b9417c680d007618ae1c23bf135b1e",
+  "fixedTime": "2026-11-21T20:00:00Z",
+  "referenceSource": "Approved archived JavaScript and CSS; SHA-256 verified before bundling its React imports with installed React",
+  "scope": "Caja and dialogs, same Polymet fixtures in isolated local reference entry; no database or credentials.",
+  "exclusions": [
+    "Operational provider, operator identity, pending requests and real cash balances are tested separately."
+  ],
+  "results": [
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "state": "count",
+      "textMatches": true,
+      "geometryMatches": false,
+      "pngBytesMatch": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 52233,
+        "changedPercent": 15.8686
+      },
+      "reference": {
+        "file": "390-light-count-reference.png",
+        "geometry": {
+          "width": 390,
+          "height": 862,
+          "children": [
+            {
+              "tag": "H2",
+              "x": 25,
+              "y": 25,
+              "width": 340,
+              "height": 18
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 129,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 173,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 217,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 261,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 305,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 349,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 433,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 477,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 521,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 565,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 801,
+              "width": 340,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 757,
+              "width": 340,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 357,
+              "y": 17,
+              "width": 16,
+              "height": 16
+            }
+          ]
+        },
+        "overflow": false
+      },
+      "local": {
+        "file": "390-light-count-local.png",
+        "geometry": {
+          "width": 390,
+          "height": 812,
+          "children": [
+            {
+              "tag": "H2",
+              "x": 25,
+              "y": 25,
+              "width": 340,
+              "height": 18
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 129,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 173,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 217,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 261,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 305,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 349,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 433,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 477,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 521,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 565,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 801,
+              "width": 340,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 757,
+              "width": 340,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 357,
+              "y": 17,
+              "width": 16,
+              "height": 16
+            }
+          ]
+        },
+        "overflow": false
+      }
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "state": "count",
+      "textMatches": true,
+      "geometryMatches": false,
+      "pngBytesMatch": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 59477,
+        "changedPercent": 18.0693
+      },
+      "reference": {
+        "file": "390-dark-count-reference.png",
+        "geometry": {
+          "width": 390,
+          "height": 862,
+          "children": [
+            {
+              "tag": "H2",
+              "x": 25,
+              "y": 25,
+              "width": 340,
+              "height": 18
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 129,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 173,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 217,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 261,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 305,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 349,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 433,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 477,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 521,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 565,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 801,
+              "width": 340,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 757,
+              "width": 340,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 357,
+              "y": 17,
+              "width": 16,
+              "height": 16
+            }
+          ]
+        },
+        "overflow": false
+      },
+      "local": {
+        "file": "390-dark-count-local.png",
+        "geometry": {
+          "width": 390,
+          "height": 812,
+          "children": [
+            {
+              "tag": "H2",
+              "x": 25,
+              "y": 25,
+              "width": 340,
+              "height": 18
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 129,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 173,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 217,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 261,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 305,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 349,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 433,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 477,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 521,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 565,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 801,
+              "width": 340,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 757,
+              "width": 340,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 357,
+              "y": 17,
+              "width": 16,
+              "height": 16
+            }
+          ]
+        },
+        "overflow": false
+      }
+    }
+  ]
+}

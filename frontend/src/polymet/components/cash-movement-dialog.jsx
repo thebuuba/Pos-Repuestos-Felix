@@ -32,6 +32,11 @@ function CashMovementDialog({
   onOpenChange,
   defaultType = "salida",
   onConfirm,
+  disabled = false,
+  sending = false,
+  failure,
+  onRetry,
+  retryDisabled = false,
 }) {
   const [type, setType] = useState(defaultType);
   const [amount, setAmount] = useState("");
@@ -43,19 +48,25 @@ function CashMovementDialog({
       setDescription("");
     }
   }, [open, defaultType]);
-  const valid = Number(amount) > 0 && description.trim().length > 0;
+  const valid = /^\d+(?:\.\d{1,2})?$/.test(amount) && Number.isFinite(Number(amount)) && Number(amount) > 0
+    && description.trim().length > 0 && description.length <= 2000;
   return (
     <Dialog2 open={open} onOpenChange={onOpenChange}>
-      <DialogContent2 className="max-w-md rounded-2xl">
+      <DialogContent2 closeDisabled={sending || !!failure?.retry} style={{ maxHeight: "calc(100dvh - 2rem)" }} className="max-w-md overflow-y-auto rounded-2xl">
         <DialogHeader>
           <DialogTitle2>{"Movimiento de caja"}</DialogTitle2>
           <DialogDescription2>
             {"Registra dinero que entra o sale de la caja."}
           </DialogDescription2>
         </DialogHeader>
+        {(sending || failure) && <div role={failure ? "alert" : "status"} className="space-y-2 text-sm">
+          <p>{sending ? "Confirmando el movimiento…" : failure.message}</p>
+          {failure?.retry && <Button variant="outline" onClick={onRetry} disabled={retryDisabled}>Reintentar movimiento</Button>}
+        </div>}
         <div className="grid grid-cols-2 gap-2">
           {["entrada", "salida"].map((t) => (
             <button
+              disabled={disabled}
               type="button"
               onClick={() => setType(t)}
               className={cn(
@@ -77,9 +88,13 @@ function CashMovementDialog({
             </button>
           ))}
         </div>
-        <Field label="Monto RD$">
+        <Field label="Monto RD$" htmlFor="cash-movement-amount">
           <Input
+            id="cash-movement-amount"
+            disabled={disabled}
             type="number"
+            min="0.01"
+            step="0.01"
             inputMode="decimal"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
@@ -88,8 +103,11 @@ function CashMovementDialog({
             autoFocus={true}
           />
         </Field>
-        <Field label="Concepto">
+        <Field label="Concepto" htmlFor="cash-movement-description">
           <Input
+            id="cash-movement-description"
+            disabled={disabled}
+            maxLength={2000}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="¿Para qué es?"
@@ -98,6 +116,7 @@ function CashMovementDialog({
           <div className="flex flex-wrap gap-1.5 pt-1">
             {SUGGESTIONS[type].map((s) => (
               <button
+                disabled={disabled}
                 type="button"
                 onClick={() => setDescription(s)}
                 className="rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground"
@@ -111,8 +130,8 @@ function CashMovementDialog({
         <DialogFooter>
           <Button
             className="h-11 w-full rounded-xl"
-            disabled={!valid}
-            onClick={() => onConfirm(type, Number(amount), description.trim())}
+            disabled={disabled || !valid}
+            onClick={() => onConfirm(type, amount, description.trim())}
           >
             {"Registrar "}
             {type}

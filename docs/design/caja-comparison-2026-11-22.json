@@ -1,0 +1,3516 @@
+{
+  "checkedAt": "2026-11-22T14:05:11.545Z",
+  "version": "99fdb61658b9417c680d007618ae1c23bf135b1e",
+  "fixedTime": "2026-11-21T20:00:00Z",
+  "referenceSource": "Approved archived JavaScript and CSS; SHA-256 verified before bundling its React imports with installed React",
+  "scope": "Caja and dialogs, same Polymet fixtures in isolated local reference entry; no database or credentials.",
+  "exclusions": [
+    "Operational provider, operator identity, pending requests and real cash balances are tested separately."
+  ],
+  "results": [
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "state": "page",
+      "textMatches": true,
+      "geometryMatches": true,
+      "pngBytesMatch": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "changedPercent": 0
+      },
+      "reference": {
+        "file": "390-light-page-reference.png",
+        "geometry": {
+          "width": 390,
+          "height": 1775,
+          "children": [
+            {
+              "tag": "H1",
+              "x": 16,
+              "y": 16,
+              "width": 358,
+              "height": 32
+            },
+            {
+              "tag": "BUTTON",
+              "x": 16,
+              "y": 88,
+              "width": 169.33,
+              "height": 40
+            },
+            {
+              "tag": "BUTTON",
+              "x": 193.33,
+              "y": 88,
+              "width": 138.19,
+              "height": 40
+            },
+            {
+              "tag": "SECTION",
+              "x": 16,
+              "y": 1035,
+              "width": 358,
+              "height": 268
+            },
+            {
+              "tag": "H2",
+              "x": 79,
+              "y": 1060,
+              "width": 172.84,
+              "height": 24
+            },
+            {
+              "tag": "BUTTON",
+              "x": 265.95,
+              "y": 1056,
+              "width": 87.05,
+              "height": 32
+            },
+            {
+              "tag": "SECTION",
+              "x": 16,
+              "y": 1327,
+              "width": 358,
+              "height": 432
+            },
+            {
+              "tag": "H2",
+              "x": 79,
+              "y": 1352,
+              "width": 138.8,
+              "height": 24
+            },
+            {
+              "tag": "TABLE",
+              "x": 17,
+              "y": 1396,
+              "width": 680,
+              "height": 362
+            }
+          ]
+        },
+        "overflow": false
+      },
+      "local": {
+        "file": "390-light-page-local.png",
+        "geometry": {
+          "width": 390,
+          "height": 1775,
+          "children": [
+            {
+              "tag": "H1",
+              "x": 16,
+              "y": 16,
+              "width": 358,
+              "height": 32
+            },
+            {
+              "tag": "BUTTON",
+              "x": 16,
+              "y": 88,
+              "width": 169.33,
+              "height": 40
+            },
+            {
+              "tag": "BUTTON",
+              "x": 193.33,
+              "y": 88,
+              "width": 138.19,
+              "height": 40
+            },
+            {
+              "tag": "SECTION",
+              "x": 16,
+              "y": 1035,
+              "width": 358,
+              "height": 268
+            },
+            {
+              "tag": "H2",
+              "x": 79,
+              "y": 1060,
+              "width": 172.84,
+              "height": 24
+            },
+            {
+              "tag": "BUTTON",
+              "x": 265.95,
+              "y": 1056,
+              "width": 87.05,
+              "height": 32
+            },
+            {
+              "tag": "SECTION",
+              "x": 16,
+              "y": 1327,
+              "width": 358,
+              "height": 432
+            },
+            {
+              "tag": "H2",
+              "x": 79,
+              "y": 1352,
+              "width": 138.8,
+              "height": 24
+            },
+            {
+              "tag": "TABLE",
+              "x": 17,
+              "y": 1396,
+              "width": 680,
+              "height": 362
+            }
+          ]
+        },
+        "overflow": false
+      }
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "state": "movement",
+      "textMatches": true,
+      "geometryMatches": true,
+      "pngBytesMatch": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "changedPercent": 0
+      },
+      "reference": {
+        "file": "390-light-movement-reference.png",
+        "geometry": {
+          "width": 390,
+          "height": 441,
+          "children": [
+            {
+              "tag": "H2",
+              "x": 25,
+              "y": 25,
+              "width": 340,
+              "height": 18
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 85,
+              "width": 166,
+              "height": 46
+            },
+            {
+              "tag": "BUTTON",
+              "x": 199,
+              "y": 85,
+              "width": 166,
+              "height": 46
+            },
+            {
+              "tag": "INPUT",
+              "x": 25,
+              "y": 169,
+              "width": 340,
+              "height": 40
+            },
+            {
+              "tag": "INPUT",
+              "x": 25,
+              "y": 247,
+              "width": 340,
+              "height": 40
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 297,
+              "width": 138.5,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 169.5,
+              "y": 297,
+              "width": 109.23,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 329.5,
+              "width": 136.36,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 167.36,
+              "y": 329.5,
+              "width": 96.92,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 372,
+              "width": 340,
+              "height": 44
+            },
+            {
+              "tag": "BUTTON",
+              "x": 357,
+              "y": 17,
+              "width": 16,
+              "height": 16
+            }
+          ]
+        },
+        "overflow": false
+      },
+      "local": {
+        "file": "390-light-movement-local.png",
+        "geometry": {
+          "width": 390,
+          "height": 441,
+          "children": [
+            {
+              "tag": "H2",
+              "x": 25,
+              "y": 25,
+              "width": 340,
+              "height": 18
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 85,
+              "width": 166,
+              "height": 46
+            },
+            {
+              "tag": "BUTTON",
+              "x": 199,
+              "y": 85,
+              "width": 166,
+              "height": 46
+            },
+            {
+              "tag": "INPUT",
+              "x": 25,
+              "y": 169,
+              "width": 340,
+              "height": 40
+            },
+            {
+              "tag": "INPUT",
+              "x": 25,
+              "y": 247,
+              "width": 340,
+              "height": 40
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 297,
+              "width": 138.5,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 169.5,
+              "y": 297,
+              "width": 109.23,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 329.5,
+              "width": 136.36,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 167.36,
+              "y": 329.5,
+              "width": 96.92,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 372,
+              "width": 340,
+              "height": 44
+            },
+            {
+              "tag": "BUTTON",
+              "x": 357,
+              "y": 17,
+              "width": 16,
+              "height": 16
+            }
+          ]
+        },
+        "overflow": false
+      }
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "light",
+      "state": "count",
+      "textMatches": true,
+      "geometryMatches": true,
+      "pngBytesMatch": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "changedPercent": 0
+      },
+      "reference": {
+        "file": "390-light-count-reference.png",
+        "geometry": {
+          "width": 390,
+          "height": 862,
+          "children": [
+            {
+              "tag": "H2",
+              "x": 25,
+              "y": 25,
+              "width": 340,
+              "height": 18
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 129,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 173,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 217,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 261,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 305,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 349,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 433,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 477,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 521,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 565,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 801,
+              "width": 340,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 757,
+              "width": 340,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 357,
+              "y": 17,
+              "width": 16,
+              "height": 16
+            }
+          ]
+        },
+        "overflow": false
+      },
+      "local": {
+        "file": "390-light-count-local.png",
+        "geometry": {
+          "width": 390,
+          "height": 862,
+          "children": [
+            {
+              "tag": "H2",
+              "x": 25,
+              "y": 25,
+              "width": 340,
+              "height": 18
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 129,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 173,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 217,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 261,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 305,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 349,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 433,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 477,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 521,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 565,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 801,
+              "width": 340,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 757,
+              "width": 340,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 357,
+              "y": 17,
+              "width": 16,
+              "height": 16
+            }
+          ]
+        },
+        "overflow": false
+      }
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "state": "page",
+      "textMatches": true,
+      "geometryMatches": true,
+      "pngBytesMatch": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "changedPercent": 0
+      },
+      "reference": {
+        "file": "390-dark-page-reference.png",
+        "geometry": {
+          "width": 390,
+          "height": 1775,
+          "children": [
+            {
+              "tag": "H1",
+              "x": 16,
+              "y": 16,
+              "width": 358,
+              "height": 32
+            },
+            {
+              "tag": "BUTTON",
+              "x": 16,
+              "y": 88,
+              "width": 169.33,
+              "height": 40
+            },
+            {
+              "tag": "BUTTON",
+              "x": 193.33,
+              "y": 88,
+              "width": 138.19,
+              "height": 40
+            },
+            {
+              "tag": "SECTION",
+              "x": 16,
+              "y": 1035,
+              "width": 358,
+              "height": 268
+            },
+            {
+              "tag": "H2",
+              "x": 79,
+              "y": 1060,
+              "width": 172.84,
+              "height": 24
+            },
+            {
+              "tag": "BUTTON",
+              "x": 265.95,
+              "y": 1056,
+              "width": 87.05,
+              "height": 32
+            },
+            {
+              "tag": "SECTION",
+              "x": 16,
+              "y": 1327,
+              "width": 358,
+              "height": 432
+            },
+            {
+              "tag": "H2",
+              "x": 79,
+              "y": 1352,
+              "width": 138.8,
+              "height": 24
+            },
+            {
+              "tag": "TABLE",
+              "x": 17,
+              "y": 1396,
+              "width": 680,
+              "height": 362
+            }
+          ]
+        },
+        "overflow": false
+      },
+      "local": {
+        "file": "390-dark-page-local.png",
+        "geometry": {
+          "width": 390,
+          "height": 1775,
+          "children": [
+            {
+              "tag": "H1",
+              "x": 16,
+              "y": 16,
+              "width": 358,
+              "height": 32
+            },
+            {
+              "tag": "BUTTON",
+              "x": 16,
+              "y": 88,
+              "width": 169.33,
+              "height": 40
+            },
+            {
+              "tag": "BUTTON",
+              "x": 193.33,
+              "y": 88,
+              "width": 138.19,
+              "height": 40
+            },
+            {
+              "tag": "SECTION",
+              "x": 16,
+              "y": 1035,
+              "width": 358,
+              "height": 268
+            },
+            {
+              "tag": "H2",
+              "x": 79,
+              "y": 1060,
+              "width": 172.84,
+              "height": 24
+            },
+            {
+              "tag": "BUTTON",
+              "x": 265.95,
+              "y": 1056,
+              "width": 87.05,
+              "height": 32
+            },
+            {
+              "tag": "SECTION",
+              "x": 16,
+              "y": 1327,
+              "width": 358,
+              "height": 432
+            },
+            {
+              "tag": "H2",
+              "x": 79,
+              "y": 1352,
+              "width": 138.8,
+              "height": 24
+            },
+            {
+              "tag": "TABLE",
+              "x": 17,
+              "y": 1396,
+              "width": 680,
+              "height": 362
+            }
+          ]
+        },
+        "overflow": false
+      }
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "state": "movement",
+      "textMatches": true,
+      "geometryMatches": true,
+      "pngBytesMatch": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "changedPercent": 0
+      },
+      "reference": {
+        "file": "390-dark-movement-reference.png",
+        "geometry": {
+          "width": 390,
+          "height": 441,
+          "children": [
+            {
+              "tag": "H2",
+              "x": 25,
+              "y": 25,
+              "width": 340,
+              "height": 18
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 85,
+              "width": 166,
+              "height": 46
+            },
+            {
+              "tag": "BUTTON",
+              "x": 199,
+              "y": 85,
+              "width": 166,
+              "height": 46
+            },
+            {
+              "tag": "INPUT",
+              "x": 25,
+              "y": 169,
+              "width": 340,
+              "height": 40
+            },
+            {
+              "tag": "INPUT",
+              "x": 25,
+              "y": 247,
+              "width": 340,
+              "height": 40
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 297,
+              "width": 138.5,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 169.5,
+              "y": 297,
+              "width": 109.23,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 329.5,
+              "width": 136.36,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 167.36,
+              "y": 329.5,
+              "width": 96.92,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 372,
+              "width": 340,
+              "height": 44
+            },
+            {
+              "tag": "BUTTON",
+              "x": 357,
+              "y": 17,
+              "width": 16,
+              "height": 16
+            }
+          ]
+        },
+        "overflow": false
+      },
+      "local": {
+        "file": "390-dark-movement-local.png",
+        "geometry": {
+          "width": 390,
+          "height": 441,
+          "children": [
+            {
+              "tag": "H2",
+              "x": 25,
+              "y": 25,
+              "width": 340,
+              "height": 18
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 85,
+              "width": 166,
+              "height": 46
+            },
+            {
+              "tag": "BUTTON",
+              "x": 199,
+              "y": 85,
+              "width": 166,
+              "height": 46
+            },
+            {
+              "tag": "INPUT",
+              "x": 25,
+              "y": 169,
+              "width": 340,
+              "height": 40
+            },
+            {
+              "tag": "INPUT",
+              "x": 25,
+              "y": 247,
+              "width": 340,
+              "height": 40
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 297,
+              "width": 138.5,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 169.5,
+              "y": 297,
+              "width": 109.23,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 329.5,
+              "width": 136.36,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 167.36,
+              "y": 329.5,
+              "width": 96.92,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 372,
+              "width": 340,
+              "height": 44
+            },
+            {
+              "tag": "BUTTON",
+              "x": 357,
+              "y": 17,
+              "width": 16,
+              "height": 16
+            }
+          ]
+        },
+        "overflow": false
+      }
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "theme": "dark",
+      "state": "count",
+      "textMatches": true,
+      "geometryMatches": true,
+      "pngBytesMatch": true,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "changedPercent": 0
+      },
+      "reference": {
+        "file": "390-dark-count-reference.png",
+        "geometry": {
+          "width": 390,
+          "height": 862,
+          "children": [
+            {
+              "tag": "H2",
+              "x": 25,
+              "y": 25,
+              "width": 340,
+              "height": 18
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 129,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 173,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 217,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 261,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 305,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 349,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 433,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 477,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 521,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 565,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 801,
+              "width": 340,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 757,
+              "width": 340,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 357,
+              "y": 17,
+              "width": 16,
+              "height": 16
+            }
+          ]
+        },
+        "overflow": false
+      },
+      "local": {
+        "file": "390-dark-count-local.png",
+        "geometry": {
+          "width": 390,
+          "height": 862,
+          "children": [
+            {
+              "tag": "H2",
+              "x": 25,
+              "y": 25,
+              "width": 340,
+              "height": 18
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 129,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 173,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 217,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 261,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 305,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 349,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 433,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 477,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 521,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 565,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 801,
+              "width": 340,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 757,
+              "width": 340,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 357,
+              "y": 17,
+              "width": 16,
+              "height": 16
+            }
+          ]
+        },
+        "overflow": false
+      }
+    },
+    {
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "light",
+      "state": "page",
+      "textMatches": true,
+      "geometryMatches": true,
+      "pngBytesMatch": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 2542,
+        "changedPercent": 0.217
+      },
+      "reference": {
+        "file": "768-light-page-reference.png",
+        "geometry": {
+          "width": 768,
+          "height": 1525,
+          "children": [
+            {
+              "tag": "H1",
+              "x": 24,
+              "y": 24,
+              "width": 337.97,
+              "height": 32
+            },
+            {
+              "tag": "BUTTON",
+              "x": 428.48,
+              "y": 40,
+              "width": 169.33,
+              "height": 40
+            },
+            {
+              "tag": "BUTTON",
+              "x": 605.81,
+              "y": 40,
+              "width": 138.19,
+              "height": 40
+            },
+            {
+              "tag": "SECTION",
+              "x": 24,
+              "y": 777,
+              "width": 720,
+              "height": 268
+            },
+            {
+              "tag": "H2",
+              "x": 87,
+              "y": 802,
+              "width": 172.84,
+              "height": 24
+            },
+            {
+              "tag": "BUTTON",
+              "x": 635.95,
+              "y": 798,
+              "width": 87.05,
+              "height": 32
+            },
+            {
+              "tag": "SECTION",
+              "x": 24,
+              "y": 1069,
+              "width": 720,
+              "height": 432
+            },
+            {
+              "tag": "H2",
+              "x": 87,
+              "y": 1094,
+              "width": 138.8,
+              "height": 24
+            },
+            {
+              "tag": "TABLE",
+              "x": 25,
+              "y": 1138,
+              "width": 718,
+              "height": 362
+            }
+          ]
+        },
+        "overflow": false
+      },
+      "local": {
+        "file": "768-light-page-local.png",
+        "geometry": {
+          "width": 768,
+          "height": 1525,
+          "children": [
+            {
+              "tag": "H1",
+              "x": 24,
+              "y": 24,
+              "width": 337.97,
+              "height": 32
+            },
+            {
+              "tag": "BUTTON",
+              "x": 428.48,
+              "y": 40,
+              "width": 169.33,
+              "height": 40
+            },
+            {
+              "tag": "BUTTON",
+              "x": 605.81,
+              "y": 40,
+              "width": 138.19,
+              "height": 40
+            },
+            {
+              "tag": "SECTION",
+              "x": 24,
+              "y": 777,
+              "width": 720,
+              "height": 268
+            },
+            {
+              "tag": "H2",
+              "x": 87,
+              "y": 802,
+              "width": 172.84,
+              "height": 24
+            },
+            {
+              "tag": "BUTTON",
+              "x": 635.95,
+              "y": 798,
+              "width": 87.05,
+              "height": 32
+            },
+            {
+              "tag": "SECTION",
+              "x": 24,
+              "y": 1069,
+              "width": 720,
+              "height": 432
+            },
+            {
+              "tag": "H2",
+              "x": 87,
+              "y": 1094,
+              "width": 138.8,
+              "height": 24
+            },
+            {
+              "tag": "TABLE",
+              "x": 25,
+              "y": 1138,
+              "width": 718,
+              "height": 362
+            }
+          ]
+        },
+        "overflow": false
+      }
+    },
+    {
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "light",
+      "state": "movement",
+      "textMatches": true,
+      "geometryMatches": true,
+      "pngBytesMatch": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "changedPercent": 0
+      },
+      "reference": {
+        "file": "768-light-movement-reference.png",
+        "geometry": {
+          "width": 448,
+          "height": 441,
+          "children": [
+            {
+              "tag": "H2",
+              "x": 25,
+              "y": 25,
+              "width": 398,
+              "height": 18
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 85,
+              "width": 195,
+              "height": 46
+            },
+            {
+              "tag": "BUTTON",
+              "x": 228,
+              "y": 85,
+              "width": 195,
+              "height": 46
+            },
+            {
+              "tag": "INPUT",
+              "x": 25,
+              "y": 169,
+              "width": 398,
+              "height": 40
+            },
+            {
+              "tag": "INPUT",
+              "x": 25,
+              "y": 247,
+              "width": 398,
+              "height": 40
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 297,
+              "width": 138.5,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 169.5,
+              "y": 297,
+              "width": 109.23,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 284.73,
+              "y": 297,
+              "width": 136.36,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 329.5,
+              "width": 96.92,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 372,
+              "width": 398,
+              "height": 44
+            },
+            {
+              "tag": "BUTTON",
+              "x": 415,
+              "y": 17,
+              "width": 16,
+              "height": 16
+            }
+          ]
+        },
+        "overflow": false
+      },
+      "local": {
+        "file": "768-light-movement-local.png",
+        "geometry": {
+          "width": 448,
+          "height": 441,
+          "children": [
+            {
+              "tag": "H2",
+              "x": 25,
+              "y": 25,
+              "width": 398,
+              "height": 18
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 85,
+              "width": 195,
+              "height": 46
+            },
+            {
+              "tag": "BUTTON",
+              "x": 228,
+              "y": 85,
+              "width": 195,
+              "height": 46
+            },
+            {
+              "tag": "INPUT",
+              "x": 25,
+              "y": 169,
+              "width": 398,
+              "height": 40
+            },
+            {
+              "tag": "INPUT",
+              "x": 25,
+              "y": 247,
+              "width": 398,
+              "height": 40
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 297,
+              "width": 138.5,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 169.5,
+              "y": 297,
+              "width": 109.23,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 284.73,
+              "y": 297,
+              "width": 136.36,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 329.5,
+              "width": 96.92,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 372,
+              "width": 398,
+              "height": 44
+            },
+            {
+              "tag": "BUTTON",
+              "x": 415,
+              "y": 17,
+              "width": 16,
+              "height": 16
+            }
+          ]
+        },
+        "overflow": false
+      }
+    },
+    {
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "light",
+      "state": "count",
+      "textMatches": true,
+      "geometryMatches": true,
+      "pngBytesMatch": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "changedPercent": 0
+      },
+      "reference": {
+        "file": "768-light-count-reference.png",
+        "geometry": {
+          "width": 672,
+          "height": 494,
+          "children": [
+            {
+              "tag": "H2",
+              "x": 25,
+              "y": 25,
+              "width": 622,
+              "height": 18
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 109,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 153,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 197,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 241,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 285,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 329,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 109,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 153,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 197,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 241,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 296.41,
+              "y": 433,
+              "width": 133.42,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 445.83,
+              "y": 433,
+              "width": 201.17,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 639,
+              "y": 17,
+              "width": 16,
+              "height": 16
+            }
+          ]
+        },
+        "overflow": false
+      },
+      "local": {
+        "file": "768-light-count-local.png",
+        "geometry": {
+          "width": 672,
+          "height": 494,
+          "children": [
+            {
+              "tag": "H2",
+              "x": 25,
+              "y": 25,
+              "width": 622,
+              "height": 18
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 109,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 153,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 197,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 241,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 285,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 329,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 109,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 153,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 197,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 241,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 296.41,
+              "y": 433,
+              "width": 133.42,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 445.83,
+              "y": 433,
+              "width": 201.17,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 639,
+              "y": 17,
+              "width": 16,
+              "height": 16
+            }
+          ]
+        },
+        "overflow": false
+      }
+    },
+    {
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "state": "page",
+      "textMatches": true,
+      "geometryMatches": true,
+      "pngBytesMatch": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 2891,
+        "changedPercent": 0.2468
+      },
+      "reference": {
+        "file": "768-dark-page-reference.png",
+        "geometry": {
+          "width": 768,
+          "height": 1525,
+          "children": [
+            {
+              "tag": "H1",
+              "x": 24,
+              "y": 24,
+              "width": 337.97,
+              "height": 32
+            },
+            {
+              "tag": "BUTTON",
+              "x": 428.48,
+              "y": 40,
+              "width": 169.33,
+              "height": 40
+            },
+            {
+              "tag": "BUTTON",
+              "x": 605.81,
+              "y": 40,
+              "width": 138.19,
+              "height": 40
+            },
+            {
+              "tag": "SECTION",
+              "x": 24,
+              "y": 777,
+              "width": 720,
+              "height": 268
+            },
+            {
+              "tag": "H2",
+              "x": 87,
+              "y": 802,
+              "width": 172.84,
+              "height": 24
+            },
+            {
+              "tag": "BUTTON",
+              "x": 635.95,
+              "y": 798,
+              "width": 87.05,
+              "height": 32
+            },
+            {
+              "tag": "SECTION",
+              "x": 24,
+              "y": 1069,
+              "width": 720,
+              "height": 432
+            },
+            {
+              "tag": "H2",
+              "x": 87,
+              "y": 1094,
+              "width": 138.8,
+              "height": 24
+            },
+            {
+              "tag": "TABLE",
+              "x": 25,
+              "y": 1138,
+              "width": 718,
+              "height": 362
+            }
+          ]
+        },
+        "overflow": false
+      },
+      "local": {
+        "file": "768-dark-page-local.png",
+        "geometry": {
+          "width": 768,
+          "height": 1525,
+          "children": [
+            {
+              "tag": "H1",
+              "x": 24,
+              "y": 24,
+              "width": 337.97,
+              "height": 32
+            },
+            {
+              "tag": "BUTTON",
+              "x": 428.48,
+              "y": 40,
+              "width": 169.33,
+              "height": 40
+            },
+            {
+              "tag": "BUTTON",
+              "x": 605.81,
+              "y": 40,
+              "width": 138.19,
+              "height": 40
+            },
+            {
+              "tag": "SECTION",
+              "x": 24,
+              "y": 777,
+              "width": 720,
+              "height": 268
+            },
+            {
+              "tag": "H2",
+              "x": 87,
+              "y": 802,
+              "width": 172.84,
+              "height": 24
+            },
+            {
+              "tag": "BUTTON",
+              "x": 635.95,
+              "y": 798,
+              "width": 87.05,
+              "height": 32
+            },
+            {
+              "tag": "SECTION",
+              "x": 24,
+              "y": 1069,
+              "width": 720,
+              "height": 432
+            },
+            {
+              "tag": "H2",
+              "x": 87,
+              "y": 1094,
+              "width": 138.8,
+              "height": 24
+            },
+            {
+              "tag": "TABLE",
+              "x": 25,
+              "y": 1138,
+              "width": 718,
+              "height": 362
+            }
+          ]
+        },
+        "overflow": false
+      }
+    },
+    {
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "state": "movement",
+      "textMatches": true,
+      "geometryMatches": true,
+      "pngBytesMatch": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "changedPercent": 0
+      },
+      "reference": {
+        "file": "768-dark-movement-reference.png",
+        "geometry": {
+          "width": 448,
+          "height": 441,
+          "children": [
+            {
+              "tag": "H2",
+              "x": 25,
+              "y": 25,
+              "width": 398,
+              "height": 18
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 85,
+              "width": 195,
+              "height": 46
+            },
+            {
+              "tag": "BUTTON",
+              "x": 228,
+              "y": 85,
+              "width": 195,
+              "height": 46
+            },
+            {
+              "tag": "INPUT",
+              "x": 25,
+              "y": 169,
+              "width": 398,
+              "height": 40
+            },
+            {
+              "tag": "INPUT",
+              "x": 25,
+              "y": 247,
+              "width": 398,
+              "height": 40
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 297,
+              "width": 138.5,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 169.5,
+              "y": 297,
+              "width": 109.23,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 284.73,
+              "y": 297,
+              "width": 136.36,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 329.5,
+              "width": 96.92,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 372,
+              "width": 398,
+              "height": 44
+            },
+            {
+              "tag": "BUTTON",
+              "x": 415,
+              "y": 17,
+              "width": 16,
+              "height": 16
+            }
+          ]
+        },
+        "overflow": false
+      },
+      "local": {
+        "file": "768-dark-movement-local.png",
+        "geometry": {
+          "width": 448,
+          "height": 441,
+          "children": [
+            {
+              "tag": "H2",
+              "x": 25,
+              "y": 25,
+              "width": 398,
+              "height": 18
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 85,
+              "width": 195,
+              "height": 46
+            },
+            {
+              "tag": "BUTTON",
+              "x": 228,
+              "y": 85,
+              "width": 195,
+              "height": 46
+            },
+            {
+              "tag": "INPUT",
+              "x": 25,
+              "y": 169,
+              "width": 398,
+              "height": 40
+            },
+            {
+              "tag": "INPUT",
+              "x": 25,
+              "y": 247,
+              "width": 398,
+              "height": 40
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 297,
+              "width": 138.5,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 169.5,
+              "y": 297,
+              "width": 109.23,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 284.73,
+              "y": 297,
+              "width": 136.36,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 329.5,
+              "width": 96.92,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 372,
+              "width": 398,
+              "height": 44
+            },
+            {
+              "tag": "BUTTON",
+              "x": 415,
+              "y": 17,
+              "width": 16,
+              "height": 16
+            }
+          ]
+        },
+        "overflow": false
+      }
+    },
+    {
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "theme": "dark",
+      "state": "count",
+      "textMatches": true,
+      "geometryMatches": true,
+      "pngBytesMatch": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 0,
+        "changedPercent": 0
+      },
+      "reference": {
+        "file": "768-dark-count-reference.png",
+        "geometry": {
+          "width": 672,
+          "height": 494,
+          "children": [
+            {
+              "tag": "H2",
+              "x": 25,
+              "y": 25,
+              "width": 622,
+              "height": 18
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 109,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 153,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 197,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 241,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 285,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 329,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 109,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 153,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 197,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 241,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 296.41,
+              "y": 433,
+              "width": 133.42,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 445.83,
+              "y": 433,
+              "width": 201.17,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 639,
+              "y": 17,
+              "width": 16,
+              "height": 16
+            }
+          ]
+        },
+        "overflow": false
+      },
+      "local": {
+        "file": "768-dark-count-local.png",
+        "geometry": {
+          "width": 672,
+          "height": 494,
+          "children": [
+            {
+              "tag": "H2",
+              "x": 25,
+              "y": 25,
+              "width": 622,
+              "height": 18
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 109,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 153,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 197,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 241,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 285,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 329,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 109,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 153,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 197,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 241,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 296.41,
+              "y": 433,
+              "width": 133.42,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 445.83,
+              "y": 433,
+              "width": 201.17,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 639,
+              "y": 17,
+              "width": 16,
+              "height": 16
+            }
+          ]
+        },
+        "overflow": false
+      }
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "state": "page",
+      "textMatches": true,
+      "geometryMatches": true,
+      "pngBytesMatch": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 2110,
+        "changedPercent": 0.1598
+      },
+      "reference": {
+        "file": "1440-light-page-reference.png",
+        "geometry": {
+          "width": 1184,
+          "height": 1115,
+          "children": [
+            {
+              "tag": "H1",
+              "x": 32,
+              "y": 32,
+              "width": 337.97,
+              "height": 32
+            },
+            {
+              "tag": "BUTTON",
+              "x": 836.48,
+              "y": 48,
+              "width": 169.33,
+              "height": 40
+            },
+            {
+              "tag": "BUTTON",
+              "x": 1013.81,
+              "y": 48,
+              "width": 138.19,
+              "height": 40
+            },
+            {
+              "tag": "SECTION",
+              "x": 32,
+              "y": 459,
+              "width": 1120,
+              "height": 268
+            },
+            {
+              "tag": "H2",
+              "x": 95,
+              "y": 484,
+              "width": 172.84,
+              "height": 24
+            },
+            {
+              "tag": "BUTTON",
+              "x": 1043.95,
+              "y": 480,
+              "width": 87.05,
+              "height": 32
+            },
+            {
+              "tag": "SECTION",
+              "x": 32,
+              "y": 751,
+              "width": 1120,
+              "height": 332
+            },
+            {
+              "tag": "H2",
+              "x": 95,
+              "y": 776,
+              "width": 138.8,
+              "height": 24
+            },
+            {
+              "tag": "TABLE",
+              "x": 33,
+              "y": 820,
+              "width": 1118,
+              "height": 262
+            }
+          ]
+        },
+        "overflow": false
+      },
+      "local": {
+        "file": "1440-light-page-local.png",
+        "geometry": {
+          "width": 1184,
+          "height": 1115,
+          "children": [
+            {
+              "tag": "H1",
+              "x": 32,
+              "y": 32,
+              "width": 337.97,
+              "height": 32
+            },
+            {
+              "tag": "BUTTON",
+              "x": 836.48,
+              "y": 48,
+              "width": 169.33,
+              "height": 40
+            },
+            {
+              "tag": "BUTTON",
+              "x": 1013.81,
+              "y": 48,
+              "width": 138.19,
+              "height": 40
+            },
+            {
+              "tag": "SECTION",
+              "x": 32,
+              "y": 459,
+              "width": 1120,
+              "height": 268
+            },
+            {
+              "tag": "H2",
+              "x": 95,
+              "y": 484,
+              "width": 172.84,
+              "height": 24
+            },
+            {
+              "tag": "BUTTON",
+              "x": 1043.95,
+              "y": 480,
+              "width": 87.05,
+              "height": 32
+            },
+            {
+              "tag": "SECTION",
+              "x": 32,
+              "y": 751,
+              "width": 1120,
+              "height": 332
+            },
+            {
+              "tag": "H2",
+              "x": 95,
+              "y": 776,
+              "width": 138.8,
+              "height": 24
+            },
+            {
+              "tag": "TABLE",
+              "x": 33,
+              "y": 820,
+              "width": 1118,
+              "height": 262
+            }
+          ]
+        },
+        "overflow": false
+      }
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "state": "movement",
+      "textMatches": true,
+      "geometryMatches": true,
+      "pngBytesMatch": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 485,
+        "changedPercent": 0.0337
+      },
+      "reference": {
+        "file": "1440-light-movement-reference.png",
+        "geometry": {
+          "width": 448,
+          "height": 441,
+          "children": [
+            {
+              "tag": "H2",
+              "x": 25,
+              "y": 25,
+              "width": 398,
+              "height": 18
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 85,
+              "width": 195,
+              "height": 46
+            },
+            {
+              "tag": "BUTTON",
+              "x": 228,
+              "y": 85,
+              "width": 195,
+              "height": 46
+            },
+            {
+              "tag": "INPUT",
+              "x": 25,
+              "y": 169,
+              "width": 398,
+              "height": 40
+            },
+            {
+              "tag": "INPUT",
+              "x": 25,
+              "y": 247,
+              "width": 398,
+              "height": 40
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 297,
+              "width": 138.5,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 169.5,
+              "y": 297,
+              "width": 109.23,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 284.73,
+              "y": 297,
+              "width": 136.36,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 329.5,
+              "width": 96.92,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 372,
+              "width": 398,
+              "height": 44
+            },
+            {
+              "tag": "BUTTON",
+              "x": 415,
+              "y": 17,
+              "width": 16,
+              "height": 16
+            }
+          ]
+        },
+        "overflow": false
+      },
+      "local": {
+        "file": "1440-light-movement-local.png",
+        "geometry": {
+          "width": 448,
+          "height": 441,
+          "children": [
+            {
+              "tag": "H2",
+              "x": 25,
+              "y": 25,
+              "width": 398,
+              "height": 18
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 85,
+              "width": 195,
+              "height": 46
+            },
+            {
+              "tag": "BUTTON",
+              "x": 228,
+              "y": 85,
+              "width": 195,
+              "height": 46
+            },
+            {
+              "tag": "INPUT",
+              "x": 25,
+              "y": 169,
+              "width": 398,
+              "height": 40
+            },
+            {
+              "tag": "INPUT",
+              "x": 25,
+              "y": 247,
+              "width": 398,
+              "height": 40
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 297,
+              "width": 138.5,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 169.5,
+              "y": 297,
+              "width": 109.23,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 284.73,
+              "y": 297,
+              "width": 136.36,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 329.5,
+              "width": 96.92,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 372,
+              "width": 398,
+              "height": 44
+            },
+            {
+              "tag": "BUTTON",
+              "x": 415,
+              "y": 17,
+              "width": 16,
+              "height": 16
+            }
+          ]
+        },
+        "overflow": false
+      }
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "light",
+      "state": "count",
+      "textMatches": true,
+      "geometryMatches": true,
+      "pngBytesMatch": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 485,
+        "changedPercent": 0.0337
+      },
+      "reference": {
+        "file": "1440-light-count-reference.png",
+        "geometry": {
+          "width": 672,
+          "height": 494,
+          "children": [
+            {
+              "tag": "H2",
+              "x": 25,
+              "y": 25,
+              "width": 622,
+              "height": 18
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 109,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 153,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 197,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 241,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 285,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 329,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 109,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 153,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 197,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 241,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 296.41,
+              "y": 433,
+              "width": 133.42,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 445.83,
+              "y": 433,
+              "width": 201.17,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 639,
+              "y": 17,
+              "width": 16,
+              "height": 16
+            }
+          ]
+        },
+        "overflow": false
+      },
+      "local": {
+        "file": "1440-light-count-local.png",
+        "geometry": {
+          "width": 672,
+          "height": 494,
+          "children": [
+            {
+              "tag": "H2",
+              "x": 25,
+              "y": 25,
+              "width": 622,
+              "height": 18
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 109,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 153,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 197,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 241,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 285,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 329,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 109,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 153,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 197,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 241,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 296.41,
+              "y": 433,
+              "width": 133.42,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 445.83,
+              "y": 433,
+              "width": 201.17,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 639,
+              "y": 17,
+              "width": 16,
+              "height": 16
+            }
+          ]
+        },
+        "overflow": false
+      }
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "state": "page",
+      "textMatches": true,
+      "geometryMatches": true,
+      "pngBytesMatch": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 2247,
+        "changedPercent": 0.1702
+      },
+      "reference": {
+        "file": "1440-dark-page-reference.png",
+        "geometry": {
+          "width": 1184,
+          "height": 1115,
+          "children": [
+            {
+              "tag": "H1",
+              "x": 32,
+              "y": 32,
+              "width": 337.97,
+              "height": 32
+            },
+            {
+              "tag": "BUTTON",
+              "x": 836.48,
+              "y": 48,
+              "width": 169.33,
+              "height": 40
+            },
+            {
+              "tag": "BUTTON",
+              "x": 1013.81,
+              "y": 48,
+              "width": 138.19,
+              "height": 40
+            },
+            {
+              "tag": "SECTION",
+              "x": 32,
+              "y": 459,
+              "width": 1120,
+              "height": 268
+            },
+            {
+              "tag": "H2",
+              "x": 95,
+              "y": 484,
+              "width": 172.84,
+              "height": 24
+            },
+            {
+              "tag": "BUTTON",
+              "x": 1043.95,
+              "y": 480,
+              "width": 87.05,
+              "height": 32
+            },
+            {
+              "tag": "SECTION",
+              "x": 32,
+              "y": 751,
+              "width": 1120,
+              "height": 332
+            },
+            {
+              "tag": "H2",
+              "x": 95,
+              "y": 776,
+              "width": 138.8,
+              "height": 24
+            },
+            {
+              "tag": "TABLE",
+              "x": 33,
+              "y": 820,
+              "width": 1118,
+              "height": 262
+            }
+          ]
+        },
+        "overflow": false
+      },
+      "local": {
+        "file": "1440-dark-page-local.png",
+        "geometry": {
+          "width": 1184,
+          "height": 1115,
+          "children": [
+            {
+              "tag": "H1",
+              "x": 32,
+              "y": 32,
+              "width": 337.97,
+              "height": 32
+            },
+            {
+              "tag": "BUTTON",
+              "x": 836.48,
+              "y": 48,
+              "width": 169.33,
+              "height": 40
+            },
+            {
+              "tag": "BUTTON",
+              "x": 1013.81,
+              "y": 48,
+              "width": 138.19,
+              "height": 40
+            },
+            {
+              "tag": "SECTION",
+              "x": 32,
+              "y": 459,
+              "width": 1120,
+              "height": 268
+            },
+            {
+              "tag": "H2",
+              "x": 95,
+              "y": 484,
+              "width": 172.84,
+              "height": 24
+            },
+            {
+              "tag": "BUTTON",
+              "x": 1043.95,
+              "y": 480,
+              "width": 87.05,
+              "height": 32
+            },
+            {
+              "tag": "SECTION",
+              "x": 32,
+              "y": 751,
+              "width": 1120,
+              "height": 332
+            },
+            {
+              "tag": "H2",
+              "x": 95,
+              "y": 776,
+              "width": 138.8,
+              "height": 24
+            },
+            {
+              "tag": "TABLE",
+              "x": 33,
+              "y": 820,
+              "width": 1118,
+              "height": 262
+            }
+          ]
+        },
+        "overflow": false
+      }
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "state": "movement",
+      "textMatches": true,
+      "geometryMatches": true,
+      "pngBytesMatch": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 305,
+        "changedPercent": 0.0212
+      },
+      "reference": {
+        "file": "1440-dark-movement-reference.png",
+        "geometry": {
+          "width": 448,
+          "height": 441,
+          "children": [
+            {
+              "tag": "H2",
+              "x": 25,
+              "y": 25,
+              "width": 398,
+              "height": 18
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 85,
+              "width": 195,
+              "height": 46
+            },
+            {
+              "tag": "BUTTON",
+              "x": 228,
+              "y": 85,
+              "width": 195,
+              "height": 46
+            },
+            {
+              "tag": "INPUT",
+              "x": 25,
+              "y": 169,
+              "width": 398,
+              "height": 40
+            },
+            {
+              "tag": "INPUT",
+              "x": 25,
+              "y": 247,
+              "width": 398,
+              "height": 40
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 297,
+              "width": 138.5,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 169.5,
+              "y": 297,
+              "width": 109.23,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 284.73,
+              "y": 297,
+              "width": 136.36,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 329.5,
+              "width": 96.92,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 372,
+              "width": 398,
+              "height": 44
+            },
+            {
+              "tag": "BUTTON",
+              "x": 415,
+              "y": 17,
+              "width": 16,
+              "height": 16
+            }
+          ]
+        },
+        "overflow": false
+      },
+      "local": {
+        "file": "1440-dark-movement-local.png",
+        "geometry": {
+          "width": 448,
+          "height": 441,
+          "children": [
+            {
+              "tag": "H2",
+              "x": 25,
+              "y": 25,
+              "width": 398,
+              "height": 18
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 85,
+              "width": 195,
+              "height": 46
+            },
+            {
+              "tag": "BUTTON",
+              "x": 228,
+              "y": 85,
+              "width": 195,
+              "height": 46
+            },
+            {
+              "tag": "INPUT",
+              "x": 25,
+              "y": 169,
+              "width": 398,
+              "height": 40
+            },
+            {
+              "tag": "INPUT",
+              "x": 25,
+              "y": 247,
+              "width": 398,
+              "height": 40
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 297,
+              "width": 138.5,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 169.5,
+              "y": 297,
+              "width": 109.23,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 284.73,
+              "y": 297,
+              "width": 136.36,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 329.5,
+              "width": 96.92,
+              "height": 26.5
+            },
+            {
+              "tag": "BUTTON",
+              "x": 25,
+              "y": 372,
+              "width": 398,
+              "height": 44
+            },
+            {
+              "tag": "BUTTON",
+              "x": 415,
+              "y": 17,
+              "width": 16,
+              "height": 16
+            }
+          ]
+        },
+        "overflow": false
+      }
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "theme": "dark",
+      "state": "count",
+      "textMatches": true,
+      "geometryMatches": true,
+      "pngBytesMatch": false,
+      "pixels": {
+        "dimensionsMatch": true,
+        "changedPixelsAbove24": 305,
+        "changedPercent": 0.0212
+      },
+      "reference": {
+        "file": "1440-dark-count-reference.png",
+        "geometry": {
+          "width": 672,
+          "height": 494,
+          "children": [
+            {
+              "tag": "H2",
+              "x": 25,
+              "y": 25,
+              "width": 622,
+              "height": 18
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 109,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 153,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 197,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 241,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 285,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 329,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 109,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 153,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 197,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 241,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 296.41,
+              "y": 433,
+              "width": 133.42,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 445.83,
+              "y": 433,
+              "width": 201.17,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 639,
+              "y": 17,
+              "width": 16,
+              "height": 16
+            }
+          ]
+        },
+        "overflow": false
+      },
+      "local": {
+        "file": "1440-dark-count-local.png",
+        "geometry": {
+          "width": 672,
+          "height": 494,
+          "children": [
+            {
+              "tag": "H2",
+              "x": 25,
+              "y": 25,
+              "width": 622,
+              "height": 18
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 109,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 153,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 197,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 241,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 285,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 115.59,
+              "y": 329,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 109,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 153,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 197,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "INPUT",
+              "x": 438.59,
+              "y": 241,
+              "width": 80,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 296.41,
+              "y": 433,
+              "width": 133.42,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 445.83,
+              "y": 433,
+              "width": 201.17,
+              "height": 36
+            },
+            {
+              "tag": "BUTTON",
+              "x": 639,
+              "y": 17,
+              "width": 16,
+              "height": 16
+            }
+          ]
+        },
+        "overflow": false
+      }
+    }
+  ]
+}

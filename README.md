@@ -2,7 +2,9 @@
 
 El POS de Repuestos Félix abre el **Panel** con el diseño de Polymet. Punto de venta, Inventario, Compras, Clientes, Suplidores, Configuración y Reportes usan la API del negocio. La importación de NetPOS cargó 7.681 artículos en Supabase. Consulta [dónde encontrar usuarios, inventario, clientes, suplidores e históricos](docs/donde-esta-cada-dato.md).
 
-La API se comparte entre **Cloudflare Workers y Node.js local**, con **PostgreSQL local o Supabase**. Caja, abonos, conciliación de cuentas, PWA y Windows mantienen trabajo pendiente; su estado está en [estado del sistema](docs/estado-sistema-unificado.md). Supabase Auth gestiona las cuentas de acceso.
+La API se comparte entre **Cloudflare Workers y Node.js local**, con **PostgreSQL local o Supabase**. Caja registra turnos, movimientos y cierres. Abonos, conciliación de cuentas, PWA y Windows mantienen trabajo pendiente; su estado está en [estado del sistema](docs/estado-sistema-unificado.md). Supabase Auth gestiona las cuentas de acceso.
+
+El **esquema está en [supabase/schema.sql](supabase/schema.sql)**; los cambios incrementales están en [supabase/migrations](supabase/migrations). La [revisión de la base](docs/revision-base-datos-2026-11-22.md) explica qué tablas se usan y cuáles son históricas.
 
 ## Organización del proyecto
 
@@ -86,7 +88,7 @@ El proyecto usa **pnpm 10.8.0**, fijado en `packageManager`, y `pnpm-lock.yaml` 
 
 ## Usar Supabase
 
-El CLI se configura de forma independiente del gestor de paquetes del proyecto. Para cambiar su cuenta usa `supabase logout` y después `supabase login --name "Repuestos Felix"`; completa el acceso en el navegador con la cuenta correcta. Comprueba los proyectos disponibles con `supabase projects list` y vincula el proyecto elegido con `supabase link --project-ref ID_DEL_PROYECTO`. La carpeta `supabase/.temp` es local y está excluida de Git. El vínculo del CLI no configura automáticamente `DATABASE_URL` del servidor.
+El CLI se configura de forma independiente del gestor de paquetes del proyecto. Para Repuestos Félix se usa el perfil `repuestos-felix`: inicia con `supabase login --profile repuestos-felix --name "Repuestos Felix"` y completa el acceso en el navegador con la cuenta del negocio. Comprueba el acceso con `supabase --profile repuestos-felix projects list`; usa ese mismo perfil en los comandos administrativos. `pnpm usuarios:crear` ya lo selecciona por defecto. La carpeta `supabase/.temp` es local y está excluida de Git. El vínculo del CLI no configura automáticamente `DATABASE_URL` del servidor ni inicia sesión en el POS.
 
 ### Crear la estructura de la base
 
@@ -135,7 +137,7 @@ La configuración sigue la [guía de conexiones de Supabase](https://supabase.co
 
 Detén el servidor con `Ctrl+C` e inicia el otro comando. **Local y Supabase mantienen datos independientes; no hay sincronización ni cambio automático ante fallos.** Puedes usar ambas configuraciones, una por ejecución.
 
-La API administrativa admite respaldos operativos v5 mediante `GET /api/backup` y restauraciones transaccionales mediante `POST /api/restore`, con revisión, generación y clave de idempotencia. La restauración conserva un respaldo automático y admite los formatos anteriores. El archivo histórico de NetPOS requiere un respaldo administrativo de PostgreSQL.
+La API administrativa admite respaldos operativos v6 mediante `GET /api/backup` y restauraciones transaccionales mediante `POST /api/restore`, con revisión, generación y clave de idempotencia. La restauración conserva un respaldo automático y admite los formatos anteriores. El archivo histórico de NetPOS requiere un respaldo administrativo de PostgreSQL.
 
 `pnpm start` permite usar un archivo `.env` en lugar de los dos perfiles anteriores. Las variables ya presentes en el entorno tienen prioridad sobre el archivo seleccionado; evita dejar `DATABASE_URL` de otro destino definida en la terminal.
 
@@ -152,7 +154,7 @@ La API administrativa admite respaldos operativos v5 mediante `GET /api/backup` 
 - La restauración admite hasta 10 MB y rechaza una revisión obsoleta. No se permite reemplazar el estado completo mediante `PUT /api/state`.
 - Por defecto el servidor escucha únicamente en `127.0.0.1`. El modo público requiere origen HTTPS explícito, usuario y contraseña de acceso; consulta la siguiente sección. La publicación requiere configurar un alojamiento.
 - Las ventas nuevas reciben un número interno y no generan NCF autorizados. Los NCF históricos se conservan. Antes de utilizar comprobantes fiscales se necesita implementar la emisión y secuencias autorizadas correspondientes.
-- Las doce rutas muestran sus pantallas de Polymet. Caja y los abonos permanecen deshabilitados hasta contar con persistencia y conciliación. Cuentas por cobrar muestra las ventas a crédito nuevas; Clientes conserva también los saldos de apertura. Cuentas por pagar indica que falta conciliar los históricos. No se ha añadido anulación ni exportación fiscal 607.
+- Las doce rutas muestran sus pantallas de Polymet. Caja registra apertura, entradas/salidas y cierre con persistencia transaccional. Los abonos permanecen deshabilitados hasta contar con persistencia y conciliación. Cuentas por cobrar muestra las ventas a crédito nuevas; Clientes conserva también los saldos de apertura. Cuentas por pagar indica que falta conciliar los históricos. No se ha añadido anulación ni exportación fiscal 607.
 
 ## Preparar el acceso por internet
 
@@ -202,3 +204,13 @@ pnpm test
 ```
 
 La conexión real de Supabase se comprueba al iniciar con tus credenciales; las pruebas automáticas no necesitan una cuenta remota. Cubren navegación, formularios, instalación, aislamiento de la caché, autenticación pública y los flujos existentes del POS. La instalación y autenticación en dispositivos Android/iPhone reales deben comprobarse con la dirección HTTPS definitiva.
+
+## Caja y cuenta
+
+La migración `20261122030000_caja.sql` agrega `public.turnos_caja`, `public.movimientos_caja` y el turno/método de pago a ventas. Las ventas anteriores conservan estos campos vacíos: no se les atribuye efectivo ni un turno inventado. Las ventas nuevas requieren caja abierta y medio de pago. Apertura, entradas/salidas y cierre usan importes exactos, versiones e idempotencia; las compras y abonos no producen movimientos de efectivo automáticos.
+
+La pantalla conserva los formularios de Polymet. El cierre cuenta efectivo y guarda esperado, contado, ventas y responsable; una diferencia de un centavo sigue siendo una diferencia. Los respaldos v6 incluyen la caja y admiten restaurar v2–v5 sin fabricar turnos históricos. Las pruebas usan PostgreSQL temporal. La migración se aplicó a Supabase el 22 de noviembre de 2026 con autorización expresa del usuario, sin operaciones de prueba en la base real.
+
+En **Configuración → Mi cuenta** se puede cambiar la contraseña con la clave actual. Cambiar el nombre de acceso conserva el UUID y requiere `SUPABASE_SECRET_KEY` únicamente en el servidor, ya que los usuarios actuales usan direcciones sintéticas que no reciben correos de confirmación. Sin esa configuración se indica que el cambio de nombre no está habilitado. Consulta la [configuración segura](docs/publicar-pos.md). Ninguna credencial pasa por el diario de operaciones.
+
+Ambos cambios están habilitados y comprobados en local y web. El [informe de activación](docs/activacion-caja-cuenta-2026-11-22.md) registra la versión publicada, las 220 pruebas aprobadas y la verificación de producción sin operaciones de prueba.

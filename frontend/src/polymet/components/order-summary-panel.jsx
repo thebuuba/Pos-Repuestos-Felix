@@ -162,7 +162,6 @@ function OrderSummaryPanel({
               return (
                 <button
                   type="button"
-                  disabled={operational}
                   onClick={() => onPaymentMethodChange(m.value)}
                   className={cn(
                     "flex h-9 items-center justify-center gap-1.5 rounded-lg text-xs font-medium transition-all",
@@ -178,7 +177,7 @@ function OrderSummaryPanel({
               );
             })}
           </div>
-          {operational && <p className="text-xs text-muted-foreground">La venta se registra al contado. El medio de pago y el efectivo recibido no se registran.</p>}
+          {operational && isCash && <p className="text-xs text-muted-foreground">El efectivo recibido calcula el cambio. En caja se registra el total de la venta.</p>}
           {isCash && (
             <div className="space-y-2">
               <Label3 className="text-xs text-muted-foreground">

@@ -11,7 +11,7 @@ if (query.get("salida") === "local") {
 link.hidden = !supportsAccounts;
 if (changePassword && supportsAccounts) {
   document.querySelector("h1").textContent = "Cambiar contraseña";
-  document.querySelector("main > p").textContent = "Introduce tu contraseña actual y elige una nueva de al menos 12 caracteres.";
+  document.querySelector("main > p").textContent = "Introduce tu contraseña actual y elige una nueva de al menos 6 caracteres, sin combinaciones obligatorias.";
   const input = form.elements.newPassword;
   input.closest("label").hidden = false;
   input.disabled = false;

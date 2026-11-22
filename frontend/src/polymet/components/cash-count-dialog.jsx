@@ -14,7 +14,7 @@ import { useEffect } from "react";
 import { useState } from "react";
 var BILLS = [2000, 1000, 500, 200, 100, 50];
 var COINS = [25, 10, 5, 1];
-function CashCountDialog({ open, onOpenChange, expected, onConfirm }) {
+function CashCountDialog({ open, onOpenChange, expected, onConfirm, disabled = false, sending = false, failure, onRetry, retryDisabled = false }) {
   const [counts, setCounts] = useState({});
   useEffect(() => {
     if (open) setCounts({});
@@ -23,6 +23,8 @@ function CashCountDialog({ open, onOpenChange, expected, onConfirm }) {
     [...BILLS, ...COINS].reduce((s, d) => s + d * (Number(counts[d]) || 0), 0),
   );
   const diff = round2(counted - expected);
+  const valid = Object.values(counts).every(value => value === "" || (/^\d+$/.test(value) && Number.isSafeInteger(Number(value))))
+    && Number.isSafeInteger(Math.round(counted * 100));
   const renderRow = (d) => (
     <div className="flex items-center gap-2" key={d}>
       <span className="w-16 text-right text-sm font-medium tabular-nums">
@@ -30,8 +32,11 @@ function CashCountDialog({ open, onOpenChange, expected, onConfirm }) {
       </span>
       <span className="text-muted-foreground">{"×"}</span>
       <Input
+        disabled={disabled}
+        aria-label={`Cantidad de ${d}`}
         type="number"
         min={0}
+        step={1}
         value={counts[d] ?? ""}
         onChange={(e) =>
           setCounts((c) => ({
@@ -49,13 +54,17 @@ function CashCountDialog({ open, onOpenChange, expected, onConfirm }) {
   );
   return (
     <Dialog2 open={open} onOpenChange={onOpenChange}>
-      <DialogContent2 className="max-w-2xl rounded-2xl">
+      <DialogContent2 closeDisabled={sending || !!failure?.retry} style={{ maxHeight: "calc(100dvh - 2rem)" }} className="max-w-2xl overflow-y-auto rounded-2xl">
         <DialogHeader>
           <DialogTitle2>{"Cierre de caja · conteo de efectivo"}</DialogTitle2>
           <DialogDescription2>
             {"Cuenta billetes y monedas. El sistema compara con lo esperado."}
           </DialogDescription2>
         </DialogHeader>
+        {(sending || failure) && <div role={failure ? "alert" : "status"} className="space-y-2 text-sm">
+          <p>{sending ? "Confirmando el cierre…" : failure.message}</p>
+          {failure?.retry && <Button variant="outline" onClick={onRetry} disabled={retryDisabled}>Reintentar cierre</Button>}
+        </div>}
         <div className="grid gap-6 sm:grid-cols-2">
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -105,11 +114,12 @@ function CashCountDialog({ open, onOpenChange, expected, onConfirm }) {
           <Button
             variant="outline"
             className="rounded-xl bg-card"
+            disabled={disabled}
             onClick={() => setCounts({})}
           >
             {"Limpiar conteo"}
           </Button>
-          <Button className="rounded-xl" onClick={() => onConfirm(counted)}>
+          <Button disabled={disabled || !valid} className="rounded-xl" onClick={() => onConfirm(counted)}>
             {"Cerrar caja con "}
             {formatMoney(counted)}
           </Button>
