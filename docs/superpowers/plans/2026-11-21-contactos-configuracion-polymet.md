@@ -1,4 +1,4 @@
-# Contactos y configuración de Polymet — Implementation Plan
+﻿# Contactos y configuración de Polymet — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -89,7 +89,7 @@ El diario conserva el mismo paquete en resultados inciertos; ningún formulario 
 
 ### Task 1: Cálculo exacto de fórmulas y fechas documentales
 
-**Files:** Create `src/domain/pricing.js`, `tests/pricing.test.js`; modify `frontend/src/polymet/lib/pricing.js`, `frontend/src/polymet/lib/accounts.js`; create `tests/document-dates.test.js`.
+**Files:** Create `src/domain/pricing.js`, `tests/pricing.test.js`; modify `frontend/src/polymet/lib/pricing.js`, `frontend/src/polymet/lib/accounts.js`, `frontend/src/polymet/components/product-form-sheet.jsx`, `frontend/src/polymet/components/purchase-entry-form.jsx`; create `tests/document-dates.test.js`, `tests/pricing-preview.test.js`.
 
 **Interfaces:** Consumes no nueva dependencia. Produces `normalizeFormula`/`calculateFormula` y los exports existentes de pricing/accounts para las tareas 2 y 5. Leer los contratos anteriores en la copia de restricciones del brief.
 
@@ -107,13 +107,13 @@ assert.throws(()=>calculateFormula('999999999999.99',f,0));
 
 Incluir límites/precisión para factor/recargos/costo, paso inválido, cero explícito válido. Fechas: `formatDate('2026-01-01')` conserva día 1 bajo UTC y Santo Domingo; `formatDateTime`/`formatTime` no inventan hora para fecha sin hora. Instantes usan America/Santo_Domingo. Mantener textos del diseño salvo corrección documentada de día/hora.
 - [ ] **Step 2: Ejecutar** `node --test tests/pricing.test.js tests/document-dates.test.js` y registrar fallo de comportamiento real.
-- [ ] **Step 3: Implementar.** BigInt decimal escalado; errores de dominio en español. Adaptar exports existentes sin fixtures ni lógica de persistencia. Parsear fecha documental mediante componentes de calendario, no una medianoche UTC convertida a hora del negocio. No cambiar envejecimiento de cuentas aún no conectado salvo la función de formato requerida.
-- [ ] **Step 4: Ejecutar las pruebas del paso 2 y** `pnpm build:design`, `pnpm build:operational`. Informar comandos y resultados.
+- [ ] **Step 3: Implementar.** BigInt decimal escalado; errores de dominio en español. Adaptar exports existentes sin fixtures ni lógica de persistencia. Parsear fecha documental mediante componentes de calendario, no una medianoche UTC convertida a hora del negocio. No cambiar envejecimiento de cuentas aún no conectado salvo la función de formato requerida. Proteger los llamadores de sugerencias ProductFormSheet/PurchaseEntryForm frente a borradores inválidos o cálculo desbordado: feedback inline, no caída de render ni aplicar/agregar sugerencias inválidas. Conservar guardado manual válido del producto aunque una fórmula no pueda sugerir un precio. Prueba de navegador de referencia con fórmulas y costo inválido/desbordado; conservar el caso manual sin fórmula.
+- [ ] **Step 4: Ejecutar las pruebas del paso 2 y** `node --test tests/pricing-preview.test.js tests/catalog-forms.test.js`, `pnpm build:design`, `pnpm build:operational`. Informar comandos y resultados.
 - [ ] **Step 5: Revisar diff y commit** solo archivos propios: `git commit -m "Calculate price suggestions with exact decimal arithmetic"`.
 
 ### Task 2: Persistencia transaccional, migración y respaldo v4
 
-**Files:** Create `supabase/migrations/20261122000000_contactos_configuracion.sql`, `src/pos/contact-operations.js`, `tests/contact-settings.test.js`; modify `src/pos/store.js`, `schema.sql`, pruebas que dependan del contrato de respaldo (`tests/catalog-metadata.test.js`, `tests/database.test.js`, `tests/operations.test.js` solo cuando el cambio sea necesario). Un helper pequeño de respaldo separado es válido si mantiene un único validador/listado de tablas.
+**Files:** Create `supabase/migrations/20261122000000_contactos_configuracion.sql`, `src/pos/contact-operations.js`, `tests/contact-settings.test.js`; modify `src/pos/store.js`, `supabase/schema.sql`, pruebas que dependan del contrato de respaldo (`tests/catalog-metadata.test.js`, `tests/database.test.js`, `tests/operations.test.js` solo cuando el cambio sea necesario). Un helper pequeño de respaldo separado es válido si mantiene un único validador/listado de tablas.
 
 **Interfaces:** Consumes `normalizeFormula` de Task 1. Produces API/snapshot definidos en Contratos, CRUD de contactos/fórmulas y respaldo `version:4` con diez tablas. Rutas y respuestas siguen `writeOperation`/`readSnapshot`; no nuevas transacciones anidadas ni saltos del protocolo de rechazo.
 
@@ -126,13 +126,14 @@ const r = await write('clientes',{nombre:'Cliente prueba',rnc:'',tel:'',
 assert.equal(r.status,200);
 const created=(await r.json()).state.clientes.find(c=>c.nombre==='Cliente prueba');
 assert.equal(created.limiteCredito,1250.5);
-const stale=await write(`clientes/${created.id}`,{...created,nombre:'Conflicto',version:created.version},'PUT');
+const stale=await write(`clientes/${created.id}`,{nombre:'Conflicto',rnc:created.rnc,
+ tel:created.tel,version:created.version},'PUT');
 // Construir un cambio confirmado antes de stale; esperar 409 sin perder campos.
 ```
 
 Respaldo: export v4, restauración completa incluyendo inactivos y referencia de fórmula, actualización v3/v2/legacy neutral, rechazo fila/tabla/relación/importe inválidos, rollback + archivo previo + rotación generación. Actualizar expectativas previas explícitamente sin reducir cobertura.
 - [ ] **Step 2: Ejecutar** `node --test tests/contact-settings.test.js` para comprobar ausencia del comportamiento.
-- [ ] **Step 3: Implementar migración aditiva.** Textos nuevos `NOT NULL DEFAULT ''` con longitud 2000; límite `numeric(14,2) NULL CHECK>=0`; días `integer NULL CHECK>=0`; cliente `es_contado boolean NOT NULL DEFAULT false`, único parcial para true, proteger marca de edición/baja. Fórmulas `id bigint identity`, nombre requerido, `factor_costo numeric(9,3)>0`, `recargo1/2/3 numeric(9,4)>=0`, activo/version/timestamps como catálogo. Suplidor `formula_id bigint NULL REFERENCES formulas_precios(id) ON DELETE RESTRICT`. Configuración nuevos campos según contratos; solo permitir stock negativo false. Valores desconocidos de nivel/formato null. Redondeo inicial 0. Dar únicamente privilegios/RLS pos_app necesarios. Actualizar `schema.sql` sin modificar migraciones previas. Import legacy/upgrade debe aplicar misma política inequívoca del marcador; documentar y probar ambigüedad sin adivinar.
+- [ ] **Step 3: Implementar migración aditiva.** Textos nuevos `NOT NULL DEFAULT ''` con longitud 2000; límite `numeric(14,2) NULL CHECK>=0`; días `integer NULL CHECK>=0`; cliente `es_contado boolean NOT NULL DEFAULT false`, único parcial para true, proteger marca de edición/baja. Fórmulas `id bigint identity`, nombre requerido, `factor_costo numeric(9,3)>0`, `recargo1/2/3 numeric(9,4)>=0`, activo/version/timestamps como catálogo. Suplidor `formula_id bigint NULL REFERENCES formulas_precios(id) ON DELETE RESTRICT`. Configuración nuevos campos según contratos; solo permitir stock negativo false. Valores desconocidos de nivel/formato null. Redondeo inicial 0. Dar únicamente privilegios/RLS pos_app necesarios. Actualizar `supabase/schema.sql` sin modificar migraciones previas. Import legacy/upgrade debe aplicar misma política inequívoca del marcador; documentar y probar ambigüedad sin adivinar.
 - [ ] **Step 4: Implementar operaciones y snapshot.** Conservar callbacks transaccionales en store; extraer CRUD a módulo enfocado mediante funciones exportadas en vez de ampliar dispatch monolítico. Fórmula se bloquea antes de asignar/baja y vuelve a comprobar activa. Baja rechaza fórmula usada incluso por suplidor inactivo; clientes con deuda no nula o contado protegido. No generar obligaciones/hora/pagos ni recalcular documentos. Respaldo contiene orden fijo con fórmulas antes de suplidores; restaurar en orden y borrar al revés; validar atributos nuevos y comparar formato esperado por versión. No leer campos de usuario como identificadores SQL. No ejecutar SQL fuera de bases desechables.
 - [ ] **Step 5: Ejecutar** `node --test tests/contact-settings.test.js tests/catalog-metadata.test.js tests/database.test.js tests/operations.test.js tests/transaction-cleanup.test.js tests/state-cache.test.js`; corregir solo regresiones justificadas. Commit `"Persist Polymet contacts formulas and business preferences"` con informe de TDD y compatibilidad.
 
@@ -164,7 +165,7 @@ await client.writeOperation({method:'PUT',path:'/api/configuracion',databaseId,
 - [ ] **Step 1: Añadir pruebas de navegador que fallen.** Alta y edición con todos los campos; guardado lento no cierra ni muestra toast; doble click 1 solicitud; rechazo conserva campos; incierto bloquea edición y repite paquete; rechazo definitivo libera; borrador no adopta version/DBgen de poll; edición null no se convierte en0; foco al abrir/cerrar/borrar última fila. Runtime real Node/PG con recarga verifica correo/dirección/límite/contacto/días/fórmula y baja histórica. A 320/390 px controles alcanzables, tabla con scroll interno; teclado y claro/oscuro sin errores JS.
 - [ ] **Step 2: Ejecutar** `node --test tests/contact-forms.test.js` y capturar fallo esperado.
 - [ ] **Step 3: Implementar guardado esperado y DTO estable.** Validación previa a journal con textos 2000/money2/int32 y null explícito para desconocido; etiquetas accesibles como ProductFormSheet. Capturar editing object/version/databaseId al abrir; UUID local para creación. `toDTO` solo se ejecuta para primer intento o nueva edición tras rechazo definitivo. Padres retornan Promise y notifican únicamente después de resolve; bajas reciben fila completa. IDs de Radix select se representan como string y se convierten en frontera, opción vacía válida de fórmula sin asignar. No seleccionar primera fórmula automáticamente para un histórico null.
-- [ ] **Step 4: Conservar estructura y corregir estados reales.** Ocultar cliente de contado usando marcador operativo, conservar referencia c-000 solo en demo mediante isCashCustomer explícito. Crédito null muestra «Sin configurar», cero «Solo contado». Proveedor balance null y agregado muestran «No disponible», no RD$0. Cuentas aún sin submayor explican estado desconocido y no presentan lista vacía como prueba de ausencia de deuda. Detalles muestran las compras/ventas reales y fecha documental correcta; no botón de cobro con callback ficticio. Resolver overflow conocido de tarjetas suplidor con min-w-0/wordwrap conservando composición. Habilitar solo estas dos rutas además del inventario.
+- [ ] **Step 4: Conservar estructura y corregir estados reales.** Ocultar cliente de contado usando marcador operativo, conservar referencia c-000 solo en demo mediante isCashCustomer explícito. Crédito null muestra «Sin configurar», cero «Solo contado». Proveedor balance null y agregado muestran «No disponible», no RD$0. Cuentas aún sin submayor explican estado desconocido y no presentan lista vacía como prueba de ausencia de deuda. Detalles muestran las compras/ventas reales y fecha documental correcta; no botón de cobro con callback ficticio. El agregado mensual compara fechas documentales de calendario con el mes de America/Santo_Domingo; no excluir el primer día convirtiéndolo a medianoche UTC ni usar el huso del teléfono. Probar una compra del día 1 con navegador en otro huso. Resolver overflow conocido de tarjetas suplidor con min-w-0/wordwrap conservando composición. Habilitar solo estas dos rutas además del inventario.
 - [ ] **Step 5: Ejecutar** `node --test tests/contact-forms.test.js tests/contact-runtime.test.js tests/catalog-forms.test.js tests/operational-build.test.js`, builds operativa/referencia y commit `"Save complete Polymet contact forms with confirmed results"`.
 
 ### Task 5: Configuración y fórmulas con borradores explícitos
@@ -193,3 +194,4 @@ await client.writeOperation({method:'PUT',path:'/api/configuracion',databaseId,
 ## Verificación de cobertura previa a ejecución
 
 Campos/contactos, configuración y fórmulas: tareas 1–5. Idempotencia/versiones y saldos históricos: 2–5. Respaldo/RLS/legacy: 2. Diario/retry y respuestas completas: 3–5. Diseño/adaptación/accesibilidad: 4–6. Evidencia multiplataforma y límites: 6. La especificación completa permanece abierta tras esta etapa.
+
