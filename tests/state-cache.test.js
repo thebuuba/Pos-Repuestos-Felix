@@ -100,7 +100,7 @@ test('GET /api/state conserva el snapshot y valida el ETag con una sola consulta
 
 test('GET /api/state replaces the earlier representation at the same data revision', async () => {
   const { databaseId, revision, databaseLabel } = await (await getState()).json();
-  const oldTag = '"' + createHash('sha256').update(JSON.stringify([1, databaseId, revision, databaseLabel])).digest('hex') + '"';
+  const oldTag = '"' + createHash('sha256').update(JSON.stringify([2, databaseId, revision, databaseLabel])).digest('hex') + '"';
   const response = await getState(oldTag);
   assert.equal(response.status, 200);
   assert.notEqual(response.headers.get('etag'), oldTag);

@@ -5,7 +5,7 @@ function integralQuantity(value) {
   return Number(value);
 }
 
-function centCost(value) {
+function centAmount(value) {
   assert.match(value, /^\d+\.\d{2}00$/);
   return value.slice(0, -2);
 }
@@ -20,12 +20,15 @@ export function historicalBackup(backup, version) {
     delete row.notificar_minimo;
     row.stock = integralQuantity(row.stock);
     row.stock_minimo = integralQuantity(row.stock_minimo);
-    row.costo = centCost(row.costo);
+    for (const col of ['costo','precio1','precio2','precio3']) row[col] = centAmount(row[col]);
   }
-  for (const row of tables.venta_detalles) row.cantidad = integralQuantity(row.cantidad);
+  for (const row of tables.venta_detalles) {
+    row.cantidad = integralQuantity(row.cantidad);
+    row.precio = centAmount(row.precio);
+  }
   for (const row of tables.compra_detalles) {
     row.cantidad = integralQuantity(row.cantidad);
-    row.costo = centCost(row.costo);
+    for (const col of ['costo','precio1','precio2','precio3']) row[col] = centAmount(row[col]);
   }
   for (const row of tables.movimientos_inventario) {
     row.cantidad = integralQuantity(row.cantidad);

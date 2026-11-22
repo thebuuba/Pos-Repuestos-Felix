@@ -8,6 +8,8 @@
     "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   },
   "scripts": {
+    "netpos:prepare": "python scripts/netpos/prepare.py",
+    "netpos:import": "node scripts/netpos/import.mjs",
     "db:migrate": "node --env-file-if-exists=.env --env-file-if-exists=.env.migrations scripts/migrate.js",
     "db:migrate:local": "node --env-file=.env.local --env-file-if-exists=.env.local.migrations scripts/migrate.js",
     "db:migrate:supabase": "node --env-file=.env.supabase --env-file-if-exists=.env.migrations scripts/migrate.js",

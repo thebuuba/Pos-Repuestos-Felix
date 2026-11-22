@@ -57,24 +57,20 @@ function fromProduct(p) {
     stock: String(p.stock),
     minStock: String(p.minStock),
     taxable: p.taxable,
-    prices: {
+    prices: p.pricesExact ?? {
       p1: String(p.prices.p1),
       p2: String(p.prices.p2),
       p3: String(p.prices.p3),
     },
   };
 }
-function validMoney(value) {
-  return (
-    /^(?:\d+|\d*\.\d{1,2})$/.test(value) && Number(value) <= 999999999999.99
-  );
-}
+const normalizeDecimal = value => value.replace(/^\./, "0.").replace(/^0+(?=\d)/, "");
 function validQuantity(value) {
   return /^(?:\d*|\d*\.\d{1,2})$/.test(value) && Number(value) <= 2147483647;
 }
-function validBaseCost(value) {
+function validUnit(value) {
   try {
-    costUnits(value, "el costo");
+    costUnits(normalizeDecimal(value), "el importe unitario");
     return true;
   } catch (error) {
     if (error instanceof OperationError) return false;
@@ -114,15 +110,14 @@ function ProductFormSheet({
       ...f,
       [key]: value,
     }));
-  const moneyError = "Usa un importe válido con hasta dos decimales";
-  const costError = "Usa un importe válido con hasta cuatro decimales";
-  const costDecimal = form.cost.replace(/^\./, "0.").replace(/^0+(?=\d)/, "");
-  const validCost = validBaseCost(costDecimal);
+  const unitError = "Usa un importe válido con hasta cuatro decimales";
+  const costDecimal = normalizeDecimal(form.cost);
+  const validCost = validUnit(costDecimal);
   const cost = validCost ? Number(costDecimal) : 0;
   const formula = formulas.find((f) => String(f.id) === formulaId) ?? formulas[0];
   let suggested, suggestionError;
   if (formula && form.cost !== "") {
-    if (!validCost) suggestionError = costError;
+    if (!validCost) suggestionError = unitError;
     else if (cost > 0) {
       try {
         suggested = pricesFromFormula(costDecimal, formula, rounding);
@@ -160,18 +155,18 @@ function ProductFormSheet({
       form.cost === ""
         ? "Indica el costo"
         : !validCost
-          ? costError
+          ? unitError
           : undefined,
     stock: validQuantity(form.stock) ? undefined : quantityError,
     minStock: validQuantity(form.minStock) ? undefined : quantityError,
     p1:
       form.prices.p1 === ""
         ? "Indica el precio"
-        : !validMoney(form.prices.p1)
-          ? moneyError
+        : !validUnit(form.prices.p1)
+          ? unitError
           : undefined,
-    p2: form.prices.p2 && !validMoney(form.prices.p2) ? moneyError : undefined,
-    p3: form.prices.p3 && !validMoney(form.prices.p3) ? moneyError : undefined,
+    p2: form.prices.p2 && !validUnit(form.prices.p2) ? unitError : undefined,
+    p3: form.prices.p3 && !validUnit(form.prices.p3) ? unitError : undefined,
   };
   const valid = !Object.values(errors).some(Boolean);
   const handleSubmit = async () => {
@@ -189,9 +184,9 @@ function ProductFormSheet({
         return;
       }
       if (!valid) return;
-      const p1 = Number(form.prices.p1);
-      const p2 = form.prices.p2 === "" ? p1 : Number(form.prices.p2);
-      const p3 = form.prices.p3 === "" ? p2 : Number(form.prices.p3);
+      const p1 = normalizeDecimal(form.prices.p1);
+      const p2 = form.prices.p2 === "" ? p1 : normalizeDecimal(form.prices.p2);
+      const p3 = form.prices.p3 === "" ? p2 : normalizeDecimal(form.prices.p3);
       payload = {
         id: draft.id,
         databaseId: draft.databaseId,
@@ -205,7 +200,8 @@ function ProductFormSheet({
         stock: Number(form.stock),
         minStock: Number(form.minStock),
         taxable: form.taxable,
-        prices: { p1, p2, p3 },
+        prices: { p1: Number(p1), p2: Number(p2), p3: Number(p3) },
+        pricesExact: { p1, p2, p3 },
       };
     }
     inFlight.current = true;
@@ -436,7 +432,7 @@ function ProductFormSheet({
             )}
             <div className="grid grid-cols-3 gap-3">
               {PRICE_KEYS.map((k) => {
-                const price = validMoney(form.prices[k])
+                const price = validUnit(form.prices[k])
                   ? Number(form.prices[k])
                   : 0;
                 const m = marginPct(price, cost);
@@ -466,6 +462,7 @@ function ProductFormSheet({
                       aria-invalid={submitted && !!errors[k]}
                       type="number"
                       inputMode="decimal"
+                      step="0.0001"
                       value={form.prices[k]}
                       onChange={(e) =>
                         set("prices", {

@@ -7,6 +7,7 @@ function productFromSnapshot(p, databaseId) {
     brand: p.marca, category: p.categoria, location: p.ubicacion, minStock: p.stockMinimo,
     taxable: p.gravado, notifyMinStock: p.notificarMinimo ?? true,
     cost: p.costo, costExact: p.costoExacto ?? p.costo.toFixed(4), stock: p.stock,
+    pricesExact: p.preciosExactos,
     prices: { p1: p.precio1, p2: p.precio2, p3: p.precio3 },
   };
 }
@@ -48,23 +49,24 @@ function presentation(snapshot) {
       id: s.id, customerId: s.clienteId, customerName: s.cliente, customerRnc: s.clienteRnc, number: 'Registro ' + s.id,
       date: s.fechaISO, ncf: s.ncf, comprobante: s.tipoComprobante, condition: s.condicion === 'Credito' ? 'credito' : 'contado',
       status: null, subtotal: s.base, itbis: s.itbis, total: s.total,
-      lines: s.items.map(line => ({ ...documentLine(line), price: line.precio, base: line.base, itbis: line.itbis })),
+      lines: s.items.map(line => ({ ...documentLine(line), price: line.precio, priceExact: line.precioExacto, base: line.base, itbis: line.itbis })),
     })).sort(newestFirst) ?? [],
     purchases: state?.compras.map(c => ({
       id: c.id, supplierId: c.suplidorId, supplierName: c.suplidor, number: 'Registro ' + c.id,
       supplierInvoice: c.numero, date: c.fechaISO, total: c.total, lines: c.items.map(line => ({ ...documentLine(line),
         cost: line.costo, costExact: line.costoExacto ?? line.costo.toFixed(4),
-        prices: { p1: line.p1, p2: line.p2, p3: line.p3 } })),
+        pricesExact: line.preciosExactos, prices: { p1: line.p1, p2: line.p2, p3: line.p3 } })),
     })).sort(newestFirst) ?? [],
     receivables: [],
   };
 }
 
 function productPayload(p) {
+  const prices = p.pricesExact ?? p.prices;
   return { codigo: p.code, nombre: p.name, marca: p.brand, categoria: p.category, ubicacion: p.location,
     stockMinimo: p.minStock, gravado: p.taxable, costo: p.cost, stock: p.stock,
     ...(Object.hasOwn(p, 'notifyMinStock') ? { notificarMinimo: p.notifyMinStock } : {}),
-    precio1: p.prices.p1, precio2: p.prices.p2, precio3: p.prices.p3 };
+    precio1: prices.p1, precio2: prices.p2, precio3: prices.p3 };
 }
 function recordOperation(resource, dto, toPayload) {
   const existing = Number.isSafeInteger(dto.id) && dto.id > 0;

@@ -37,7 +37,7 @@ const string = value => typeof value === 'string';
 const amount = decimal(/^\d{1,12}(?:\.\d{1,2})?$/);
 const productFields = { codigo: string, nombre: string, marca: string, categoria: string, ubicacion: string,
   stockMinimo: decimalQuantity, gravado: bool, notificarMinimo: bool, stock: decimalQuantity,
-  costo: cost, precio1: amount, precio2: amount, precio3: amount };
+  costo: cost, precio1: cost, precio2: cost, precio3: cost };
 const contactFields = { nombre: name, rnc: text, tel: text, correo: text };
 const customerFields = { ...contactFields, direccion: text, limiteCredito: nullable(amount) };
 const supplierFields = { ...contactFields, contacto: text, diasCredito: nullable(integerQuantity), formulaId: nullable(id) };
@@ -87,11 +87,16 @@ function checkPayload(method, resource, payload) {
   }
 }
 
-function validCost(row) {
-  // Snapshots from the previous server version only carry a two-decimal cost.
-  if (!Object.hasOwn(row, 'costoExacto')) return money(row.costo);
-  return typeof row.costoExacto === 'string' && /^\d{1,12}\.\d{4}$/.test(row.costoExacto) &&
-    cost(row.costoExacto) && row.costo === Number(row.costoExacto);
+function validUnit(value, exact) {
+  if (exact === undefined) return money(value);
+  return typeof exact === 'string' && /^\d{1,12}\.\d{4}$/.test(exact) && cost(exact) && value === Number(exact);
+}
+
+function validPrices(row, keys) {
+  const exact = row.preciosExactos;
+  if (exact === undefined) return keys.every(key => money(row[key]));
+  return exact && typeof exact === 'object' && ['p1','p2','p3'].every((level, i) =>
+    typeof exact[level] === 'string' && validUnit(row[keys[i]], exact[level]));
 }
 
 function validProduct(p) {
@@ -99,7 +104,7 @@ function validProduct(p) {
     ['marca', 'categoria', 'ubicacion'].every(key => text(p[key])) &&
     quantity(p.stock) && quantity(p.stockMinimo) &&
     (!Object.hasOwn(p, 'stock_minimo') || p.stock_minimo === p.stockMinimo) &&
-    validCost(p) && ['precio1', 'precio2', 'precio3'].every(key => money(p[key])) &&
+    validUnit(p.costo, p.costoExacto) && validPrices(p, ['precio1','precio2','precio3']) &&
     (!Object.hasOwn(p, 'notificarMinimo') || bool(p.notificarMinimo)) &&
     (!Object.hasOwn(p, 'notificar_minimo') || p.notificar_minimo === p.notificarMinimo) &&
     typeof p.gravado === 'boolean' && p.activo === true;
@@ -122,9 +127,10 @@ function validDocument(row, sale) {
   const header = sale ? { clienteId: id, cliente: name, clienteRnc: text, ncf: nullable(name),
     tipoComprobante: oneOf('B01','B02','B14'), condicion: oneOf('Credito','Contado'), base: money, itbis: money }
     : { suplidorId: id, suplidor: name, numero: name };
-  const amounts = sale ? { precio: money, base: money, itbis: money } : { p1: money, p2: money, p3: money };
   return complete(row, header) && documentDate(row.fechaISO) && money(row.total) && row.items?.length > 0 &&
-    records(row.items, line => complete(line, lineFields) && complete(line, amounts) && (sale || validCost(line)));
+    records(row.items, line => complete(line, lineFields) && (sale
+      ? money(line.base) && money(line.itbis) && validUnit(line.precio,line.precioExacto)
+      : validUnit(line.costo,line.costoExacto) && validPrices(line,['p1','p2','p3'])));
 }
 function validOperationalState(state) {
   const config = state.configuracion;

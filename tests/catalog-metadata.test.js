@@ -91,6 +91,11 @@ test('v5 backups preserve metadata and older versions use the SQL defaults', asy
   const restored = await write('restore', { revision: original.revision, backup });
   assert.equal(restored.status, 200, await restored.clone().text());
   assert.deepEqual((await restored.json()).state, original.state);
+  for (const version of [2,3,4]) {
+    const incompatible = historicalBackup(backup, version);
+    incompatible.tables.productos[0].precio2 = '10.003';
+    assert.equal((await write('restore', { revision: (await state()).revision, backup: incompatible })).status, 400);
+  }
   const v4 = historicalBackup(backup, 4);
   const invalidV4 = structuredClone(v4);
   invalidV4.tables.productos[0].costo = '10.0000';
@@ -133,11 +138,12 @@ test('additive catalog migration preserves populated prior schema and historical
     const oldProduct = (await admin.query('SELECT * FROM productos')).rows[0];
     const oldDocuments = (await admin.query('SELECT row_to_json(v) AS document FROM ventas v ORDER BY id')).rows;
     const oldMovements = (await admin.query('SELECT row_to_json(m) AS document FROM movimientos_inventario m ORDER BY id')).rows;
-    assert.deepEqual(await migrateDatabase(admin), ['20261121220000', '20261122000000', '20261122010000']);
+    assert.deepEqual(await migrateDatabase(admin), ['20261121220000', '20261122000000', '20261122010000', '20261122015000', '20261122020000']);
     assert.equal((await admin.query('SELECT es_contado FROM clientes')).rows[0].es_contado, false);
     const migrated = (await admin.query('SELECT * FROM productos')).rows[0];
     assert.deepEqual(Object.fromEntries(Object.keys(oldProduct).map(key => [key, migrated[key]])),
-      { ...oldProduct, stock: oldProduct.stock.toFixed(2), costo: Number(oldProduct.costo).toFixed(4) });
+      { ...oldProduct, stock: oldProduct.stock.toFixed(2), ...Object.fromEntries(
+        ['costo', 'precio1', 'precio2', 'precio3'].map(k => [k, Number(oldProduct[k]).toFixed(4)])) });
     assert.equal(migrated.gravado, true);
     assert.equal(migrated.stock_minimo, '0.00');
     assert.equal(migrated.notificar_minimo, true);

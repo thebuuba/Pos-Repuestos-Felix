@@ -133,3 +133,21 @@ test('pricing applies the factor to four decimals before rounding the adjusted c
     { adjustedCost: '24.69', prices: { p1: '24.69', p2: '27.16', p3: '29.63' } });
   assert.throws(() => calculateFormula('1.00001', formula, 0), RangeError);
 });
+test('tarifas unitarias exactas en compra, venta fraccionaria y restauración v5', async () => {
+  const draft = { ...item, codigo:'PRECIO4', stock:3, precio2:'10.003', precio3:'999999999999.9898' };
+  const made = await write('productos',draft);
+  const product = made.state.productos.find(p => p.id === made.result.id);
+  assert.deepEqual(product.preciosExactos, { p1:'23.4500', p2:'10.0030', p3:'999999999999.9898' });
+  await assert.rejects(write('productos', { ...draft,codigo:'PRECIO5',precio2:'10.00301' }), { status:400 });
+  const sold = await write('ventas', { clienteId:made.state.clientes[0].id, condicion:'Contado',tipoComprobante:'B02',
+    items:[{productoId:product.id,cantidad:'2.50',nivelPrecio:'precio2'}] });
+  const invoice = sold.state.facturas.find(f => f.id === sold.result.id);
+  assert.deepEqual([invoice.items[0].precioExacto,invoice.items[0].subtotal,invoice.total], ['10.0030',25.01,25.01]);
+  const supplier = await write('suplidores',{nombre:'Suplidor de prueba de precios'});
+  const bought = await write('compras',{suplidorId:supplier.result.id,numero:'Precisión',items:[{...draft,cantidad:'1.25'}]});
+  const line = bought.state.compras.find(c => c.id === bought.result.id).items[0];
+  assert.deepEqual(line.preciosExactos,product.preciosExactos);
+  const backup = JSON.parse(JSON.stringify(await snapshot(true)));
+  const restored = await write('restore',{revision:bought.revision,backup});
+  assert.deepEqual(restored.state,bought.state);
+});

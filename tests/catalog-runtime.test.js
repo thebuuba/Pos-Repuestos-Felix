@@ -109,13 +109,13 @@ test('rendered Polymet inventory stores all attributes and survives navigation a
   const reopened = page.getByRole('dialog');
   assert.equal(await reopened.getByLabel('Marca', { exact: true }).inputValue(), product.marca);
   assert.equal(await reopened.getByLabel('Mínimo', { exact: true }).inputValue(), '3');
-  assert.equal(await reopened.getByLabel('Precio 2 · Por mayor', { exact: true }).inputValue(), '0');
+  assert.equal(await reopened.getByLabel('Precio 2 · Por mayor', { exact: true }).inputValue(), '0.0000');
   await reopened.getByRole('button', { name: 'Cancelar', exact: true }).click();
 });
 
 test('rendered product form saves case-sensitive codes and reopens the exact cost at the SQL limit', async () => {
   const upper = await write('productos', { codigo: 'UI-PRECISION', nombre: 'Código en mayúsculas', costo: '999999999999.9898',
-    precio1: 0, precio2: 0, precio3: 0, stock: 0, notificarMinimo: false });
+    precio1: 0, precio2: '10.003', precio3: '999999999999.9898', stock: 0, notificarMinimo: false });
   assert.equal(upper.status, 200, await upper.clone().text());
   await openInventory();
   const sheet = await newProduct('ui-precision ', 'Código en minúsculas');
@@ -136,12 +136,16 @@ test('rendered product form saves case-sensitive codes and reopens the exact cos
   await row.getByRole('button', { name: 'Editar', exact: true }).click();
   await sheet.getByLabel('Costo base RD$', { exact: true }).waitFor();
   assert.equal(await sheet.getByLabel('Costo base RD$', { exact: true }).inputValue(), '999999999999.9898');
+  assert.equal(await sheet.getByLabel('Precio 2 · Por mayor', { exact: true }).inputValue(), '10.0030');
+  assert.equal(await sheet.getByLabel('Precio 3 · Taller', { exact: true }).inputValue(), '999999999999.9898');
   await sheet.getByLabel('Descripción', { exact: true }).fill('Código editado');
   await sheet.getByRole('button', { name: 'Guardar cambios', exact: true }).click();
   await sheet.waitFor({ state: 'hidden', timeout: 5000 });
   await page.reload();
   await page.getByRole('row').filter({ hasText: 'Código editado' }).getByRole('button', { name: 'Editar', exact: true }).click();
   assert.equal(await sheet.getByLabel('Costo base RD$', { exact: true }).inputValue(), '999999999999.9898');
+  assert.equal(await sheet.getByLabel('Precio 2 · Por mayor', { exact: true }).inputValue(), '10.0030');
+  assert.equal(await sheet.getByLabel('Precio 3 · Taller', { exact: true }).inputValue(), '999999999999.9898');
   assert.equal((await confirmedProduct('UI-PRECISION')).notificarMinimo, false);
   await sheet.getByRole('button', { name: 'Cancelar', exact: true }).click();
 });
@@ -162,7 +166,7 @@ for (const cost of [10, 0]) test('metadata-only edit preserves empty attributes 
   await row.getByText('Descripción revisada', { exact: true }).waitFor();
   const stored = (await pool.query('SELECT nombre, marca, categoria, ubicacion, costo, precio1, precio2, precio3 FROM productos WHERE id=$1', [result.id])).rows[0];
   assert.deepEqual(stored, { nombre: 'Descripción revisada', marca: '', categoria: '', ubicacion: '',
-    costo: cost.toFixed(4), precio1: cost.toFixed(2), precio2: '0.00', precio3: '0.00' });
+    costo: cost.toFixed(4), precio1: cost.toFixed(4), precio2: '0.0000', precio3: '0.0000' });
 });
 
 test('creating with blank optional attributes and zero amounts renders an empty ratio and progress', async () => {

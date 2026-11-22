@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { validateState } from './legacy-state.js';
-import { OperationError, fail, text, productCode, id, cents, money, quantityUnits, costUnits, decimalUnits } from './operation-fields.js';
+import { OperationError, fail, text, productCode, id, money, quantityUnits, costUnits, decimalUnits } from './operation-fields.js';
 import { contactOperation, settingsOperation } from './contact-operations.js';
 import { backupLayout, exportBackup, rows, tables } from './relational-backup.js';
 export { fail } from './operation-fields.js';
@@ -8,8 +8,9 @@ export { fail } from './operation-fields.js';
 const maintenanceLock = 74198232;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function prices(body, cost = costUnits(body.costo, 'el costo')) {
-  return [decimalUnits(cost, 4), ...['precio1', 'precio2', 'precio3'].map(key => money(cents(body[key], key)))];
+  return [decimalUnits(cost, 4), ...['precio1', 'precio2', 'precio3'].map(key => decimalUnits(costUnits(body[key], key), 4))];
 }
+const exactPrices = row => ({ p1: row.precio1, p2: row.precio2, p3: row.precio3 });
 const quantityText = value => decimalUnits(value, 2);
 const lineCents = (price, quantity, divisor) => (price * quantity + divisor / 2n) / divisor;
 function canonical(value) {
@@ -48,14 +49,15 @@ async function snapshot(client, databaseLabel) {
   for (const table of Object.keys(tables)) data[table] = await rows(client, table);
   const config = data.configuracion[0];
   if (!config) fail('La configuración de la base está incompleta.', 503);
-  const saleItems = itemsByDocument(data.venta_detalles, 'venta_id', d => ({ ...lineFields(d), precio: Number(d.precio), base: Number(d.base), itbis: Number(d.itbis) }));
+  const saleItems = itemsByDocument(data.venta_detalles, 'venta_id', d => ({ ...lineFields(d), precio: Number(d.precio), precioExacto: d.precio, base: Number(d.base), itbis: Number(d.itbis) }));
   const purchaseItems = itemsByDocument(data.compra_detalles, 'compra_id', d => ({ ...lineFields(d), costo: Number(d.costo),
-    costoExacto: d.costo, p1: Number(d.precio1), p2: Number(d.precio2), p3: Number(d.precio3) }));
+    costoExacto: d.costo, preciosExactos: exactPrices(d), p1: Number(d.precio1), p2: Number(d.precio2), p3: Number(d.precio3) }));
   const balances = new Map((await client.query(`SELECT c.id,(c.saldo_apertura+COALESCE(sum(v.total) FILTER(WHERE v.condicion='Credito'),0))::text AS deuda
     FROM clientes c LEFT JOIN ventas v ON v.cliente_id=c.id GROUP BY c.id`)).rows.map(row => [row.id, Number(row.deuda)]));
   return {
     ...version,
     state: {
+      catalogo: (await client.query('SELECT pos_privado.netpos_opciones() AS opciones')).rows[0].opciones,
       empresa: config.empresa, itbisRate: Number(config.tasa_itbis), configuracionVersion: number(config.version),
       configuracion: { version: number(config.version), empresa: config.empresa, rnc: config.rnc, tel: config.tel,
         correo: config.correo, direccion: config.direccion, itbisPorcentaje: Number((Number(config.tasa_itbis) * 100).toFixed(4)),
@@ -66,7 +68,7 @@ async function snapshot(client, databaseLabel) {
       productos: data.productos.filter(p => p.activo).map(p => ({ ...p, id: number(p.id), version: number(p.version),
         stock: Number(p.stock), stock_minimo: Number(p.stock_minimo), stockMinimo: Number(p.stock_minimo),
         notificarMinimo: p.notificar_minimo, costo: Number(p.costo), costoExacto: p.costo,
-        precio1: Number(p.precio1), precio2: Number(p.precio2), precio3: Number(p.precio3) })),
+        preciosExactos: exactPrices(p), precio1: Number(p.precio1), precio2: Number(p.precio2), precio3: Number(p.precio3) })),
       clientes: data.clientes.filter(c => c.activo).map(c => ({ id: number(c.id), version: number(c.version), nombre: c.nombre, rnc: c.rnc, tel: c.tel,
         correo: c.correo, direccion: c.direccion, limiteCredito: c.limite_credito === null ? null : Number(c.limite_credito),
         esContado: c.es_contado, deuda: balances.get(c.id) })),
@@ -166,7 +168,7 @@ async function sale(client, body) {
   const rate = BigInt(config.tasa_itbis.replace('.', ''));
   const lines = items.map(item => {
     const p = products.get(item.productoId);
-    const price = cents(p[item.nivelPrecio]); const total = lineCents(price, item.quantity, 100n);
+    const price = costUnits(p[item.nivelPrecio], 'el precio'); const total = lineCents(price, item.quantity, 10000n);
     const divisor = 1000000n + (p.gravado ? rate : 0n); const base = (total * 1000000n + divisor / 2n) / divisor;
     return { item, p, price, total, base, tax: total - base };
   });
@@ -176,7 +178,7 @@ async function sale(client, body) {
   for (const line of lines) {
     const { item, p } = line;
     const detail = (await client.query(`INSERT INTO venta_detalles(venta_id,producto_id,codigo,nombre,cantidad,nivel_precio,precio,base,itbis,total)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`, [header.id, p.id, p.codigo, p.nombre, quantityText(item.quantity), item.nivelPrecio, money(line.price), money(line.base), money(line.tax), money(line.total)])).rows[0];
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`, [header.id, p.id, p.codigo, p.nombre, quantityText(item.quantity), item.nivelPrecio, decimalUnits(line.price, 4), money(line.base), money(line.tax), money(line.total)])).rows[0];
     p.stock -= item.quantity;
     await client.query('UPDATE productos SET stock=$2,version=version+1,actualizado_en=now() WHERE id=$1', [p.id, quantityText(p.stock)]);
     await movement(client, p.id, -item.quantity, p.stock, 'venta', detail.id);

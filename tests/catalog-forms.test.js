@@ -33,7 +33,7 @@ function confirmNewProduct(route, snapshot, id = product.id) {
   const { databaseId, ...fields } = route.request().postDataJSON();
   snapshot.revision++;
   const costo = Number(fields.costo);
-  snapshot.state.productos.push({ ...fields, costo, costoExacto: costo.toFixed(4), id, version: 1, activo: true });
+  snapshot.state.productos.push({ ...fields, precio1:Number(fields.precio1), precio2:Number(fields.precio2), precio3:Number(fields.precio3), costo, costoExacto: costo.toFixed(4), id, version: 1, activo: true });
   return route.fulfill({ json: acknowledged(route, snapshot, id) });
 }
 
@@ -275,9 +275,9 @@ test(
       [0, "1e100", /hasta cuatro decimales/],
       [1, "1.501", /hasta dos decimales/],
       [2, "2147483648", /hasta dos decimales/],
-      [3, "10.255", /hasta dos decimales/],
-      [4, "-1", /hasta dos decimales/],
-      [5, "3.141", /hasta dos decimales/],
+      [3, "10.25555", /hasta cuatro decimales/],
+      [4, "-1", /hasta cuatro decimales/],
+      [5, "3.14159", /hasta cuatro decimales/],
     ]) {
       const input = numbers.nth(field);
       const original = await input.inputValue();
@@ -302,9 +302,9 @@ test(
     assert.equal(packets[0].stock, 0);
     assert.equal(packets[0].stockMinimo, 5);
     assert.equal(packets[0].costo, "10.25");
-    assert.equal(packets[0].precio1, 20.15);
-    assert.equal(packets[0].precio2, 0);
-    assert.equal(packets[0].precio3, 0);
+    assert.equal(packets[0].precio1, "20.15");
+    assert.equal(packets[0].precio2, "0");
+    assert.equal(packets[0].precio3, "0");
   },
 );
 

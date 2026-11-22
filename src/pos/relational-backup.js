@@ -44,7 +44,7 @@ function validateBackupRow(table, row, columns, version) {
     else if (key === 'dias_credito') { if (value !== null) integer(value, key, 0); }
     else if (key === 'limite_credito') { if (value !== null) cents(value, key); }
     else if (key === 'codigo' && version === 5) productCode(value);
-    else if (key === 'costo' && version === 5) costUnits(value, key);
+    else if (version === 5 && ['costo','precio','precio1','precio2','precio3'].includes(key)) costUnits(value, key);
     else if (moneyColumns.has(key)) cents(value, key);
     else if (key === 'saldo_apertura') {
       if (!['string', 'number'].includes(typeof value)) fail('Saldo de apertura inválido.');
