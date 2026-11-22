@@ -22,6 +22,9 @@ REPO = Path(__file__).resolve().parents[2]
 NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 RID = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
 IDENT = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,62}\Z")
+EXCEL_NUMBER = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[Ee][+-]?[0-9]+)?")
+# WhiteSpace y LineTerminator de ECMAScript para replicar String.prototype.trim().
+JS_WHITESPACE = "\t\n\v\f\r \xa0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
 CHOICES = {"CATEGORIAS": ("CATEGORIA", "categorias"), "MARCAS": ("MARCA", "marcas"),
            "UBICACIONES": ("UBICACION", "ubicaciones"), "UNIDADES": ("UNIDAD", "unidades")}
 REQUIRED = {name: [key, "DESCRIPCION"] for name, (key, _) in CHOICES.items()}
@@ -41,6 +44,13 @@ class Invalid(Exception):
 def require(ok, message):
     if not ok:
         raise Invalid(message)
+
+
+def public_text(value, label, required=False):
+    # El cliente y el respaldo aplican String.length al valor original en unidades UTF-16.
+    require(len(value.encode("utf-16-le")) <= 4000 and (not required or value.strip(JS_WHITESPACE)),
+            f"Texto operativo inválido en {label}.")
+    return value
 
 
 def dump(value):
@@ -145,13 +155,15 @@ def xlsx(path):
                 require(cells.keys() <= columns.keys(), f"Columna XLSX sin encabezado, fila {number}.")
                 values = {name: cells.get(col, {"valor":"","tipo":"","estilo":0}) for col,name in columns.items()}
                 article = values["ARTICULO"]
-                require(article["tipo"] in ("n","s","inlineStr") and article["valor"].strip(), f"Artículo sin código, fila {number}.")
+                require(article["tipo"] in ("n","s","inlineStr") and article["valor"], f"Artículo sin código, fila {number}.")
                 rows.append((number, values, formats[article["estilo"]] in ("14","15","16","17","22")))
         require(bool(rows), "Libro sin artículos.")
         return list(columns.values()), rows
 
 
 def signature(value, rounding=ROUND_HALF_EVEN):
+    if not EXCEL_NUMBER.fullmatch(value):
+        return None
     try:
         n = Decimal(value)
         if not n.is_finite() or abs(n.adjusted()) > 2000:
@@ -222,7 +234,8 @@ def keys_for(rows, historic):
         require(len(candidates) == 1, f"Código ambiguo, fila {number}.")
         inferred = next(iter(candidates))
         code = observed if evidence == "sin-historial" else inferred
-        require(code not in used and len(code) <= 2000, f"Código repetido o demasiado largo, fila {number}.")
+        public_text(code, f"ARTICULO, fila {number}", required=True)
+        require(code not in used, f"Código repetido, fila {number}.")
         used.add(code)
         adopted.append((code,evidence,inferred if evidence == "sin-historial" else ""))
     return adopted
@@ -244,8 +257,8 @@ def catalog_data(out, rows, keys, masters):
     options, names = {}, {}
     for table, (field, label) in CHOICES.items():
         source = masters[table]
-        lookup = {r[field]: r["DESCRIPCION"] for r in source}
-        require(len(lookup) == len(source) and all(k and v.strip() for k,v in lookup.items()), "Maestro de catálogo inválido.")
+        lookup = {r[field]: public_text(r["DESCRIPCION"], table+".DESCRIPCION", required=True) for r in source}
+        require(len(lookup) == len(source) and all(lookup), "Maestro de catálogo inválido.")
         names[field] = lookup
         options[label] = sorted(set(lookup.values()))
     review = []
@@ -262,7 +275,7 @@ def catalog_data(out, rows, keys, masters):
                     raise Invalid(f"Precisión o rango inválido en {field}, fila {number}.") from None
             detail = [number,row["ARTICULO"],code,evidence,hint]
             review.append(dict(zip(PRODUCT_COLUMNS[:5], detail)))
-            require(row["DESCRIPCION"].strip(), f"Artículo sin descripción, fila {number}.")
+            public_text(row["DESCRIPCION"], f"DESCRIPCION, fila {number}", required=True)
             require(all(row[k] in v for k,v in names.items()), f"Referencia de catálogo desconocida, fila {number}.")
             product = [*detail, dump(values), row["DESCRIPCION"], quantity("COSTO",4,maximum),
                 *[quantity(k,4,maximum) for k in ("PRECIO","PRECIO2","PRECIO3")],
@@ -276,14 +289,19 @@ def catalog_data(out, rows, keys, masters):
     company = masters["EMPRESA"][0]
     require(flag(company["IMPUESTOS_INCLUIDOS"]) and Decimal(company["ITBIS"]) == 18, "Se requiere ITBIS 18 % incluido.")
     with binary_copy(out/"settings.bin") as settings:
-        settings([*[company[k] for k in ("NOMBRE_EMPRESA","RNC","TELEFONO","EMAIL","DIRECCION")],
-                              *[dump(options[k]) for _,k in CHOICES.values()]])
+        company_fields = ("NOMBRE_EMPRESA","RNC","TELEFONO","EMAIL","DIRECCION")
+        settings([*[public_text(company[k], "EMPRESA."+k, required=(k == "NOMBRE_EMPRESA")) for k in company_fields],
+                  *[dump(options[k]) for _,k in CHOICES.values()]])
     with binary_copy(out/"contacts.bin") as contacts:
         for table, field in [("CLIENTES","CLIENTE"),("SUPLIDORES","SUPLIDOR")]:
             used = set()
             for row in masters[table]:
                 key = row[field]
-                require(key and key not in used and row["NOMBRE_"+field].strip(), "Contacto inválido o repetido.")
+                require(key and key not in used, "Contacto inválido o repetido.")
+                public_text(row["NOMBRE_"+field], table+".NOMBRE_"+field, required=True)
+                detail_field = "DIRECCION" if table == "CLIENTES" else "CONTACTO"
+                for column in ("RNC","TELEFONO","EMAIL",detail_field):
+                    public_text(row[column], table+"."+column)
                 used.add(key)
                 credit = row.get("LIMITE_CREDITO","") if table == "CLIENTES" else ""
                 contacts([table,key,row["NOMBRE_"+field],row["RNC"],row["TELEFONO"],row["EMAIL"],

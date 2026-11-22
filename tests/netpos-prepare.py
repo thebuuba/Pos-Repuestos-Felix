@@ -3,6 +3,7 @@ import csv
 import hashlib
 import json
 from pathlib import Path
+import struct
 import subprocess
 import sys
 import tempfile
@@ -24,7 +25,7 @@ def table(folder, name, headers, rows):
         writer.writerows(rows)
 
 
-def fixture(folder, codes=None, history=None, cost="12.345600000000001", formula=False):
+def fixture(folder, codes=None, history=None, cost="12.345600000000001", formula=False, description="Pieza á"):
     folder.mkdir(exist_ok=True)
     if codes is None:
         codes = [("n", "12"), ("n", "45139"), ("n", "1234567890123450"),
@@ -59,7 +60,7 @@ def fixture(folder, codes=None, history=None, cost="12.345600000000001", formula
             ET.SubElement(cell, "v").text = value
     row(1, [("s", c) for c in HEAD])
     for idx, code in enumerate(codes, 2):
-        row(idx, [code, ("s", "Pieza á"), *[("n", "1")]*3, ("n", cost), ("n", "0"),
+        row(idx, [code, ("s", description), *[("n", "1")]*3, ("n", cost), ("n", "0"),
                   ("n", "10.003"), ("n", "1.25"), ("n", "0.25" if idx == 2 else "0"),
                   ("n", "0.50"), ("s", "False"), ("n", "1"), ("s", "False"),
                   ("s", "True"), ("s", "extra privado")])
@@ -116,6 +117,49 @@ class Preparation(unittest.TestCase):
         with (self.out/"products.csv").open(encoding="utf-8",newline="") as f:
             unknown = list(csv.DictReader(f))[1]
         self.assertEqual((unknown["codigo"],unknown["sugerencia"]),("2","0002"))
+
+    def test_history_numeric_grammar_keeps_non_numeric_identities_private(self):
+        codes = [("s", "1"), ("n", "1234"), ("s", "2")]
+        for idx, key in enumerate(["12_34", "1234\t"]):
+            with self.subTest(key=key):
+                fixture(self.source, codes, [key])
+                out = self.root / f"grammar-{idx}"
+                self.run_prepare(True, out)
+                review = json.loads((out/"key-review.json").read_text("utf-8"))
+                self.assertEqual((review[1]["codigo"],review[1]["evidencia"]),("1234","sin-historial"))
+                encoded = key.encode("utf-8")
+                self.assertIn(struct.pack("!i", len(encoded)) + encoded, (out/"history-kardex.bin").read_bytes())
+
+    def test_product_text_matches_client_utf16_limits_and_required_names(self):
+        supplementary = "\U0001F6DE"
+        for idx, (code, description) in enumerate([
+            ("P", "X" + " " * 2000), (supplementary * 1000 + "X", "Pieza"),
+            ("P", "\ufeff"), ("\ufeff","Pieza")
+        ]):
+            with self.subTest(case=idx):
+                fixture(self.source, [("s",code)], description=description)
+                self.run_prepare(False, self.root / f"too-long-{idx}")
+        fixture(self.source, [("s",supplementary * 1000)], description="X" + " " * 1999)
+        self.run_prepare(True)
+        with (self.out/"products.csv").open(encoding="utf-8",newline="") as f:
+            row = next(csv.DictReader(f))
+        self.assertEqual((row["codigo"],row["nombre"]), (supplementary*1000, "X"+" "*1999))
+
+    def test_projected_master_text_is_checked_before_publishing(self):
+        for idx, (master, field, value) in enumerate([
+            ("EMPRESA","NOMBRE_EMPRESA","\ufeff"), ("EMPRESA","RNC","1"*2001),
+            ("SUPLIDORES","CONTACTO","X"+" "*2000), ("CLIENTES","NOMBRE_CLIENTE","\ufeff"),
+            ("CLIENTES","DIRECCION","\U0001F6DE"*1001), ("MARCAS","DESCRIPCION","\ufeff"),
+            ("CATEGORIAS","DESCRIPCION","X"+" "*2000), ("UNIDADES","DESCRIPCION","X"*2001)
+        ]):
+            with self.subTest(master=master,field=field):
+                fixture(self.source)
+                file = self.source / (master+".csv")
+                with file.open(encoding="utf-8-sig",newline="") as stream:
+                    header, row = list(csv.reader(stream))
+                row[header.index(field)] = value
+                table(self.source,master," ".join(header),[row])
+                self.run_prepare(False,self.root/f"master-{idx}")
 
     def test_rejects_ambiguity_order_collision_and_scale(self):
         for codes, hist, cost in [
