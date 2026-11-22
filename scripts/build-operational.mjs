@@ -17,6 +17,7 @@ export async function buildOperational(outdir = 'dist/operational') {
   await mkdir(path.join(destination, 'assets/brand'), { recursive: true });
   await copyFile(new URL('../public/assets/brand/repuestos-felix.jpg', import.meta.url), path.join(destination, 'assets/brand/repuestos-felix.jpg'));
   await copyFile(fileURLToPath(import.meta.resolve('@fontsource-variable/inter/LICENSE')), path.join(destination, 'assets/Inter-OFL.txt'));
+  await Promise.all(['login.html', 'login.js'].map(file => copyFile(new URL('../frontend/' + file, import.meta.url), path.join(destination, file))));
   await writeFile(path.join(destination, 'index.html'), [
     '<!doctype html><html lang="es"><head><meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">',

@@ -187,7 +187,7 @@ function checkConfirmation(snapshot, packet, resource, expected, payload) {
 }
 
 export function createPosClient() {
-  let state = { snapshot: null, pending: null, busy: false, connection: 'checking', error: null, lastSync: null };
+  let state = { snapshot: null, pending: null, busy: false, connection: 'checking', error: null, lastSync: null, authenticationRequired: false };
   const listeners = new Set();
   const retired = new Set();
   const changes = new BroadcastChannel('repuestos-felix-operaciones');
@@ -196,6 +196,7 @@ export function createPosClient() {
 
   function set(fields) {
     if (disposed) return;
+    if (Object.entries(fields).every(([key, value]) => Object.is(state[key], value))) return;
     state = { ...state, ...fields };
     listeners.forEach(listener => listener());
   }
@@ -224,24 +225,28 @@ export function createPosClient() {
     }
     latestConfirmed = Math.max(latestConfirmed, request);
     etag = tag;
-    set({ snapshot, connection: 'connected', lastSync: new Date().toISOString() });
+    set({ snapshot, connection: 'connected', authenticationRequired: false, error: null, lastSync: new Date().toISOString() });
   }
 
-  async function working(work) {
+  async function working(work, background = false) {
     if (disposed) throw new Error('El cliente está cerrado.');
-    active++;
-    set({ busy: true, error: null });
+    if (!background) {
+      active++;
+      set({ busy: true, error: null });
+    }
     try { return await work(); }
     catch (error) {
       set({ error: error.message });
       throw error;
     } finally {
-      active--;
-      set({ busy: active > 0 });
+      if (!background) {
+        active--;
+        set({ busy: active > 0 });
+      }
     }
   }
 
-  function readSnapshot({ fresh = false } = {}) {
+  function readSnapshot({ fresh = false, background = false } = {}) {
     if (reading && !fresh) return reading;
     const sequence = ++issued;
     const job = working(async () => {
@@ -259,10 +264,11 @@ export function createPosClient() {
           if (!sameVersionTag(response.headers.get('ETag'), previousTag)) throw new Error('El servicio no confirmó la versión del catálogo.');
           if (previous === state.snapshot && previousTag === etag) {
             latestConfirmed = Math.max(latestConfirmed, sequence);
-            set({ connection: 'connected', lastSync: new Date().toISOString() });
+            set({ connection: 'connected', authenticationRequired: false, error: null, lastSync: new Date().toISOString() });
           }
           return previous;
         }
+        if (response.status === 401) set({ authenticationRequired: true });
         if (response.status !== 200) throw new Error((await serviceError(response))?.error || 'El servicio no confirmó la lectura del catálogo.');
         const observed = checkSnapshot(await response.json());
         apply(observed, response.headers.get('ETag'), sequence);
@@ -272,7 +278,7 @@ export function createPosClient() {
         if (error instanceof TypeError || error.name === 'TimeoutError') throw new Error('No se pudo conectar con el servicio.');
         throw error;
       }
-    }).finally(() => { if (reading === job) reading = null; });
+    }, background).finally(() => { if (reading === job) reading = null; });
     reading = job;
     return job;
   }
@@ -327,6 +333,7 @@ export function createPosClient() {
           body: sending.body,
         });
         if (received.status !== 200) {
+          if (received.status === 401) set({ authenticationRequired: true });
           const body = await serviceError(received);
           const proven = [400, 409].includes(received.status) && matchesPacket(body?.rejection, sending);
           // Even an unproven conflict may announce a restored generation.
@@ -385,10 +392,16 @@ export function createPosClient() {
     });
   }
 
+  async function logout() {
+    const response = await fetch('/logout', { method: 'POST', credentials: 'same-origin', mode: 'same-origin', redirect: 'error' });
+    if (response.status !== 200) throw new Error('No se pudo cerrar la sesión. Inténtalo de nuevo.');
+    location.assign('/login');
+  }
+
   return {
     getState: () => state,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
-    reload, writeOperation, retryPending,
+    reload, writeOperation, retryPending, logout,
     dispose() { disposed = true; changes.close(); listeners.clear(); },
   };
 }

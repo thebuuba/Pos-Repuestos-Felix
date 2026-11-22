@@ -13,6 +13,8 @@ import { TooltipContent2 } from "../../components/ui/tooltip.jsx";
 import { Sun } from "lucide-react";
 import { Moon } from "lucide-react";
 import { Bell } from "lucide-react";
+import { LogOut } from "lucide-react";
+import { toast } from "sonner";
 import { useEffect } from "react";
 import { useState } from "react";
 import { usePosStore } from "../../data/pos-context.jsx";
@@ -143,6 +145,8 @@ function TopBar({ onOpenMenu }) {
             <Bell />
             {(!runtime || runtime.pending || runtime.error) && <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-primary ring-2 ring-card" />}
           </Button>
+          {runtime?.logout && <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl bg-card" aria-label="Cerrar sesión"
+            onClick={() => runtime.logout().catch(error => toast.error(error.message))}><LogOut /></Button>}
         </div>
       </header>
     </TooltipProvider2>

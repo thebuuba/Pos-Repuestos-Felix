@@ -7,7 +7,7 @@ import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import pg from 'pg';
 import { migrateDatabase } from '../src/db/migrations.js';
-import { hostingConfig } from '../src/hosting.js';
+import { hostingConfig, sessionCookie } from '../src/hosting.js';
 import { handleRequest } from '../src/http/app.js';
 import { readSnapshot } from '../src/pos/store.js';
 import { createApp } from '../src/server.js';
@@ -20,7 +20,7 @@ const label = 'Catálogo de prueba';
 const publicOrigin = 'https://pos.example';
 const password = 'clave-ficticia-para-pruebas';
 const hosting = hostingConfig({ PUBLIC_ORIGIN: publicOrigin, APP_USERNAME: 'test', APP_PASSWORD: password });
-const authorization = 'Basic ' + Buffer.from('test:' + password).toString('base64');
+const authorization = sessionCookie(hosting).split(';')[0];
 const statements = [];
 let database, pool, server, origin, compiled, font, license;
 
@@ -187,7 +187,7 @@ test('la etiqueta de base y una restauración invalidan los validadores anterior
 
   const switchedLabel = 'Otra etiqueta de prueba';
   const relabeled = await handleRequest(new Request(publicOrigin + '/api/state', {
-    headers: { Authorization: authorization, 'X-Forwarded-Proto': 'https', 'If-None-Match': etag },
+    headers: { Cookie: authorization, 'X-Forwarded-Proto': 'https', 'If-None-Match': etag },
   }), { pool: observedPool, hosting, databaseLabel: switchedLabel });
   assert.equal(relabeled.status, 200);
   assert.ok(relabeled.headers.get('etag'));
@@ -209,9 +209,9 @@ test('la etiqueta de base y una restauración invalidan los validadores anterior
 
 test('una lectura condicional valida acceso, host, HTTPS y origen antes de PostgreSQL', async () => {
   const options = { pool: observedPool, hosting };
-  const headers = { Authorization: authorization, 'X-Forwarded-Proto': 'https', 'If-None-Match': '*' };
+  const headers = { Cookie: authorization, 'X-Forwarded-Proto': 'https', 'If-None-Match': '*' };
   for (const [url, changes, status] of [
-    [publicOrigin, { Authorization: '' }, 401],
+    [publicOrigin, { Cookie: '' }, 401],
     ['https://ajeno.example', {}, 403],
     [publicOrigin, { 'X-Forwarded-Proto': 'http' }, 426],
     [publicOrigin, { Origin: 'https://ajeno.example' }, 403],
@@ -232,8 +232,8 @@ test('las rutas de Polymet sirven el HTML compilado con la misma protección que
     const protectedPage = await handleRequest(new Request(publicOrigin + path, {
       headers: { 'X-Forwarded-Proto': 'https' },
     }), { hosting, readAsset: () => assert.fail('No debe leer el HTML sin autenticación') });
-    assert.equal(protectedPage.status, 401, path);
-    assert.match(protectedPage.headers.get('www-authenticate'), /Basic/);
+    assert.equal(protectedPage.status, 303, path);
+    assert.equal(protectedPage.headers.get('www-authenticate'), null);
 
     const page = await fetch(origin + path);
     assert.equal(page.status, 200, path);

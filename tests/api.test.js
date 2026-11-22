@@ -25,7 +25,7 @@ after(async () => {
 });
 
 test('el acceso público requiere HTTPS, origen y credenciales válidas', async () => {
-  const { hostingConfig } = await import('../src/hosting.js');
+  const { hostingConfig, sessionCookie } = await import('../src/hosting.js');
   const hosting = hostingConfig({
     HOST: '0.0.0.0', PUBLIC_ORIGIN: 'https://pos.example', APP_USERNAME: 'felix', APP_PASSWORD: 'clave-de-pruebas-12345',
   });
@@ -33,7 +33,7 @@ test('el acceso público requiere HTTPS, origen y credenciales válidas', async 
   await new Promise((done) => remoteServer.listen(0, '127.0.0.1', done));
   const remote = `http://127.0.0.1:${remoteServer.address().port}`;
   const headers = { Host: 'pos.example', 'X-Forwarded-Proto': 'https' };
-  const auth = 'Basic ' + Buffer.from('felix:clave-de-pruebas-12345').toString('base64');
+  const auth = sessionCookie(hosting).split(';')[0];
   const call = (path, extras = {}) => new Promise((resolve, reject) => {
     const request = httpRequest(remote + path, { headers: { ...headers, ...extras } }, (response) => {
       response.resume(); resolve(response);
@@ -41,12 +41,12 @@ test('el acceso público requiere HTTPS, origen y credenciales válidas', async 
   });
   const unauthorized = await call('/api/state');
   assert.equal(unauthorized.statusCode, 401);
-  assert.match(unauthorized.headers['www-authenticate'], /Basic/);
-  assert.equal((await call('/api/state', { Authorization: auth })).statusCode, 200);
-  assert.equal((await call('/api/state', { Authorization: 'Basic ' + Buffer.from('felix:incorrecta').toString('base64') })).statusCode, 401);
-  assert.equal((await call('/api/state', { Authorization: auth, 'X-Forwarded-Proto': 'http' })).statusCode, 426);
+  assert.equal(unauthorized.headers['www-authenticate'], undefined);
+  assert.equal((await call('/api/state', { Cookie: auth })).statusCode, 200);
+  assert.equal((await call('/api/state', { Cookie: 'sesion-invalida' })).statusCode, 401);
+  assert.equal((await call('/api/state', { Cookie: auth, 'X-Forwarded-Proto': 'http' })).statusCode, 426);
   assert.equal((await call('/styles.css')).statusCode, 200);
-  assert.equal((await call('/login', { Authorization: auth })).statusCode, 303);
+  assert.equal((await call('/login', { Cookie: auth })).statusCode, 303);
   assert.equal((await call('/health', { Host: 'interno.example', 'X-Forwarded-Proto': 'http' })).statusCode, 200);
 });
 const get = async () => (await fetch(`${base}/api/state`)).json();

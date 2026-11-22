@@ -79,7 +79,7 @@ for (const initialWeak of [false, true]) test(`conditional refresh accepts the s
     if (!condition) {
       const response = await route.fetch();
       const headers = response.headers();
-      if (initialWeak) headers.etag = 'W/' + headers.etag;
+      headers.etag = (initialWeak ? 'W/' : '') + headers.etag.replace(/^W\//, '');
       return route.fulfill({ response, headers });
     }
     const tag = initialWeak ? condition.replace(/^W\//, '') : 'W/' + condition;
@@ -368,6 +368,22 @@ test('two tabs arbitrate different packets before fetch and an invalid 200 keeps
   await Promise.all([page, other].map(tab => tab.evaluate(() => client.reload())));
   const ids = await Promise.all([page, other].map(tab => tab.evaluate(() => client.getState().pending.id)));
   assert.equal(ids[0], ids[1]);
+});
+
+test('background refresh keeps the confirmed catalog and does not mark the interface busy', async t => {
+  const page = await tab(t);
+  const result = await page.evaluate(async () => {
+    const snapshot = client.getState().snapshot;
+    const busy = [];
+    const unsubscribe = client.subscribe(() => busy.push(client.getState().busy));
+    try { await client.reload({ background: true }); }
+    finally { unsubscribe(); }
+    return { sameSnapshot: snapshot === client.getState().snapshot, busy, connection: client.getState().connection };
+  });
+  assert.equal(result.sameSnapshot, true);
+  assert.equal(result.connection, 'connected');
+  assert.ok(result.busy.every(value => value === false), 'background polling must not trigger a busy render');
+  assert.ok(result.busy.length <= 1, 'an unchanged catalog needs only its synchronization timestamp update');
 });
 
 test('a conditional refresh preserves snapshot identity and a stale edit fails without consuming the draft', async t => {

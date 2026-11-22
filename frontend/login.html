@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <title>Iniciar sesión · Repuestos Félix</title>
+    <style>
+      @font-face {
+        font-family: Inter;
+        font-style: normal;
+        font-weight: 100 900;
+        font-display: swap;
+        src: url("/assets/fonts/inter-latin-wght-normal.woff2") format("woff2");
+      }
+      :root {
+        color-scheme: light;
+        --bg: hsl(240 10% 96.5%);
+        --card: #fff;
+        --fg: hsl(240 10% 8%);
+        --muted: hsl(240 4% 46%);
+        --border: hsl(240 6% 90.5%);
+        --red: hsl(356 82% 42%);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          color-scheme: dark;
+          --bg: hsl(240 6% 5.5%);
+          --card: hsl(240 5% 9%);
+          --fg: hsl(0 0% 96%);
+          --muted: hsl(240 5% 64%);
+          --border: hsl(240 4% 17%);
+          --red: hsl(356 78% 52%);
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100svh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        font:
+          14px/1.5 Inter,
+          system-ui,
+          sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+      }
+      main {
+        width: 100%;
+        max-width: 420px;
+        padding: 32px;
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        background: var(--card);
+        box-shadow: 0 4px 20px #00000004;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 32px;
+      }
+      .mark {
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: 36px;
+        height: 36px;
+        border-radius: 12px;
+        background: var(--red);
+        color: white;
+        box-shadow: 0 1px 2px #0000000d;
+      }
+      .mark svg {
+        transform: rotate(-45deg);
+      }
+      .mark:after {
+        content: "";
+        position: absolute;
+        right: -2px;
+        bottom: -2px;
+        width: 10px;
+        height: 10px;
+        border: 2px solid var(--card);
+        border-radius: 50%;
+        background: var(--fg);
+      }
+      .brand strong {
+        font-size: 15px;
+        letter-spacing: -0.5px;
+        font-weight: 800;
+      }
+      .brand em {
+        color: var(--red);
+        font-style: normal;
+      }
+      .brand small {
+        display: block;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      h1 {
+        margin: 0;
+        font-size: 24px;
+        line-height: 1.3;
+        font-weight: 600;
+        letter-spacing: -0.6px;
+      }
+      p {
+        margin: 8px 0 24px;
+        color: var(--muted);
+      }
+      form {
+        display: grid;
+        gap: 18px;
+      }
+      label {
+        display: grid;
+        gap: 8px;
+        font-weight: 500;
+      }
+      input {
+        min-width: 0;
+        width: 100%;
+        height: 44px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--bg);
+        color: var(--fg);
+        padding: 0 14px;
+        font: inherit;
+      }
+      input:focus-visible,
+      button:focus-visible,
+      a:focus-visible {
+        outline: 2px solid var(--red);
+        outline-offset: 3px;
+      }
+      .remember {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 400;
+      }
+      .remember input {
+        width: 16px;
+        height: 16px;
+        padding: 0;
+        accent-color: var(--red);
+      }
+      button {
+        height: 44px;
+        border: 0;
+        border-radius: 12px;
+        background: var(--red);
+        color: white;
+        font:
+          600 14px Inter,
+          system-ui,
+          sans-serif;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.65;
+        cursor: wait;
+      }
+      #error {
+        margin: 0;
+        color: var(--red);
+        font-size: 13px;
+      }
+      footer {
+        margin-top: 24px;
+        padding-top: 20px;
+        border-top: 1px solid var(--border);
+        font-size: 12px;
+        color: var(--muted);
+        text-align: center;
+      }
+      @media (max-width: 380px) {
+        body {
+          padding: 16px;
+        }
+        main {
+          padding: 24px;
+        }
+      }
+    </style>
+    <script src="/login.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <div class="brand">
+        <span class="mark" aria-hidden="true"
+          ><svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path
+              d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"
+            /></svg
+        ></span>
+        <div>
+          <strong>REP.<em>FELIX</em></strong
+          ><small>829-782-3872</small>
+        </div>
+      </div>
+      <h1>Iniciar sesión</h1>
+      <p>Accede al sistema de Repuestos Félix.</p>
+      <form>
+        <label for="username"
+          >Usuario<input
+            id="username"
+            name="username"
+            autocomplete="username"
+            required
+            maxlength="2000"
+            autofocus
+        /></label>
+        <label for="password"
+          >Contraseña<input
+            id="password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            required
+            maxlength="2000"
+        /></label>
+        <label class="remember"
+          ><input
+            id="remember"
+            name="remember"
+            type="checkbox"
+            checked
+          />Mantener sesión en este dispositivo</label
+        >
+        <p id="error" role="alert" hidden></p>
+        <button type="submit">Entrar al sistema</button>
+      </form>
+      <footer>Inventario y gestión del negocio</footer>
+    </main>
+  </body>
+</html>

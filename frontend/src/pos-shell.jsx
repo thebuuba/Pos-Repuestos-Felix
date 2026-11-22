@@ -16,6 +16,7 @@ function ServiceNotice({ runtime }) {
       {runtime.pending && <p className="font-semibold">{changed ? 'La solicitud pendiente pertenece a otra base. Requiere revisión.' : 'Solicitud pendiente de confirmación'}</p>}
       {runtime.error && <p>{runtime.error}</p>}
       {runtime.connection === 'unavailable' && runtime.lastSync && <p>Datos desactualizados. Última sincronización el {syncTime.format(new Date(runtime.lastSync))}.</p>}
+      {runtime.authenticationRequired && <Button asChild variant="outline"><a href="/login">Iniciar sesión</a></Button>}
       <Button variant="outline" disabled={runtime.busy} onClick={() => action().catch(() => {})}>
         {runtime.pending && !changed ? 'Reintentar solicitud' : 'Actualizar datos'}
       </Button>

@@ -85,3 +85,15 @@ Acceso web activo: **https://repuestos-felix-pos.repuestosfelix1994.workers.dev/
 El sitio publicado se revisó a 320, 390, 768 y 1440 px, en claro y oscuro: paginación de 50 artículos, búsqueda, navegación y editor con importes exactos. No hubo desbordamiento del documento, errores de página ni solicitudes de escritura durante esa revisión. Las capturas y los informes quedan en almacenamiento privado.
 
 La publicación acredita Inventario conectado. El resto de los módulos, instalador Windows, funcionamiento sin conexión y sincronización siguen pendientes. `main` se conserva y el trabajo permanece en `feat/sistema-unificado-offline`.
+
+## Rendimiento y login del 21 de noviembre de 2026
+
+El usuario reportó lentitud al abrir `localhost:3001`. En una pestaña aislada se midieron 2.479 ms hasta mostrar 50 artículos y entre 12,2 y 17,6 MB de memoria JavaScript; el proceso Node usaba unos 58 MB. Ese perfil no reprodujo el bloqueo de su navegador. Sí se comprobó una respuesta inicial de 5.220.015 bytes sin comprimir y actualizaciones visibles de estado cada cinco segundos.
+
+Node ahora comprime la transferencia en streaming: el mismo snapshot ocupa **538.823 bytes con gzip, un 89,7 % menos**, con igualdad del contenido descomprimido. Los recursos públicos tienen validadores de caché; la API y el HTML privado permanecen sin almacenamiento en caché. Los ETag y `Vary` se conservan también en las respuestas 304. Las comprobaciones en segundo plano mantienen la frecuencia de sincronización y evitan activar el indicador de carga; la tabla conserva su render cuando sus datos y acciones no cambian.
+
+En la muestra posterior, la entrada tardó 2.159 ms y el trabajo JavaScript durante once segundos de reposo bajó de 52,7 a 10,4 ms. Son muestras de esta computadora, no una garantía de rendimiento en cualquier equipo. El usuario recargó su dirección habitual y confirmó: «Ya abre y funciona con normalidad».
+
+Se sustituyó el cuadro HTTP Basic por una pantalla propia de inicio de sesión, con los colores, fuente y marca de Polymet. El login recuerda el dispositivo durante 30 días si se marca la opción; sin marcarla, la cookie es de sesión y el acceso vence a las ocho horas. Se añadió «Cerrar sesión» y una entrada para volver al login si la sesión caduca. La cuenta existente sigue en configuración privada; no se publican las credenciales ni se abre el inventario al público.
+
+La suite completa aprobó **180 pruebas Node** en bases desechables, incluidos login real de navegador, reapertura de sesión, caducidad, manipulación de cookies, otros orígenes, compresión, caché, importes y reintentos. La revisión de código quedó aprobada tras corregir los metadatos de 304. La lectura real de localhost y Cloudflare confirmó los mismos 7.681 artículos y revisión 2. Se revisaron login, inventario y editor a 320, 390, 768 y 1440 px, en claro y oscuro, tanto localmente como en el sitio publicado: sin desbordamiento del documento, errores de página ni solicitudes de escritura operativa. No se ejecutaron migraciones ni escrituras operativas de prueba en Supabase.

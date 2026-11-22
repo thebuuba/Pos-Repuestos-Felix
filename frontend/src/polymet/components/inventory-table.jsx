@@ -9,7 +9,7 @@ import { SelectItem2 } from "../../components/ui/select.jsx";
 import { cn } from "../../lib/utils.js";
 import { formatNumber, formatUnitMoney } from "../lib/format.js";
 import { Button } from "../../components/ui/button.jsx";
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
 const PAGE_SIZE = 50;
 const STOCK_FILTERS = [
@@ -46,7 +46,7 @@ var STATE_UI = {
     bg: "bg-accent",
   },
 };
-function InventoryTable({ products, categories, connected, onEdit, onDelete }) {
+const InventoryTable = memo(function InventoryTable({ products, categories, connected, onEdit, onDelete }) {
   const [params, setParams] = useSearchParams();
   const { key } = useLocation();
   const selectedStock = params.get("existencia");
@@ -324,5 +324,5 @@ function InventoryTable({ products, categories, connected, onEdit, onDelete }) {
       </div>
     </section>
   );
-}
+});
 export { InventoryTable, needsRestock, stockState };

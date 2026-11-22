@@ -122,7 +122,7 @@ export function OperationalStoreProvider({ client, children }) {
   const writes = useMemo(() => actions(client), [client]);
   useEffect(() => {
     const reload = () => { client.reload().catch(() => {}); };
-    const refreshVisible = () => { if (!document.hidden) reload(); };
+    const refreshVisible = () => { if (!document.hidden) client.reload({ background: true }).catch(() => {}); };
     reload();
     const timer = window.setInterval(refreshVisible, 5_000);
     window.addEventListener('focus', refreshVisible);
@@ -141,7 +141,7 @@ export function OperationalStoreProvider({ client, children }) {
   const data = useMemo(() => presentation(snapshot), [snapshot]);
   const runtime = {
     ...state, mode: 'online', databaseId: snapshot?.databaseId ?? null, revision: snapshot?.revision ?? null,
-    accountDetailsAvailable: false, reload: client.reload, retryPending: client.retryPending,
+    accountDetailsAvailable: false, reload: client.reload, retryPending: client.retryPending, logout: client.logout,
   };
   return <PosStoreContext.Provider value={{ runtime, ...data, ...writes }}>
     {children}

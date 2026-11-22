@@ -9,9 +9,10 @@ import pg from 'pg';
 import { temporaryPostgres } from './postgres.js';
 import { buildOperational } from '../scripts/build-operational.mjs';
 import { migrateDatabase } from '../src/db/migrations.js';
+import { hostingConfig, sessionCookie } from '../src/hosting.js';
 
 let database, pool, harness, root;
-const authorization = 'Basic ' + Buffer.from('admin:contrasena-runtime-ficticia-123').toString('base64');
+const authorization = sessionCookie(hostingConfig({ PUBLIC_ORIGIN:'https://pos.example', APP_USERNAME:'admin', APP_PASSWORD:'contrasena-runtime-ficticia-123' })).split(';')[0];
 before(async () => {
   database = await temporaryPostgres();
   pool = new pg.Pool({ connectionString: database.connectionString });
@@ -23,7 +24,7 @@ before(async () => {
   const testConfig = { ...config,
     main: fileURLToPath(new URL('../src/worker.js', import.meta.url)),
     assets: { ...config.assets, directory: await buildOperational(join(root, 'operational')) },
-    vars: { ...config.vars, PUBLIC_ORIGIN: 'https://pos.example' },
+    vars: { ...config.vars, PUBLIC_ORIGIN: 'https://pos.example', APP_USERNAME: 'admin' },
     // ID ficticio usado exclusivamente por el emulador local; no crea recursos.
     hyperdrive: [{ binding: 'HYPERDRIVE', id: '00000000000000000000000000000000', localConnectionString: localDatabase.toString() }],
   };
@@ -41,7 +42,7 @@ after(async () => {
     await rm(absolute, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
 });
-const call = (path, options = {}) => harness.getWorker().fetch('https://pos.example' + path, { ...options, headers: { Authorization: authorization, ...options.headers } });
+const call = (path, options = {}) => harness.getWorker().fetch('https://pos.example' + path, { ...options, headers: { Cookie: authorization, ...options.headers } });
 
 test('el runtime Workers sirve el frontend y protege los datos con la configuración de producción', async () => {
   const html = await call('/');
@@ -50,7 +51,7 @@ test('el runtime Workers sirve el frontend y protege los datos con la configurac
   assert.match(await (await call('/inventario')).text(), /<div id="root"><\/div>/);
   assert.equal((await call('/app.js')).status, 200);
   assert.equal((await call('/sw.js')).status, 404);
-  assert.equal((await call('/api/state', { headers: { Authorization: '' } })).status, 401);
+  assert.equal((await call('/api/state', { headers: { Cookie: '' } })).status, 401);
   assert.equal((await call('/src/worker.js')).status, 404);
 });
 

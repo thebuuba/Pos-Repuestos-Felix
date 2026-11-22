@@ -11,7 +11,7 @@ import { LowStockList } from "../components/low-stock-list.jsx";
 import { ProductFormSheet } from "../components/product-form-sheet.jsx";
 import { toast as ue } from "sonner";
 import { ConfirmDialog } from "../components/confirm-dialog.jsx";
-import { Fragment, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useMemo, useRef, useState } from "react";
 import { formatMoney, formatNumber } from "../lib/format.js";
 import { costUnits, decimalUnits, quantityUnits } from "../../../../src/pos/operation-fields.js";
 const wholeMoney = new Intl.NumberFormat("es-DO", { maximumFractionDigits: 0 });
@@ -42,7 +42,7 @@ function InventoryPage() {
     return { totalUnits: decimalUnits(stockHundredths, 2), stockValue: roundedValue(costMillionths),
       retailValue: roundedValue(retailMillionths), lowStock, lowCount, outCount };
   }, [products]);
-  const openProduct = (product = null) => {
+  const openProduct = useCallback((product = null) => {
     setDraft({
       product,
       id: product?.id ?? crypto.randomUUID(),
@@ -52,7 +52,7 @@ function InventoryPage() {
       categories,
     });
     setSheetOpen(true);
-  };
+  }, [products, categories, runtime?.databaseId]);
   return (
     <div className="space-y-6">
       <PageHeader

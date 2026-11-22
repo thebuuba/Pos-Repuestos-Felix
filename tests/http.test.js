@@ -1,11 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { handleRequest } from '../src/http/app.js';
-import { hostingConfig } from '../src/hosting.js';
+import { hostingConfig, sessionCookie } from '../src/hosting.js';
 
 const origin = 'https://pos.example';
 const hosting = hostingConfig({ PUBLIC_ORIGIN: origin, APP_USERNAME: 'felix', APP_PASSWORD: 'clave-de-pruebas-12345' });
-const auth = 'Basic ' + Buffer.from('felix:clave-de-pruebas-12345').toString('base64');
+const auth = sessionCookie(hosting).split(';')[0];
 const request = (path, options = {}) => new Request(origin + path, {
   ...options, headers: { 'X-Forwarded-Proto': 'https', ...options.headers },
 });
@@ -13,10 +13,10 @@ const forbiddenPool = { connect() { throw new Error('La ruta no debe consultar P
 
 test('Fetch protege entrada y API antes de usar recursos; health es independiente de PostgreSQL', async () => {
   const options = { pool: forbiddenPool, hosting, readAsset() { throw new Error('No debe leer assets'); } };
-  for (const path of ['/', '/index.html', '/login', '/api/state']) {
+  for (const path of ['/', '/index.html', '/api/state']) {
     const response = await handleRequest(request(path), options);
-    assert.equal(response.status, 401, path);
-    assert.match(response.headers.get('www-authenticate'), /Basic/);
+    assert.equal(response.status, path.startsWith('/api/') ? 401 : 303, path);
+    assert.equal(response.headers.get('www-authenticate'), null);
   }
   assert.equal((await handleRequest(request('/health'), options)).status, 200);
   assert.equal((await handleRequest(request('/styles.css', { headers: { 'X-Forwarded-Proto': 'http' } }), options)).status, 426);
@@ -55,12 +55,12 @@ test('Fetch HEAD y rutas privadas conservan métodos, seguridad y cuerpo vacío'
     assert.equal((await handleRequest(request(path), options)).status, 404, path);
   }
   assert.equal((await handleRequest(request('/styles.css', { method: 'POST' }), options)).status, 404);
-  assert.equal((await handleRequest(request('/login', { headers: { Authorization: auth } }), options)).status, 303);
+  assert.equal((await handleRequest(request('/login', { headers: { Cookie: auth } }), options)).status, 303);
 });
 
 test('Fetch rechaza JSON roto y exceso de tamaño antes de usar PostgreSQL', async () => {
   const options = { pool: forbiddenPool, hosting };
-  const headers = { Authorization: auth, 'Content-Type': 'application/json' };
+  const headers = { Cookie: auth, 'Content-Type': 'application/json' };
   assert.equal((await handleRequest(request('/api/clientes', { method: 'POST', headers, body: '{' }), options)).status, 400);
   const body = new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array(10 * 1024 * 1024)); controller.enqueue(new Uint8Array([32])); controller.close(); } });
   assert.equal((await handleRequest(request('/api/clientes', { method: 'POST', headers, body, duplex: 'half' }), options)).status, 413);
