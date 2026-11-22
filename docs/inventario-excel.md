@@ -10,9 +10,9 @@ Solicitud vigente: retirar los datos de demostración y concentrar el trabajo en
 - `pnpm preview` y `pnpm preview:design` sirven la misma interfaz como vista estática. Una API ausente muestra el estado de conexión pendiente, sin sustituir datos por ejemplos ni presentar cero como una lectura confirmada.
 - La referencia con muestras permanece aislada para las pruebas visuales y requiere el comando explícito `preview:reference`. No se publica como POS ni se carga en PostgreSQL.
 
-La lectura del servicio conectado el 21 de noviembre de 2026 devolvió **cero artículos**. No se borraron datos del negocio ni se ejecutaron migraciones o escrituras de prueba en su base. Los productos que mostraba la vista de Polymet procedían de la demostración en memoria.
+Antes de la importación autorizada del 21 de noviembre de 2026, la base del negocio tenía **cero artículos**. Los productos que mostraba la referencia de Polymet procedían de la demostración en memoria. El inventario publicado ahora usa exclusivamente los productos importados de NetPOS.
 
-El servicio existente no se reinició contra el esquema nuevo. Las migraciones de esta rama siguen pendientes de aplicación controlada en el negocio; cambiar la entrada de interfaz no acredita esa activación ni un despliegue.
+Con autorización expresa del usuario se detuvo la entrada antigua, se aplicaron las cinco migraciones revisadas y se cargó el paquete validado. La entrada moderna quedó conectada a Supabase y publicada en Cloudflare. La evidencia de esa activación se detalla al final de este documento.
 
 Para revisar contra una base aislada, abre una sesión con `DATABASE_URL` configurada desde almacenamiento privado. Elige un puerto libre para un origen nuevo y ejecuta los comandos desde la raíz del proyecto.
 
@@ -66,8 +66,22 @@ La prueba del preparador se ejecuta con `python tests/netpos-prepare.py`. La pru
 
 Se importaron en PostgreSQL **local aislado** 7.681 artículos, 560 clientes y 43 suplidores de NetPOS. El cliente inicial se conserva por separado. Los 50 originales y las 968.972 filas CSV quedaron conservados en los esquemas privados. Repetir el paquete mantuvo un solo lote, 5.534 aperturas y la misma revisión, sin duplicar registros.
 
-Se contrastaron por SHA-256 los 50 originales descomprimidos y las 49 tablas históricas completas; se compararon 145.939 campos de la proyección de productos, sin diferencias. Siete sugerencias de ceros iniciales siguen sin aplicarse por falta de evidencia histórica. El inventario de revisión está disponible en `http://127.0.0.1:3001`, con API y almacenamiento locales; esta dirección corresponde a la computadora de desarrollo.
+Se contrastaron por SHA-256 los 50 originales descomprimidos y las 49 tablas históricas completas; se compararon 145.939 campos de la proyección de productos, sin diferencias. Siete sugerencias de ceros iniciales siguen sin aplicarse por falta de evidencia histórica. La revisión usó `http://127.0.0.1:3001` con API y almacenamiento locales. Tras la activación autorizada, ese origen pasó a leer la base real de Supabase; la copia aislada se conserva en almacenamiento privado.
 
-Los datos reales se verificaron a 320, 390, 768 y 1440 px, en ambos temas: 50 filas visibles, búsqueda, navegación y editor con importes exactos, sin desbordamiento del documento ni errores de página. Las comprobaciones de lectura no modificaron los datos cargados. La suite final aprobó 173 pruebas Node y ocho pruebas Python. La compilación operativa y el empaquetado Worker en seco pasaron. Docker no se ejecutó por falta del motor; instalador Windows, PWA completa, sincronización y publicación conservan su validación pendiente.
+Los datos reales se verificaron a 320, 390, 768 y 1440 px, en ambos temas: 50 filas visibles, búsqueda, navegación y editor con importes exactos, sin desbordamiento del documento ni errores de página. Las comprobaciones de lectura no modificaron los datos cargados. La suite final aprobó 173 pruebas Node y ocho pruebas Python. La compilación operativa y el empaquetado Worker en seco pasaron. Docker no se ejecutó por falta del motor; instalador Windows, PWA completa y sincronización conservan su validación pendiente.
 
-Supabase del negocio se consultó en modo de solo lectura y sigue sin recibir esta carga. Antes de activarlo faltan cinco migraciones revisadas: catálogo Polymet, contactos/configuración, precisión de inventario, precisión de precios y archivo NetPOS. La prohibición de migraciones reales de `AGENTS.md` requiere una decisión expresa. El cambio debe detener primero el proceso antiguo verificado y usar la entrada moderna en un origen nuevo. `main` se conserva y el trabajo permanece en `feat/sistema-unificado-offline`.
+## Activación autorizada del 21 de noviembre de 2026
+
+El usuario aprobó expresamente «Sí, migrar y activar», incluidas las cinco migraciones revisadas, el paquete y la conservación de los siete códigos pendientes. Esta decisión autoriza esa carga real pese a la prohibición general de `AGENTS.md`; no autoriza escrituras de prueba en la base del negocio.
+
+Se conservó un respaldo administrativo previo, verificado fuera de Git y de los recursos públicos. Se detuvo el proceso antiguo comprobando su comando y su puerto. En el proyecto Supabase de Repuestos Félix en Virginia se aplicaron catálogo Polymet, contactos/configuración, precisión de inventario, precisión de precios y archivo NetPOS. El paquete se confirmó en una sola transacción.
+
+Resultado leído en Supabase: **7.681 productos, 561 clientes y 44 suplidores**, incluidos los contactos que ya existían; **5.534 aperturas, un lote y revisión 2**. Permanecen **cero ventas y cero compras operativas**. Los 50 originales y las 968.972 filas de las 49 tablas históricas están conservados como archivo administrativo. Los documentos y saldos históricos no se presentan como operaciones nuevas ni como cuentas cobrables ya conciliadas.
+
+La verificación de producción fue de solo lectura: hashes de los 50 originales y de las 49 tablas completas, comparación de todos los productos contra la revisión aprobada y comprobación de contactos y aperturas sin diferencias. El rol del sistema puede leer el catálogo operativo y no tiene acceso al archivo privado original. Los siete códigos conservan los valores observados en el Excel.
+
+Acceso web activo: **https://repuestos-felix-pos.repuestosfelix1994.workers.dev/inventario**. Cloudflare sirve la misma compilación operativa y usa Hyperdrive con el rol limitado hacia Supabase. Se verificaron HTTPS, rechazo sin credenciales (401), página y API autenticadas (200), lectura condicional (304), los seis recursos publicados y coincidencia completa con la API local conectada a Supabase. Las credenciales se conservan en configuración privada; no forman parte del repositorio.
+
+El sitio publicado se revisó a 320, 390, 768 y 1440 px, en claro y oscuro: paginación de 50 artículos, búsqueda, navegación y editor con importes exactos. No hubo desbordamiento del documento, errores de página ni solicitudes de escritura durante esa revisión. Las capturas y los informes quedan en almacenamiento privado.
+
+La publicación acredita Inventario conectado. El resto de los módulos, instalador Windows, funcionamiento sin conexión y sincronización siguen pendientes. `main` se conserva y el trabajo permanece en `feat/sistema-unificado-offline`.
