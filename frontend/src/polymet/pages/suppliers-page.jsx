@@ -3,8 +3,9 @@ import { usePosStore } from "../../data/pos-context.jsx";
 import { formulaSummary } from "../lib/pricing.js";
 import { PageHeader } from "../components/page-header.jsx";
 import { Button } from "../../components/ui/button.jsx";
-import { Plus } from "lucide-react";
-import { MiniStat } from "../components/section-card.jsx";
+import { Plus, Search } from "lucide-react";
+import { EmptyState, MiniStat } from "../components/section-card.jsx";
+import { Input } from "../../components/ui/input.jsx";
 import { Truck } from "lucide-react";
 import { Receipt } from "lucide-react";
 import { formatMoney } from "../lib/format.js";
@@ -25,6 +26,7 @@ import { useState } from "react";
 function SuppliersPage() {
   const { runtime, suppliers, formulas, purchases, saveSupplier, deleteSupplier } =
     usePosStore();
+  const [query, setQuery] = useState("");
   const [formOpen, setFormOpen] = useState(false);
   const [creationDatabaseId, setCreationDatabaseId] = useState(null);
   const [editing, setEditing] = useState(null);
@@ -81,6 +83,10 @@ function SuppliersPage() {
   const monthTotal = purchases
     .filter((p) => p.date.slice(0,7) === month)
     .reduce((s, p) => s + p.total, 0);
+  const q = query.trim().toLowerCase();
+  const filtered = suppliers.filter((s) =>
+    !q || [s.name, s.rnc, s.contact, s.phone, s.email].some((v) => v?.toLowerCase().includes(q)),
+  );
   return (
     <div className="space-y-6">
       <PageHeader
@@ -119,8 +125,31 @@ function SuppliersPage() {
           value={formatMoney(monthTotal)}
         />
       </div>
+      <div className="relative max-w-md">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Buscar por nombre, RNC, contacto o teléfono…"
+          aria-label="Buscar suplidor"
+          className="h-10 rounded-xl bg-card pl-9"
+        />
+      </div>
+      {filtered.length === 0 ? (
+        <div className="rounded-2xl border border-border bg-card">
+          <EmptyState
+            icon={Truck}
+            title="Sin suplidores"
+            description={
+              q
+                ? "No hay suplidores que coincidan con la búsqueda."
+                : "Aún no hay suplidores registrados."
+            }
+          />
+        </div>
+      ) : (
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {suppliers.map((s) => {
+        {filtered.map((s) => {
           const formula = formulas.find((f) => f.id === s.formulaId);
           const own = purchases.filter((p) => p.supplierId === s.id);
           const last = own[0];
@@ -243,6 +272,7 @@ function SuppliersPage() {
           );
         })}
       </div>
+      )}
       <PartyFormSheet
         open={formOpen}
         onOpenChange={setFormOpen}

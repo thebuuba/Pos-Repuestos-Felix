@@ -59,6 +59,17 @@ test('las doce pantallas abren en ambos temas y cuatro tamaños; los contactos s
     await page.reload();
     await page.getByText('Suplidor guardado',{exact:true}).waitFor();
     assert.equal((await pool.query("SELECT count(*) FROM suplidores WHERE nombre='Suplidor guardado'")).rows[0].count,'1');
+    const supplierSearch=page.getByLabel('Buscar suplidor');
+    await supplierSearch.fill('suplidor guardado');
+    assert.equal(await page.getByText('Suplidor guardado',{exact:true}).isVisible(),true);
+    assert.equal(await page.getByText(/correo-muy-largo/).count(),0);
+    await supplierSearch.fill('809-555-0000');
+    assert.equal(await page.getByText(/correo-muy-largo/).isVisible(),true);
+    assert.equal(await page.getByText('Suplidor guardado',{exact:true}).count(),0);
+    await supplierSearch.fill('sin-coincidencias-xyz');
+    await page.getByText('No hay suplidores que coincidan con la búsqueda.',{exact:true}).waitFor();
+    await supplierSearch.fill('');
+    await page.getByText('Suplidor guardado',{exact:true}).waitFor();
     assert.deepEqual(errors,[]);
   } finally {
     await browser?.close();
