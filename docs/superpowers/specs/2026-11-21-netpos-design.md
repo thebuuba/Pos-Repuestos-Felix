@@ -33,6 +33,8 @@ Mantener componentes, distribución, tokens y temas de Polymet. Paginar la tabla
 
 La revisión local usa una instancia PostgreSQL separada con autenticación SCRAM, escuchando solo en 127.0.0.1. Sus credenciales y datos quedan fuera del repositorio. Servir `dist/operational` con la API real en un origen de revisión sin el service worker antiguo. No reiniciar el servicio del negocio ni alterar las pestañas personales.
 
+Preparar la activación posterior: entrada Node explícita `--operational` con los recursos compilados y puerto/origen nuevo. Tras la carga, la entrada heredada debe rechazar el inicio contra la generación importada para impedir que sus formularios enteros recorten datos. Metadatos de catálogo incluyen `importada` booleano ligado a la generación. La activación real exige detener primero el servicio heredado verificado; no dejar sus endpoints escribibles sobre los nuevos datos. No reutilizar automáticamente el origen con service worker antiguo. Cloudflare y la PWA completa siguen requiriendo su validación propia.
+
 ## Evidencia
 
 Pruebas sintéticas de recuperación, decimales, rollback, idempotencia y permisos; operaciones con cantidades fraccionadas y costos de cuatro decimales, copias de seguridad actuales/anteriores; importación real solo en la instancia aislada. Comparar inventario y edición en móvil/escritorio, claro/oscuro. Medir tamaño PostgreSQL y snapshot para evaluar capacidad antes de cualquier carga remota. Reportar por separado carga local, preparación Supabase, compilación, verificación visual y despliegue.
