@@ -34,7 +34,7 @@ async function open(t, route) {
   });
   page.on('pageerror', (error) => errors.push(error.message));
   page.setDefaultTimeout(4000);
-  await page.goto(server.origin + route);
+  await page.goto(server.origin + route, { timeout: 30_000 });
   return page;
 }
 

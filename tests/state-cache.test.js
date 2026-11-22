@@ -146,13 +146,16 @@ test('una edición de producto invalida el ETag sin aplicar caché a la escritur
   const etag = initial.headers.get('etag');
   const previous = await initial.json();
   const product = previous.state.productos.find(row => row.id === result.id);
-  const updated = await write(`/api/productos/${product.id}`, 'PUT', {
+  const operationId = randomUUID();
+  const path = `/api/productos/${product.id}`;
+  const updated = await write(path, 'PUT', {
     databaseId: previous.databaseId, ...productData, version: product.version, nombre: 'Repuesto actualizado',
-  }, { 'If-None-Match': etag });
+  }, { 'If-None-Match': etag, 'Idempotency-Key': operationId });
   assert.equal(updated.status, 200, await updated.clone().text());
   assert.equal(updated.headers.get('etag'), null);
   assert.equal(updated.headers.get('cache-control'), 'no-store');
-  const { result: updatedResult, ...confirmed } = await updated.json();
+  const { result: updatedResult, confirmation, ...confirmed } = await updated.json();
+  assert.deepEqual(confirmation, { operationId, databaseId: previous.databaseId, method: 'PUT', path, replayed: false });
   assert.equal(updatedResult.id, product.id);
 
   statements.length = 0;
