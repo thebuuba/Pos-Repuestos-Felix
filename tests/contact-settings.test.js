@@ -146,18 +146,28 @@ function oldBackup(backup, version) {
     ['suplidores', ['correo', 'contacto', 'dias_credito', 'formula_id']]]) {
     for (const row of old.tables[table]) for (const col of columns) delete row[col];
   }
+  for (const row of old.tables.productos) {
+    delete row.notificar_minimo;
+    row.stock = Number(row.stock);
+    row.stock_minimo = Number(row.stock_minimo);
+    row.costo = Number(row.costo).toFixed(2);
+  }
+  for (const table of ['venta_detalles', 'compra_detalles', 'movimientos_inventario'])
+    for (const row of old.tables[table]) row.cantidad = Number(row.cantidad);
+  for (const row of old.tables.movimientos_inventario) row.existencia_posterior = Number(row.existencia_posterior);
+  for (const row of old.tables.compra_detalles) row.costo = Number(row.costo).toFixed(2);
   if (version === 2) for (const row of old.tables.productos)
     for (const col of ['marca', 'categoria', 'ubicacion', 'stock_minimo', 'gravado']) delete row[col];
   return old;
 }
 const restore = async backup => confirmed('restore', { revision: (await get()).revision, backup });
 
-test('v4 restores inactive records, references and cash identity while archiving pre-restore data', async () => {
+test('v5 restores inactive records, references and cash identity while archiving pre-restore data', async () => {
   const formulaId = (await confirmed('formulas', formula)).result.id;
   const supplierId = (await confirmed('suplidores', { nombre: 'Archivado', formulaId })).result.id;
   await confirmed('suplidores/' + supplierId, { version: 1 }, 'DELETE');
   const backup = await get('backup');
-  assert.equal(backup.version, 4);
+  assert.equal(backup.version, 5);
   assert.deepEqual(Object.keys(backup.tables), ['configuracion', 'clientes', 'formulas_precios', 'suplidores', 'productos', 'ventas', 'venta_detalles', 'compras', 'compra_detalles', 'movimientos_inventario']);
   const marked = backup.tables.clientes.find(c => c.es_contado);
   marked.id = '8500';
@@ -167,13 +177,13 @@ test('v4 restores inactive records, references and cash identity while archiving
   assert.notEqual(restored.databaseId, original.databaseId);
   assert.deepEqual((await get('backup')).tables, backup.tables);
   const archived = (await pool.query("SELECT datos FROM pos_privado.respaldos WHERE motivo='Antes de restaurar' ORDER BY id DESC LIMIT 1")).rows[0].datos;
-  assert.equal(archived.version, 4);
+  assert.equal(archived.version, 5);
   assert.notEqual(archived.tables.clientes.find(c => c.es_contado).id, '8500');
   for (const method of ['PUT', 'DELETE'])
     await rejected(409, 'clientes/8500', method === 'PUT' ? { nombre: 'Cambio', version: 1 } : { version: 1 }, method);
 });
 
-test('malformed v4 rows, relations and per-version layouts roll back without rotating or archiving', async () => {
+test('malformed v5 rows, relations and per-version layouts roll back without rotating or archiving', async () => {
   const unused = (await confirmed('formulas', formula)).result.id;
   await confirmed('formulas/' + unused, { version: 1 }, 'DELETE');
   await confirmed('suplidores', { nombre: 'Disponible' });

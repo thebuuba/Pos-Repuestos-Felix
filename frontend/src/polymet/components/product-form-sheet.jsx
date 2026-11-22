@@ -24,6 +24,7 @@ import { formatMoney } from "../lib/format.js";
 import { Switch2 } from "../../components/ui/switch.jsx";
 import { SheetFooter } from "../../components/ui/sheet.jsx";
 import { useEffect, useId, useRef, useState } from "react";
+import { costUnits, OperationError } from "../../../../src/pos/operation-fields.js";
 var EMPTY = {
   code: "",
   name: "",
@@ -52,7 +53,7 @@ function fromProduct(p) {
     brand: p.brand,
     category: p.category,
     location: p.location,
-    cost: String(p.cost),
+    cost: p.costExact ?? String(p.cost),
     stock: String(p.stock),
     minStock: String(p.minStock),
     taxable: p.taxable,
@@ -69,7 +70,16 @@ function validMoney(value) {
   );
 }
 function validQuantity(value) {
-  return /^\d*$/.test(value) && Number(value) <= 2147483647;
+  return /^(?:\d*|\d*\.\d{1,2})$/.test(value) && Number(value) <= 2147483647;
+}
+function validBaseCost(value) {
+  try {
+    costUnits(value, "el costo");
+    return true;
+  } catch (error) {
+    if (error instanceof OperationError) return false;
+    throw error;
+  }
 }
 function ProductFormSheet({
   open,
@@ -105,15 +115,17 @@ function ProductFormSheet({
       [key]: value,
     }));
   const moneyError = "Usa un importe válido con hasta dos decimales";
-  const validCost = validMoney(form.cost);
-  const cost = validCost ? Number(form.cost) : 0;
+  const costError = "Usa un importe válido con hasta cuatro decimales";
+  const costDecimal = form.cost.replace(/^\./, "0.").replace(/^0+(?=\d)/, "");
+  const validCost = validBaseCost(costDecimal);
+  const cost = validCost ? Number(costDecimal) : 0;
   const formula = formulas.find((f) => String(f.id) === formulaId) ?? formulas[0];
   let suggested, suggestionError;
   if (formula && form.cost !== "") {
-    if (!validCost) suggestionError = moneyError;
+    if (!validCost) suggestionError = costError;
     else if (cost > 0) {
       try {
-        suggested = pricesFromFormula(cost, formula, rounding);
+        suggested = pricesFromFormula(costDecimal, formula, rounding);
       } catch (cause) {
         suggestionError = cause.message;
       }
@@ -130,17 +142,15 @@ function ProductFormSheet({
   const codeTaken =
     form.code.trim() !== "" &&
     draft?.existingCodes.some(
-      (c) =>
-        c.toLowerCase() === form.code.trim().toLowerCase() &&
-        c.toLowerCase() !== product?.code.toLowerCase(),
+      (c) => c === form.code && c !== product?.code,
     );
-  const quantityError = "Usa un entero entre 0 y 2147483647";
+  const quantityError = "Usa una cantidad entre 0 y 2147483647 con hasta dos decimales";
   const textError = (value) =>
     value.length > 2000 ? "Usa hasta 2000 caracteres" : undefined;
   const errors = {
     code: !form.code.trim()
       ? "Requerido"
-      : (textError(form.code.trim().toUpperCase()) ??
+      : (textError(form.code) ??
         (codeTaken ? "Ese código ya existe" : undefined)),
     name: !form.name.trim() ? "Requerido" : textError(form.name.trim()),
     brand: textError(form.brand.trim()),
@@ -150,7 +160,7 @@ function ProductFormSheet({
       form.cost === ""
         ? "Indica el costo"
         : !validCost
-          ? moneyError
+          ? costError
           : undefined,
     stock: validQuantity(form.stock) ? undefined : quantityError,
     minStock: validQuantity(form.minStock) ? undefined : quantityError,
@@ -186,12 +196,12 @@ function ProductFormSheet({
         id: draft.id,
         databaseId: draft.databaseId,
         ...(draft.version === undefined ? {} : { version: draft.version }),
-        code: form.code.trim().toUpperCase(),
+        code: form.code,
         name: form.name.trim(),
         brand: form.brand.trim(),
         category: form.category,
         location: form.location.trim().toUpperCase(),
-        cost,
+        cost: costDecimal,
         stock: Number(form.stock),
         minStock: Number(form.minStock),
         taxable: form.taxable,
@@ -247,7 +257,10 @@ function ProductFormSheet({
                 value={form.code}
                 onChange={(e) => set("code", e.target.value)}
                 placeholder="Ej. BUJ-C7HSA"
-                className={cn(inputClass, "font-mono uppercase")}
+                className={cn(inputClass, "font-mono")}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 autoFocus={true}
               />
             </Field>
@@ -331,6 +344,7 @@ function ProductFormSheet({
                 aria-invalid={submitted && !!errors.cost}
                 type="number"
                 inputMode="decimal"
+                step="0.0001"
                 value={form.cost}
                 onChange={(e) => set("cost", e.target.value)}
                 placeholder="0.00"
@@ -347,6 +361,8 @@ function ProductFormSheet({
                 disabled={locked}
                 aria-invalid={submitted && !!errors.stock}
                 type="number"
+                inputMode="decimal"
+                step="0.01"
                 value={form.stock}
                 onChange={(e) => set("stock", e.target.value)}
                 placeholder="0"
@@ -364,6 +380,8 @@ function ProductFormSheet({
                 disabled={locked}
                 aria-invalid={submitted && !!errors.minStock}
                 type="number"
+                inputMode="decimal"
+                step="0.01"
                 value={form.minStock}
                 onChange={(e) => set("minStock", e.target.value)}
                 className={inputClass}

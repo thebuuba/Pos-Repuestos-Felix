@@ -32,7 +32,8 @@ const product = {
 function confirmNewProduct(route, snapshot, id = product.id) {
   const { databaseId, ...fields } = route.request().postDataJSON();
   snapshot.revision++;
-  snapshot.state.productos.push({ ...fields, id, version: 1, activo: true });
+  const costo = Number(fields.costo);
+  snapshot.state.productos.push({ ...fields, costo, costoExacto: costo.toFixed(4), id, version: 1, activo: true });
   return route.fulfill({ json: acknowledged(route, snapshot, id) });
 }
 
@@ -271,9 +272,9 @@ test(
     for (const [field, value, message] of [
       [0, "", /Indica el costo/],
       [3, "", /Indica el precio/],
-      [0, "1e100", /hasta dos decimales/],
-      [1, "1.5", /entero/],
-      [2, "2147483648", /entero/],
+      [0, "1e100", /hasta cuatro decimales/],
+      [1, "1.501", /hasta dos decimales/],
+      [2, "2147483648", /hasta dos decimales/],
       [3, "10.255", /hasta dos decimales/],
       [4, "-1", /hasta dos decimales/],
       [5, "3.141", /hasta dos decimales/],
@@ -300,7 +301,7 @@ test(
     assert.equal(packets.length, 1);
     assert.equal(packets[0].stock, 0);
     assert.equal(packets[0].stockMinimo, 5);
-    assert.equal(packets[0].costo, 10.25);
+    assert.equal(packets[0].costo, "10.25");
     assert.equal(packets[0].precio1, 20.15);
     assert.equal(packets[0].precio2, 0);
     assert.equal(packets[0].precio3, 0);

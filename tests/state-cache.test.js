@@ -1,6 +1,6 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -96,6 +96,15 @@ test('GET /api/state conserva el snapshot y valida el ETag con una sola consulta
     assert.equal(statements.length, 1, statements.join('\n'));
     assert.match(statements[0], /^SELECT\s+database_id,\s*revision\s+FROM\s+pos_privado\.sistema\b/i);
   }
+});
+
+test('GET /api/state replaces the earlier representation at the same data revision', async () => {
+  const { databaseId, revision, databaseLabel } = await (await getState()).json();
+  const oldTag = '"' + createHash('sha256').update(JSON.stringify([1, databaseId, revision, databaseLabel])).digest('hex') + '"';
+  const response = await getState(oldTag);
+  assert.equal(response.status, 200);
+  assert.notEqual(response.headers.get('etag'), oldTag);
+  assert.equal((await response.json()).revision, revision);
 });
 
 test('un BEGIN ejecutado antes del timeout no deja lecturas condicionales en una revisión obsoleta', async (t) => {

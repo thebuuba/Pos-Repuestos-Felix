@@ -44,7 +44,7 @@ test('catalog stores every Polymet attribute and preserves omitted metadata duri
 
 test('invalid metadata cannot change catalog, inventory movements or revision', async () => {
   const before = await state();
-  for (const bad of [{ gravado: 'false' }, { gravado: null }, { stockMinimo: -1 }, { stockMinimo: 1.5 }, { stockMinimo: 2147483648 }, { marca: 2 }, { categoria: 'x'.repeat(2001) }, { ubicacion: null }]) {
+  for (const bad of [{ gravado: 'false' }, { gravado: null }, { stockMinimo: -1 }, { stockMinimo: 1.501 }, { stockMinimo: 2147483648 }, { notificarMinimo: 'false' }, { marca: 2 }, { categoria: 'x'.repeat(2001) }, { ubicacion: null }]) {
     const response = await write(`productos/${productId}`, { ...basic(await product()), ...bad }, 'PUT');
     assert.equal(response.status, 400, JSON.stringify(bad));
   }
@@ -75,12 +75,12 @@ test('tax exempt catalog prices retain the same gross amount and produce zero IT
   assert.equal(invoice.items[0].itbis, 0);
 });
 
-test('v4 backups preserve metadata and prior v2 backups import with explicit neutral defaults', async () => {
+test('v5 backups preserve metadata and older versions use the SQL defaults', async () => {
   const original = await state();
   const backup = await (await fetch(origin + '/api/backup')).json();
-  assert.equal(backup.version, 4);
+  assert.equal(backup.version, 5);
   const row = backup.tables.productos.find(p => Number(p.id) === productId);
-  assert.equal(row.stock_minimo, 7);
+  assert.equal(row.stock_minimo, '7.00');
   assert.equal(row.gravado, false);
   assert.equal(row.marca, 'Confirmada');
   const malformed = structuredClone(backup);
@@ -90,7 +90,29 @@ test('v4 backups preserve metadata and prior v2 backups import with explicit neu
   const restored = await write('restore', { revision: original.revision, backup });
   assert.equal(restored.status, 200, await restored.clone().text());
   assert.deepEqual((await restored.json()).state, original.state);
-  const v2 = structuredClone(backup); v2.version = 2;
+  const v4 = structuredClone(backup); v4.version = 4;
+  for (const row of v4.tables.productos) {
+    delete row.notificar_minimo;
+    row.stock = Number(row.stock);
+    row.stock_minimo = Number(row.stock_minimo);
+    row.costo = Number(row.costo).toFixed(2);
+  }
+  for (const table of ['venta_detalles', 'compra_detalles', 'movimientos_inventario'])
+    for (const row of v4.tables[table]) row.cantidad = Number(row.cantidad);
+  for (const row of v4.tables.movimientos_inventario) row.existencia_posterior = Number(row.existencia_posterior);
+  for (const row of v4.tables.compra_detalles) row.costo = Number(row.costo).toFixed(2);
+  const invalidV4 = structuredClone(v4);
+  invalidV4.tables.productos[0].costo = '10.0000';
+  assert.equal((await write('restore', { revision: (await state()).revision, backup: invalidV4 })).status, 400);
+  const duplicatesV4 = structuredClone(v4);
+  duplicatesV4.tables.productos.push({ ...duplicatesV4.tables.productos[0], id: '90001', codigo: 'meta', stock: 0 });
+  const beforeDuplicate = await state();
+  assert.equal((await write('restore', { revision: beforeDuplicate.revision, backup: duplicatesV4 })).status, 409);
+  assert.deepEqual(await state(), beforeDuplicate);
+  const validV4 = await write('restore', { revision: beforeDuplicate.revision, backup: v4 });
+  assert.equal(validV4.status, 200, await validV4.clone().text());
+  assert.equal((await product()).notificarMinimo, true);
+  const v2 = structuredClone(v4); v2.version = 2;
   delete v2.tables.formulas_precios;
   for (const [table, fields] of Object.entries({
     configuracion: ['rnc', 'tel', 'correo', 'direccion', 'redondeo', 'nivel_precio_predeterminado', 'formato_impresion', 'pie_ticket', 'permitir_stock_negativo'],
@@ -101,6 +123,7 @@ test('v4 backups preserve metadata and prior v2 backups import with explicit neu
   const imported = await product();
   assert.equal(imported.stockMinimo, 0);
   assert.equal(imported.gravado, true);
+  assert.equal(imported.notificarMinimo, true);
   assert.equal(imported.marca, '');
   assert.equal(imported.categoria, '');
   assert.equal(imported.ubicacion, '');
@@ -125,12 +148,14 @@ test('additive catalog migration preserves populated prior schema and historical
     const oldProduct = (await admin.query('SELECT * FROM productos')).rows[0];
     const oldDocuments = (await admin.query('SELECT row_to_json(v) AS document FROM ventas v ORDER BY id')).rows;
     const oldMovements = (await admin.query('SELECT row_to_json(m) AS document FROM movimientos_inventario m ORDER BY id')).rows;
-    assert.deepEqual(await migrateDatabase(admin), ['20261121220000', '20261122000000']);
+    assert.deepEqual(await migrateDatabase(admin), ['20261121220000', '20261122000000', '20261122010000']);
     assert.equal((await admin.query('SELECT es_contado FROM clientes')).rows[0].es_contado, false);
     const migrated = (await admin.query('SELECT * FROM productos')).rows[0];
-    assert.deepEqual(Object.fromEntries(Object.keys(oldProduct).map(key => [key, migrated[key]])), oldProduct);
+    assert.deepEqual(Object.fromEntries(Object.keys(oldProduct).map(key => [key, migrated[key]])),
+      { ...oldProduct, stock: oldProduct.stock.toFixed(2), costo: Number(oldProduct.costo).toFixed(4) });
     assert.equal(migrated.gravado, true);
-    assert.equal(migrated.stock_minimo, 0);
+    assert.equal(migrated.stock_minimo, '0.00');
+    assert.equal(migrated.notificar_minimo, true);
     assert.equal(migrated.categoria, '');
     assert.deepEqual((await admin.query('SELECT row_to_json(v) AS document FROM ventas v ORDER BY id')).rows, oldDocuments);
     assert.deepEqual((await admin.query('SELECT row_to_json(m) AS document FROM movimientos_inventario m ORDER BY id')).rows, oldMovements);

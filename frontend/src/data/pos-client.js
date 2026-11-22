@@ -1,4 +1,5 @@
 import { normalizeFormula } from '../../../src/domain/pricing.js';
+import { OperationError, costUnits, quantityUnits } from '../../../src/pos/operation-fields.js';
 import { journalTransaction } from './operation-journal.js';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -13,7 +14,17 @@ function sameVersionTag(first, second) {
 }
 
 const id = value => Number.isSafeInteger(value) && value > 0;
-const quantity = value => Number.isInteger(value) && value >= 0 && value <= 2147483647;
+const integerQuantity = value => Number.isInteger(value) && value >= 0 && value <= 2147483647;
+function inventoryDecimal(parse) {
+  return value => {
+    try { parse(value, 'el campo decimal'); return true; }
+    catch (error) { if (error instanceof OperationError) return false; throw error; }
+  };
+}
+const decimalQuantity = inventoryDecimal(quantityUnits);
+const quantity = value => typeof value === 'number' && decimalQuantity(value);
+const cost = inventoryDecimal(costUnits);
+const bool = value => typeof value === 'boolean';
 const text = value => typeof value === 'string' && value.length <= 2000;
 const name = value => text(value) && value.trim().length > 0;
 const nullable = check => value => value === null || check(value);
@@ -25,11 +36,11 @@ const percentage = value => rate(value) && Number(value) <= 100;
 const string = value => typeof value === 'string';
 const amount = decimal(/^\d{1,12}(?:\.\d{1,2})?$/);
 const productFields = { codigo: string, nombre: string, marca: string, categoria: string, ubicacion: string,
-  stockMinimo: quantity, gravado: value => typeof value === 'boolean', stock: quantity,
-  costo: amount, precio1: amount, precio2: amount, precio3: amount };
+  stockMinimo: decimalQuantity, gravado: bool, notificarMinimo: bool, stock: decimalQuantity,
+  costo: cost, precio1: amount, precio2: amount, precio3: amount };
 const contactFields = { nombre: name, rnc: text, tel: text, correo: text };
 const customerFields = { ...contactFields, direccion: text, limiteCredito: nullable(amount) };
-const supplierFields = { ...contactFields, contacto: text, diasCredito: nullable(quantity), formulaId: nullable(id) };
+const supplierFields = { ...contactFields, contacto: text, diasCredito: nullable(integerQuantity), formulaId: nullable(id) };
 const formulaValue = value => typeof value === 'string' || Number.isFinite(value);
 const formulaFields = { nombre: name, factorCosto: formulaValue, recargo1: formulaValue, recargo2: formulaValue, recargo3: formulaValue };
 function validFormula(row) {
@@ -76,12 +87,21 @@ function checkPayload(method, resource, payload) {
   }
 }
 
+function validCost(row) {
+  // Snapshots from the previous server version only carry a two-decimal cost.
+  if (!Object.hasOwn(row, 'costoExacto')) return money(row.costo);
+  return typeof row.costoExacto === 'string' && /^\d{1,12}\.\d{4}$/.test(row.costoExacto) &&
+    cost(row.costoExacto) && row.costo === Number(row.costoExacto);
+}
+
 function validProduct(p) {
   return p && id(p.id) && id(p.version) && name(p.codigo) && name(p.nombre) &&
     ['marca', 'categoria', 'ubicacion'].every(key => text(p[key])) &&
     quantity(p.stock) && quantity(p.stockMinimo) &&
     (!Object.hasOwn(p, 'stock_minimo') || p.stock_minimo === p.stockMinimo) &&
-    ['costo', 'precio1', 'precio2', 'precio3'].every(key => money(p[key])) &&
+    validCost(p) && ['precio1', 'precio2', 'precio3'].every(key => money(p[key])) &&
+    (!Object.hasOwn(p, 'notificarMinimo') || bool(p.notificarMinimo)) &&
+    (!Object.hasOwn(p, 'notificar_minimo') || p.notificar_minimo === p.notificarMinimo) &&
     typeof p.gravado === 'boolean' && p.activo === true;
 }
 
@@ -102,9 +122,9 @@ function validDocument(row, sale) {
   const header = sale ? { clienteId: id, cliente: name, clienteRnc: text, ncf: nullable(name),
     tipoComprobante: oneOf('B01','B02','B14'), condicion: oneOf('Credito','Contado'), base: money, itbis: money }
     : { suplidorId: id, suplidor: name, numero: name };
-  const amounts = sale ? { precio: money, base: money, itbis: money } : { costo: money, p1: money, p2: money, p3: money };
+  const amounts = sale ? { precio: money, base: money, itbis: money } : { p1: money, p2: money, p3: money };
   return complete(row, header) && documentDate(row.fechaISO) && money(row.total) && row.items?.length > 0 &&
-    records(row.items, line => complete(line, lineFields) && complete(line, amounts));
+    records(row.items, line => complete(line, lineFields) && complete(line, amounts) && (sale || validCost(line)));
 }
 function validOperationalState(state) {
   const config = state.configuracion;
@@ -127,8 +147,7 @@ function checkSnapshot(snapshot) {
       snapshot.revision < 0 || typeof snapshot.databaseLabel !== 'string' ||
       !Array.isArray(products) || !products.every(validProduct) || !validOperationalState(snapshot.state) ||
       new Set(products.map(p => p.id)).size !== products.length ||
-      // PostgreSQL's case folding for non-ASCII SKU characters depends on its collation.
-      new Set(products.map(p => p.codigo.replace(/[A-Z]/g, letter => letter.toLowerCase()))).size !== products.length) {
+      new Set(products.map(p => p.codigo)).size !== products.length) {
     throw new Error('El servicio devolvió datos de catálogo no válidos.');
   }
   return snapshot;

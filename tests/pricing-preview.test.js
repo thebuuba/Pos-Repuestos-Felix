@@ -49,9 +49,9 @@ test('product previews reject invalid and overflowing suggestions and allow vali
   await cost.fill('100');
   await calculate.click();
   assert.equal(await firstPrice.inputValue(), '135');
-  await cost.fill('1.001');
+  await cost.fill('1.00001');
   assert.equal(await calculate.isDisabled(), true);
-  await sheet.getByRole('alert').getByText(/hasta dos decimales/).waitFor();
+  await sheet.getByRole('alert').getByText(/hasta cuatro decimales/).waitFor();
   await cost.fill('999999999999.99');
   assert.equal(await calculate.isDisabled(), true);
   await sheet.getByRole('alert').getByText(/límite permitido/).waitFor();
@@ -76,7 +76,7 @@ test('purchase suggestions guard entry and editable rows against invalid and ove
 
   await cost.fill('1e2');
   assert.equal(await add.isDisabled(), true);
-  await main.getByRole('alert').getByText(/hasta 2 decimales/).waitFor();
+  await main.getByRole('alert').getByText(/hasta 4 decimales/).waitFor();
   await cost.fill('999999999999.99');
   assert.equal(await add.isDisabled(), true);
   await main.getByRole('alert').getByText(/límite permitido/).waitFor();
@@ -92,7 +92,7 @@ test('purchase suggestions guard entry and editable rows against invalid and ove
   const firstPrice = row.getByRole('spinbutton').nth(2);
   assert.equal(await firstPrice.inputValue(), '135');
   await rowCost.fill('-1');
-  await row.getByRole('alert').getByText(/hasta 2 decimales/).waitFor();
+  await row.getByRole('alert').getByText(/hasta 4 decimales/).waitFor();
   assert.equal(await firstPrice.inputValue(), '');
   assert.equal(await upload.isDisabled(), true);
   await rowCost.fill('999999999999.99');

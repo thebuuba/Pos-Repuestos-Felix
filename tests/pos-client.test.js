@@ -312,13 +312,13 @@ test('GET and write acknowledgements reject impossible products without changing
   const ack = { ...initial, revision: initial.revision + 1, state: { ...initial.state, productos: [product] }, result: { id: product.id } };
   await page.route('**/api/state', route => route.fulfill({ json: ack }));
   await page.route('**/api/productos', route => route.fulfill({ json: acknowledged(route, ack, product.id) }));
-  const variants = [{ stock: 1.5 }, { stockMinimo: -1 }, { stock: 2147483648 }, { costo: -5.001 }, { precio1: 1.005 }, { precio2: 1e12 },
+  const variants = [{ stock: 1.501 }, { stockMinimo: -1 }, { stock: 2147483648 }, { costo: -5.001 }, { precio1: 1.005 }, { precio2: 1e12 },
     { precio3: '0.20' }, { id: 0 }, { version: -1 }, { nombre: ' ' }, { codigo: '' }, { marca: 'x'.repeat(2001) },
     { categoria: 'x'.repeat(2001) }, { ubicacion: 'x'.repeat(2001) }, { gravado: 'false' }, { activo: 1 },
-    { stock_minimo: -1 }, { stock_minimo: 1 }];
+    { stock_minimo: -1 }, { stock_minimo: 1 }, { costoExacto: '0.00000' }, { costoExacto: '12.3456' }, { notificarMinimo: 'false' }];
   let pending;
   for (const products of [...variants.map(fields => [{ ...product, ...fields }]), [product, { ...product, codigo: 'OTRO' }],
-    [product, { ...product, id: 72 }], [product, { ...product, id: 72, codigo: 'dominio' }]]) {
+    [product, { ...product, id: 72 }]]) {
     ack.state.productos = products;
     await assert.rejects(page.evaluate(() => client.reload()), /catálogo no válidos/);
     const write = pending ? page.evaluate(() => client.retryPending()) : createProduct(page, 'DOMINIO');
@@ -329,11 +329,13 @@ test('GET and write acknowledgements reject impossible products without changing
     pending ??= current.pending;
     assert.deepEqual(current.pending, pending);
   }
-  ack.state.productos = [product];
+  const fractional = { ...product, id: 72, codigo: 'dominio', stock: 1.25, stockMinimo: 0.5, costo: 12.3456,
+    costoExacto: '12.3456', notificarMinimo: false };
+  ack.state.productos = [product, fractional];
   await page.evaluate(() => client.retryPending());
   const confirmed = await page.evaluate(() => client.getState());
   assert.equal(confirmed.pending, null);
-  assert.deepEqual(confirmed.snapshot.state.productos, [product]);
+  assert.deepEqual(confirmed.snapshot.state.productos, [product, fractional]);
 });
 
 test('aborting IndexedDB after a successful sending put prevents the write request', async t => {

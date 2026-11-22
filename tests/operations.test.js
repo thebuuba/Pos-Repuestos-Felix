@@ -83,7 +83,7 @@ test('purchase creates catalog and ledger atomically; duplicate supplier invoice
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM compra_detalles WHERE producto_id=$1', [p.id])).rows[0].n, 1);
 });
 
-test('database error after purchase inserts rolls back header, products, details and inventory', async () => {
+test('a purchase exceeding the stock limit leaves headers, products, details and inventory unchanged', async () => {
   const create = await write('productos', { codigo: 'FULL', nombre: 'Límite', costo: 1, stock: 2147483647, precio1: 2, precio2: 2, precio3: 2 });
   assert.equal(create.status, 200);
   const before = await get();
@@ -98,7 +98,7 @@ test('database error after purchase inserts rolls back header, products, details
 test('backup restores complete relational data, rotates identity and preserves failed restore atomically', async () => {
   const original = await get();
   const backup = await (await fetch(base + '/api/backup')).json();
-  assert.equal(backup.version, 4);
+  assert.equal(backup.version, 5);
   assert.ok(backup.tables.productos.some(p => !p.activo));
   const invalid = structuredClone(backup); invalid.tables.venta_detalles[0].producto_id = 999999;
   assert.equal((await write('restore', { backup: invalid, revision: original.revision })).status, 400);
@@ -135,7 +135,7 @@ test('restore refuses to discard a concurrent completed write', async () => {
 test('restore rejects precision loss instead of silently rounding numeric columns', async () => {
   const original = await get();
   const backup = await (await fetch(base + '/api/backup')).json();
-  backup.tables.productos[0].costo = '1.001';
+  backup.tables.productos[0].costo = '1.00001';
   const response = await write('restore', { backup, revision: original.revision });
   assert.equal(response.status, 400);
   assert.deepEqual((await get()).state, original.state);

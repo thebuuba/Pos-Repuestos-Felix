@@ -1,13 +1,17 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { validateState } from './legacy-state.js';
-import { OperationError, fail, text, id, integer, cents, money } from './operation-fields.js';
+import { OperationError, fail, text, productCode, id, cents, money, quantityUnits, costUnits, decimalUnits } from './operation-fields.js';
 import { contactOperation, settingsOperation } from './contact-operations.js';
 import { backupLayout, exportBackup, rows, tables } from './relational-backup.js';
 export { fail } from './operation-fields.js';
 
 const maintenanceLock = 74198232;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-function prices(body) { return ['costo', 'precio1', 'precio2', 'precio3'].map(key => money(cents(body[key], key))); }
+function prices(body, cost = costUnits(body.costo, 'el costo')) {
+  return [decimalUnits(cost, 4), ...['precio1', 'precio2', 'precio3'].map(key => money(cents(body[key], key)))];
+}
+const quantityText = value => decimalUnits(value, 2);
+const lineCents = (price, quantity, divisor) => (price * quantity + divisor / 2n) / divisor;
 function canonical(value) {
   if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']';
   if (value && typeof value === 'object') return '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + canonical(value[key])).join(',') + '}';
@@ -21,6 +25,18 @@ const number = value => {
 const date = value => String(value).slice(0, 10);
 const displayDate = value => { const [year, month, day] = date(value).split('-'); return `${Number(day)}/${Number(month)}/${year}`; };
 
+function itemsByDocument(details, key, present) {
+  const grouped = new Map();
+  for (const detail of details) {
+    const id = detail[key];
+    if (!grouped.has(id)) grouped.set(id, []);
+    grouped.get(id).push(present(detail));
+  }
+  return grouped;
+}
+const lineFields = d => ({ id: number(d.id), productoId: number(d.producto_id), codigo: d.codigo,
+  nombre: d.nombre, cant: Number(d.cantidad), subtotal: Number(d.total) });
+
 async function snapshotVersion(client, databaseLabel) {
   const system = (await client.query('SELECT database_id,revision FROM pos_privado.sistema WHERE id=1')).rows[0];
   if (!system) fail('Ejecuta las migraciones de la base antes de iniciar.', 503);
@@ -32,10 +48,11 @@ async function snapshot(client, databaseLabel) {
   for (const table of Object.keys(tables)) data[table] = await rows(client, table);
   const config = data.configuracion[0];
   if (!config) fail('La configuración de la base está incompleta.', 503);
-  const saleItems = row => data.venta_detalles.filter(d => d.venta_id === row.id).map(d => ({ id: number(d.id), productoId: number(d.producto_id), codigo: d.codigo, nombre: d.nombre, cant: d.cantidad, precio: Number(d.precio), base: Number(d.base), itbis: Number(d.itbis), subtotal: Number(d.total) }));
-  const purchaseItems = row => data.compra_detalles.filter(d => d.compra_id === row.id).map(d => ({ id: number(d.id), productoId: number(d.producto_id), codigo: d.codigo, nombre: d.nombre, cant: d.cantidad, costo: Number(d.costo), p1: Number(d.precio1), p2: Number(d.precio2), p3: Number(d.precio3), subtotal: Number(d.total) }));
-  const balances = (await client.query(`SELECT c.id,(c.saldo_apertura+COALESCE(sum(v.total) FILTER(WHERE v.condicion='Credito'),0))::text AS deuda
-    FROM clientes c LEFT JOIN ventas v ON v.cliente_id=c.id GROUP BY c.id`)).rows;
+  const saleItems = itemsByDocument(data.venta_detalles, 'venta_id', d => ({ ...lineFields(d), precio: Number(d.precio), base: Number(d.base), itbis: Number(d.itbis) }));
+  const purchaseItems = itemsByDocument(data.compra_detalles, 'compra_id', d => ({ ...lineFields(d), costo: Number(d.costo),
+    costoExacto: d.costo, p1: Number(d.precio1), p2: Number(d.precio2), p3: Number(d.precio3) }));
+  const balances = new Map((await client.query(`SELECT c.id,(c.saldo_apertura+COALESCE(sum(v.total) FILTER(WHERE v.condicion='Credito'),0))::text AS deuda
+    FROM clientes c LEFT JOIN ventas v ON v.cliente_id=c.id GROUP BY c.id`)).rows.map(row => [row.id, Number(row.deuda)]));
   return {
     ...version,
     state: {
@@ -46,15 +63,19 @@ async function snapshot(client, databaseLabel) {
         pieTicket: config.pie_ticket, permitirStockNegativo: config.permitir_stock_negativo },
       formulas: data.formulas_precios.filter(f => f.activo).map(f => ({ id: number(f.id), version: number(f.version), nombre: f.nombre,
         factorCosto: Number(f.factor_costo), recargo1: Number(f.recargo1), recargo2: Number(f.recargo2), recargo3: Number(f.recargo3) })),
-      productos: data.productos.filter(p => p.activo).map(p => ({ ...p, id: number(p.id), version: number(p.version), stockMinimo: p.stock_minimo, costo: Number(p.costo), precio1: Number(p.precio1), precio2: Number(p.precio2), precio3: Number(p.precio3) })),
+      productos: data.productos.filter(p => p.activo).map(p => ({ ...p, id: number(p.id), version: number(p.version),
+        stock: Number(p.stock), stock_minimo: Number(p.stock_minimo), stockMinimo: Number(p.stock_minimo),
+        notificarMinimo: p.notificar_minimo, costo: Number(p.costo), costoExacto: p.costo,
+        precio1: Number(p.precio1), precio2: Number(p.precio2), precio3: Number(p.precio3) })),
       clientes: data.clientes.filter(c => c.activo).map(c => ({ id: number(c.id), version: number(c.version), nombre: c.nombre, rnc: c.rnc, tel: c.tel,
         correo: c.correo, direccion: c.direccion, limiteCredito: c.limite_credito === null ? null : Number(c.limite_credito),
-        esContado: c.es_contado, deuda: Number(balances.find(b => b.id === c.id).deuda) })),
+        esContado: c.es_contado, deuda: balances.get(c.id) })),
       suplidores: data.suplidores.filter(s => s.activo).map(s => ({ id: number(s.id), version: number(s.version), nombre: s.nombre, rnc: s.rnc, tel: s.tel,
         correo: s.correo, contacto: s.contacto, diasCredito: s.dias_credito, formulaId: s.formula_id === null ? null : number(s.formula_id) })),
-      facturas: data.ventas.map(v => ({ id: number(v.id), clienteId: number(v.cliente_id), cliente: v.cliente_nombre, clienteRnc: v.cliente_rnc, ncf: v.ncf, tipoComprobante: v.tipo_comprobante, fecha: displayDate(v.fecha), fechaISO: date(v.fecha), condicion: v.condicion, base: Number(v.base), itbis: Number(v.itbis), total: Number(v.total), items: saleItems(v) })),
-      compras: data.compras.map(c => ({ id: number(c.id), suplidorId: number(c.suplidor_id), suplidor: c.suplidor_nombre, numero: c.numero, fecha: displayDate(c.fecha), fechaISO: date(c.fecha), total: Number(c.total), items: purchaseItems(c) })),
-      movimientos: data.movimientos_inventario.map(m => ({ ...m, id: number(m.id), productoId: number(m.producto_id) })),
+      facturas: data.ventas.map(v => ({ id: number(v.id), clienteId: number(v.cliente_id), cliente: v.cliente_nombre, clienteRnc: v.cliente_rnc, ncf: v.ncf, tipoComprobante: v.tipo_comprobante, fecha: displayDate(v.fecha), fechaISO: date(v.fecha), condicion: v.condicion, base: Number(v.base), itbis: Number(v.itbis), total: Number(v.total), items: saleItems.get(v.id) ?? [] })),
+      compras: data.compras.map(c => ({ id: number(c.id), suplidorId: number(c.suplidor_id), suplidor: c.suplidor_nombre, numero: c.numero, fecha: displayDate(c.fecha), fechaISO: date(c.fecha), total: Number(c.total), items: purchaseItems.get(c.id) ?? [] })),
+      movimientos: data.movimientos_inventario.map(m => ({ ...m, id: number(m.id), productoId: number(m.producto_id),
+        cantidad: Number(m.cantidad), existencia_posterior: Number(m.existencia_posterior) })),
     },
   };
 }
@@ -83,15 +104,15 @@ export async function readSnapshot(pool, databaseLabel, backup = false, matchesV
 async function movement(client, productId, quantity, stock, type, detailId = null, reason = '') {
   if (!quantity) return;
   await client.query(`INSERT INTO movimientos_inventario(producto_id,cantidad,existencia_posterior,tipo,venta_detalle_id,compra_detalle_id,motivo)
-    VALUES($1,$2,$3,$4,$5,$6,$7)`, [productId, quantity, stock, type, type === 'venta' ? detailId : null, type === 'compra' ? detailId : null, reason]);
+    VALUES($1,$2,$3,$4,$5,$6,$7)`, [productId, quantityText(quantity), quantityText(stock), type, type === 'venta' ? detailId : null, type === 'compra' ? detailId : null, reason]);
 }
 async function productOperation(client, method, productId, body) {
   let code, name, stock, amounts;
   if (method !== 'DELETE') {
-    code = text(body.codigo, 'el código'); name = text(body.nombre, 'la descripción');
-    stock = integer(body.stock, 'las existencias', 0); amounts = prices(body);
+    code = productCode(body.codigo); name = text(body.nombre, 'la descripción');
+    stock = quantityUnits(body.stock, 'las existencias'); amounts = prices(body);
     const oldCode = productId ? (await client.query('SELECT codigo FROM productos WHERE id=$1', [productId])).rows[0]?.codigo : null;
-    for (const lockCode of [...new Set([code, oldCode].filter(Boolean).map(value => value.toLowerCase()))].sort()) {
+    for (const lockCode of [...new Set([code, oldCode].filter(Boolean))].sort()) {
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', ['producto:' + lockCode]);
     }
   }
@@ -104,19 +125,21 @@ async function productOperation(client, method, productId, body) {
     await client.query('UPDATE productos SET activo=false,version=version+1,actualizado_en=now() WHERE id=$1', [productId]);
     return { id: productId };
   }
-  const attribute = (key, fallback) => body[key] === undefined ? previous?.[key] ?? fallback : body[key];
+  const attribute = (key, column, fallback) => body[key] === undefined ? previous?.[column] ?? fallback : body[key];
   const attributeText = (key, label = key) => body[key] === undefined ? previous?.[key] ?? '' : text(body[key], label, false);
   const metadata = ['marca', 'categoria'].map(key => attributeText(key));
-  metadata.push(integer(body.stockMinimo === undefined ? previous?.stock_minimo ?? 0 : body.stockMinimo, 'la existencia mínima', 0));
-  const taxable = attribute('gravado', true);
+  metadata.push(quantityText(quantityUnits(attribute('stockMinimo', 'stock_minimo', 0), 'la existencia mínima')));
+  const taxable = attribute('gravado', 'gravado', true);
+  const notify = attribute('notificarMinimo', 'notificar_minimo', true);
   if (typeof taxable !== 'boolean') fail('La gravabilidad debe ser booleana.');
-  metadata.push(taxable, attributeText('ubicacion', 'la ubicación'));
+  if (typeof notify !== 'boolean') fail('La notificación de mínimo debe ser booleana.');
+  metadata.push(taxable, attributeText('ubicacion', 'la ubicación'), notify);
   // Code locks precede row locks, matching purchases and protecting new codes.
   const result = productId
-    ? await client.query(`UPDATE productos SET codigo=$2,nombre=$3,costo=$4,precio1=$5,precio2=$6,precio3=$7,stock=$8,marca=$9,categoria=$10,stock_minimo=$11,gravado=$12,ubicacion=$13,version=version+1,actualizado_en=now() WHERE id=$1 RETURNING id`, [productId, code, name, ...amounts, stock, ...metadata])
-    : await client.query(`INSERT INTO productos(codigo,nombre,costo,precio1,precio2,precio3,stock,marca,categoria,stock_minimo,gravado,ubicacion) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`, [code, name, ...amounts, stock, ...metadata]);
+    ? await client.query(`UPDATE productos SET codigo=$2,nombre=$3,costo=$4,precio1=$5,precio2=$6,precio3=$7,stock=$8,marca=$9,categoria=$10,stock_minimo=$11,gravado=$12,ubicacion=$13,notificar_minimo=$14,version=version+1,actualizado_en=now() WHERE id=$1 RETURNING id`, [productId, code, name, ...amounts, quantityText(stock), ...metadata])
+    : await client.query(`INSERT INTO productos(codigo,nombre,costo,precio1,precio2,precio3,stock,marca,categoria,stock_minimo,gravado,ubicacion,notificar_minimo) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`, [code, name, ...amounts, quantityText(stock), ...metadata]);
   const savedId = number(result.rows[0].id);
-  await movement(client, savedId, stock - (previous?.stock || 0), stock, previous ? 'ajuste' : 'apertura', null, previous ? 'Ajuste desde catálogo' : 'Existencia inicial');
+  await movement(client, savedId, stock - quantityUnits(previous?.stock ?? 0, 'las existencias'), stock, previous ? 'ajuste' : 'apertura', null, previous ? 'Ajuste desde catálogo' : 'Existencia inicial');
   return { id: savedId };
 }
 async function sale(client, body) {
@@ -125,21 +148,25 @@ async function sale(client, body) {
   if (!['Contado', 'Credito'].includes(body.condicion) || !['B01', 'B02', 'B14'].includes(body.tipoComprobante)) fail('Condición o tipo de comprobante inválido.');
   if (!Array.isArray(body.items) || !body.items.length || body.items.length > 1000) fail('La venta debe tener entre 1 y 1000 líneas.');
   const quantities = new Map();
-  for (const item of body.items) {
-    id(item.productoId); integer(item.cantidad, 'la cantidad');
+  const items = body.items.map(item => {
+    id(item.productoId);
+    const quantity = quantityUnits(item.cantidad, 'la cantidad', 0.01);
     if (!['precio1', 'precio2', 'precio3'].includes(item.nivelPrecio)) fail('Nivel de precio inválido.');
-    quantities.set(item.productoId, integer((quantities.get(item.productoId) || 0) + item.cantidad, 'la cantidad total'));
-  }
-  const products = (await client.query('SELECT * FROM productos WHERE id=ANY($1::bigint[]) ORDER BY id FOR UPDATE', [[...quantities.keys()].sort((a, b) => a - b)])).rows;
+    const total = (quantities.get(item.productoId) ?? 0n) + quantity;
+    quantities.set(item.productoId, quantityUnits(quantityText(total), 'la cantidad total'));
+    return { ...item, quantity };
+  });
+  const products = new Map((await client.query('SELECT * FROM productos WHERE id=ANY($1::bigint[]) ORDER BY id FOR UPDATE',
+    [[...quantities.keys()]])).rows.map(p => [number(p.id), { ...p, stock: quantityUnits(p.stock, 'las existencias') }]));
   for (const [productId, quantity] of quantities) {
-    const p = products.find(p => number(p.id) === productId);
+    const p = products.get(productId);
     if (!p?.activo || p.stock < quantity) fail('Producto no disponible o existencias insuficientes. Actualiza el carrito.', 409);
   }
   const config = (await client.query('SELECT tasa_itbis FROM configuracion WHERE id=1 FOR SHARE')).rows[0];
-  const rate = BigInt(Math.round(Number(config.tasa_itbis) * 1000000));
-  const lines = body.items.map(item => {
-    const p = products.find(p => number(p.id) === item.productoId);
-    const price = cents(p[item.nivelPrecio]); const total = price * BigInt(item.cantidad); money(total);
+  const rate = BigInt(config.tasa_itbis.replace('.', ''));
+  const lines = items.map(item => {
+    const p = products.get(item.productoId);
+    const price = cents(p[item.nivelPrecio]); const total = lineCents(price, item.quantity, 100n);
     const divisor = 1000000n + (p.gravado ? rate : 0n); const base = (total * 1000000n + divisor / 2n) / divisor;
     return { item, p, price, total, base, tax: total - base };
   });
@@ -149,10 +176,10 @@ async function sale(client, body) {
   for (const line of lines) {
     const { item, p } = line;
     const detail = (await client.query(`INSERT INTO venta_detalles(venta_id,producto_id,codigo,nombre,cantidad,nivel_precio,precio,base,itbis,total)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`, [header.id, p.id, p.codigo, p.nombre, item.cantidad, item.nivelPrecio, money(line.price), money(line.base), money(line.tax), money(line.total)])).rows[0];
-    p.stock -= item.cantidad;
-    await client.query('UPDATE productos SET stock=$2,version=version+1,actualizado_en=now() WHERE id=$1', [p.id, p.stock]);
-    await movement(client, p.id, -item.cantidad, p.stock, 'venta', detail.id);
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`, [header.id, p.id, p.codigo, p.nombre, quantityText(item.quantity), item.nivelPrecio, money(line.price), money(line.base), money(line.tax), money(line.total)])).rows[0];
+    p.stock -= item.quantity;
+    await client.query('UPDATE productos SET stock=$2,version=version+1,actualizado_en=now() WHERE id=$1', [p.id, quantityText(p.stock)]);
+    await movement(client, p.id, -item.quantity, p.stock, 'venta', detail.id);
   }
   return { id: number(header.id) };
 }
@@ -161,22 +188,32 @@ async function purchase(client, body) {
   if (!supplier) fail('Selecciona un suplidor activo.');
   const invoice = text(body.numero, 'la factura del suplidor');
   if (!Array.isArray(body.items) || !body.items.length || body.items.length > 1000) fail('La compra debe tener entre 1 y 1000 líneas.');
-  const lines = body.items.map(item => ({ code: text(item.codigo, 'el código'), name: text(item.nombre, 'la descripción'), quantity: integer(item.cantidad, 'la cantidad'), amounts: prices(item) }));
-  const codes = [...new Set(lines.map(line => line.code.toLowerCase()))].sort();
+  const lines = body.items.map(item => {
+    const quantity = quantityUnits(item.cantidad, 'la cantidad', 0.01);
+    const cost = costUnits(item.costo, 'el costo');
+    return { code: productCode(item.codigo), name: text(item.nombre, 'la descripción'),
+      quantity, amounts: prices(item, cost), total: lineCents(cost, quantity, 10000n) };
+  });
+  const codes = [...new Set(lines.map(line => line.code))].sort();
   for (const code of codes) await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', ['producto:' + code]);
   // Lock existing products by id (same order as sales and catalog edits).
-  await client.query('SELECT id FROM productos WHERE lower(codigo)=ANY($1::text[]) ORDER BY id FOR UPDATE', [codes]);
-  const total = lines.reduce((sum, line) => sum + cents(line.amounts[0]) * BigInt(line.quantity), 0n);
+  const products = (await client.query('SELECT codigo,stock FROM productos WHERE codigo=ANY($1::text[]) ORDER BY id FOR UPDATE', [codes])).rows;
+  const stocks = new Map(products.map(p => [p.codigo, quantityUnits(p.stock, 'las existencias')]));
+  for (const line of lines) {
+    const stock = (stocks.get(line.code) ?? 0n) + line.quantity;
+    stocks.set(line.code, quantityUnits(quantityText(stock), 'las existencias'));
+  }
+  const total = lines.reduce((sum, line) => sum + line.total, 0n);
   const header = (await client.query(`INSERT INTO compras(suplidor_id,suplidor_nombre,numero,fecha,total)
     VALUES($1,$2,$3,(now() AT TIME ZONE 'America/Santo_Domingo')::date,$4) RETURNING id`, [supplier.id, supplier.nombre, invoice, money(total)])).rows[0];
   for (const line of lines) {
     const product = (await client.query(`INSERT INTO productos(codigo,nombre,costo,precio1,precio2,precio3,stock)
       VALUES($1,$2,$3,$4,$5,$6,$7)
-      ON CONFLICT (lower(codigo)) DO UPDATE SET nombre=EXCLUDED.nombre,costo=EXCLUDED.costo,precio1=EXCLUDED.precio1,precio2=EXCLUDED.precio2,precio3=EXCLUDED.precio3,
-      stock=productos.stock+EXCLUDED.stock,activo=true,version=productos.version+1,actualizado_en=now() RETURNING id,stock`, [line.code, line.name, ...line.amounts, line.quantity])).rows[0];
+      ON CONFLICT (codigo) DO UPDATE SET nombre=EXCLUDED.nombre,costo=EXCLUDED.costo,precio1=EXCLUDED.precio1,precio2=EXCLUDED.precio2,precio3=EXCLUDED.precio3,
+      stock=productos.stock+EXCLUDED.stock,activo=true,version=productos.version+1,actualizado_en=now() RETURNING id,stock`, [line.code, line.name, ...line.amounts, quantityText(line.quantity)])).rows[0];
     const detail = (await client.query(`INSERT INTO compra_detalles(compra_id,producto_id,codigo,nombre,cantidad,costo,precio1,precio2,precio3,total)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`, [header.id, product.id, line.code, line.name, line.quantity, ...line.amounts, money(cents(line.amounts[0]) * BigInt(line.quantity))])).rows[0];
-    await movement(client, product.id, line.quantity, product.stock, 'compra', detail.id);
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`, [header.id, product.id, line.code, line.name, quantityText(line.quantity), ...line.amounts, money(line.total)])).rows[0];
+    await movement(client, product.id, line.quantity, quantityUnits(product.stock, 'las existencias'), 'compra', detail.id);
   }
   return { id: number(header.id) };
 }
@@ -199,6 +236,8 @@ async function restore(client, body) {
         await client.query(`INSERT INTO public.${table}(${columns.join(',')}) VALUES(${columns.map((_, index) => '$' + (index + 1)).join(',')})`, columns.map(key => row[key]));
       }
     }
+    if (backup.version < 5 && (await client.query('SELECT 1 FROM productos GROUP BY lower(codigo) HAVING count(*) > 1 LIMIT 1')).rowCount)
+      fail('El respaldo contiene códigos duplicados.', 409);
     const invalid = await client.query(`SELECT 1 FROM ventas v LEFT JOIN venta_detalles d ON d.venta_id=v.id GROUP BY v.id
       HAVING count(d.id)=0 OR v.total<>sum(d.total) OR v.base<>sum(d.base) OR v.itbis<>sum(d.itbis)
       UNION ALL SELECT 1 FROM compras c LEFT JOIN compra_detalles d ON d.compra_id=c.id GROUP BY c.id HAVING count(d.id)=0 OR c.total<>sum(d.total)

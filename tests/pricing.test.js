@@ -24,7 +24,7 @@ test('rejects invalid decimal signs, blanks, exponents, bounds and scale', () =>
   for (const p1 of ['100000', 0.00001, '', '1\n', '+1', '1e0', -1, NaN, Infinity]) {
     assert.throws(() => normalizeFormula({ ...f, margins: { ...margins, p1 } }), /recargo P1/);
   }
-  for (const cost of ['1000000000000.00', '1.001', '', ' ', '1.00\n', '+1', '1e3', -1, NaN, Infinity, null]) {
+  for (const cost of ['1000000000000.00', '999999999999.9901', '1.00001', '', ' ', '1.00\n', '+1', '1e3', -1, NaN, Infinity, null]) {
     assert.throws(() => calculateFormula(cost, f, 0), /costo/);
   }
 });

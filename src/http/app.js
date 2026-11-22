@@ -21,7 +21,7 @@ const publicFiles = {
 };
 const securityHeaders = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY' };
 const maxBodyBytes = 10 * 1024 * 1024;
-const snapshotRepresentationVersion = 1;
+const snapshotRepresentationVersion = 2;
 
 function stateTag({ databaseId, revision, databaseLabel }) {
   const version = JSON.stringify([snapshotRepresentationVersion, databaseId, revision, databaseLabel]);

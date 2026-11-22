@@ -1,4 +1,4 @@
-import { cents, fail, integer, text } from './operation-fields.js';
+import { cents, costUnits, fail, integer, productCode, quantityUnits, text } from './operation-fields.js';
 import { formulaValues, settingValue } from './contact-operations.js';
 
 // Fixed column lists are shared by export/import; no names come from uploaded SQL.
@@ -15,7 +15,7 @@ const v3 = {
 };
 
 const v2 = { ...v3, productos: v3.productos.filter(col => !['marca', 'categoria', 'ubicacion', 'stock_minimo', 'gravado'].includes(col)) };
-export const tables = {
+const v4 = {
   configuracion: [...v3.configuracion, 'rnc', 'tel', 'correo', 'direccion', 'redondeo', 'nivel_precio_predeterminado', 'formato_impresion', 'pie_ticket', 'permitir_stock_negativo'],
   clientes: [...v3.clientes, 'correo', 'direccion', 'limite_credito', 'es_contado'],
   formulas_precios: ['id', 'nombre', 'factor_costo', 'recargo1', 'recargo2', 'recargo3', 'activo', 'version', 'creado_en', 'actualizado_en'],
@@ -23,6 +23,7 @@ export const tables = {
   productos: v3.productos, ventas: v3.ventas, venta_detalles: v3.venta_detalles,
   compras: v3.compras, compra_detalles: v3.compra_detalles, movimientos_inventario: v3.movimientos_inventario,
 };
+export const tables = { ...v4, productos: [...v4.productos, 'notificar_minimo'] };
 function exactKeys(value, keys) {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
@@ -30,7 +31,7 @@ function exactKeys(value, keys) {
 const preferenceFields = { redondeo: 'redondeo', nivel_precio_predeterminado: 'nivelPrecioPredeterminado',
   formato_impresion: 'formatoImpresion', permitir_stock_negativo: 'permitirStockNegativo' };
 const moneyColumns = new Set(['costo', 'precio', 'precio1', 'precio2', 'precio3', 'base', 'itbis', 'total']);
-function validateBackupRow(table, row, columns) {
+function validateBackupRow(table, row, columns, version) {
   if (!exactKeys(row, columns)) fail(`Fila inválida en ${table}.`);
   if (table === 'formulas_precios') formulaValues(row.factor_costo, row.recargo1, row.recargo2, row.recargo3);
   for (const key of columns) {
@@ -42,6 +43,8 @@ function validateBackupRow(table, row, columns) {
     else if (Object.hasOwn(preferenceFields, key)) settingValue(preferenceFields[key], value);
     else if (key === 'dias_credito') { if (value !== null) integer(value, key, 0); }
     else if (key === 'limite_credito') { if (value !== null) cents(value, key); }
+    else if (key === 'codigo' && version === 5) productCode(value);
+    else if (key === 'costo' && version === 5) costUnits(value, key);
     else if (moneyColumns.has(key)) cents(value, key);
     else if (key === 'saldo_apertura') {
       if (!['string', 'number'].includes(typeof value)) fail('Saldo de apertura inválido.');
@@ -49,9 +52,15 @@ function validateBackupRow(table, row, columns) {
     } else if (key === 'tasa_itbis') {
       if (!['string', 'number'].includes(typeof value) || !/^(?:0(?:\.\d{1,6})?|1(?:\.0{1,6})?)$/.test(String(value))) fail('Tasa ITBIS inválida.');
     } else if (['stock', 'cantidad', 'existencia_posterior', 'stock_minimo'].includes(key)) {
-      if (!Number.isInteger(value) || value < -2147483648 || value > 2147483647) fail(`Cantidad inválida en ${table}.`);
-      if (key === 'stock_minimo' && value < 0) fail('Existencia mínima inválida.');
-    } else if (['activo', 'gravado', 'es_contado'].includes(key)) { if (typeof value !== 'boolean') fail(`Estado inválido en ${table}.`); }
+      if (version === 5) {
+        const signed = table === 'movimientos_inventario' && key === 'cantidad';
+        const raw = signed && ['string', 'number'].includes(typeof value) ? String(value).replace(/^-/, '') : value;
+        quantityUnits(raw, key, key === 'cantidad' ? 0.01 : 0);
+      } else {
+        if (!Number.isInteger(value) || value < -2147483648 || value > 2147483647) fail(`Cantidad inválida en ${table}.`);
+        if (key === 'stock_minimo' && value < 0) fail('Existencia mínima inválida.');
+      }
+    } else if (['activo', 'gravado', 'es_contado', 'notificar_minimo'].includes(key)) { if (typeof value !== 'boolean') fail(`Estado inválido en ${table}.`); }
     else if (key === 'fecha') {
       if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(value + 'T00:00:00Z')) || new Date(value + 'T00:00:00Z').toISOString().slice(0, 10) !== value) fail('Fecha documental inválida.');
     } else if (key.endsWith('_en')) {
@@ -67,22 +76,21 @@ export async function rows(client, table) {
 export async function exportBackup(client) {
   const data = {};
   for (const table of Object.keys(tables)) data[table] = await rows(client, table);
-  return { version: 4, format: 'repuestos-felix-relacional', exportedAt: new Date().toISOString(), tables: data };
+  return { version: 5, format: 'repuestos-felix-relacional', exportedAt: new Date().toISOString(), tables: data };
 }
 
-// Devuelve exclusivamente columnas de nuestra versión. INSERT usa los defaults SQL
-// para los atributos ausentes de v2/v3; nunca toma identificadores del archivo.
+// INSERT usa los valores predeterminados de SQL para las columnas ausentes.
 export function backupLayout(backup) {
-  const layout = backup.version === 4 ? tables : backup.version === 3 ? v3 : backup.version === 2 ? v2 : null;
+  const layout = backup.version === 5 ? tables : backup.version === 4 ? v4 : backup.version === 3 ? v3 : backup.version === 2 ? v2 : null;
   if (!layout || backup.format !== 'repuestos-felix-relacional' || !exactKeys(backup.tables, Object.keys(layout)))
     fail('Formato de respaldo inválido.');
   for (const [table, columns] of Object.entries(layout)) {
     const entries = backup.tables[table];
     if (!Array.isArray(entries) || entries.length > 100000) fail(`Revisa la tabla ${table}.`);
-    for (const row of entries) validateBackupRow(table, row, columns);
+    for (const row of entries) validateBackupRow(table, row, columns, backup.version);
   }
   if (backup.tables.configuracion.length !== 1 || Number(backup.tables.configuracion[0].id) !== 1) fail('Configuración de respaldo inválida.');
-  if (backup.version === 4) {
+  if (backup.version >= 4) {
     const marked = backup.tables.clientes.filter(c => c.es_contado);
     if (marked.length > 1 || marked.some(c => !c.activo)) fail('Identidad de contado inválida.');
     const active = new Set(backup.tables.formulas_precios.filter(f => f.activo).map(f => Number(f.id)));

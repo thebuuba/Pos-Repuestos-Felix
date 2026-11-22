@@ -51,6 +51,15 @@ test('schema.sql crea toda la estructura en una base sin esquema previo', async 
     await client.query(schema);
     assert.equal((await client.query("SELECT count(*) FROM pg_tables WHERE schemaname='public'")).rows[0].count,'10');
     assert.equal((await client.query("SELECT relrowsecurity FROM pg_class WHERE oid='public.formulas_precios'::regclass")).rows[0].relrowsecurity, true);
+    await client.query('SET LOCAL ROLE pos_app');
+    const inventory = await client.query(`INSERT INTO productos(codigo,nombre,costo,precio1,precio2,precio3,stock,stock_minimo)
+      VALUES ('sku ','Prueba',12.3456,23.45,0,0,1.25,0.50), ('SKU ','Prueba',0,0,0,0,0,0)
+      RETURNING codigo,costo,stock,stock_minimo,notificar_minimo`);
+    assert.deepEqual(inventory.rows, [
+      { codigo: 'sku ', costo: '12.3456', stock: '1.25', stock_minimo: '0.50', notificar_minimo: true },
+      { codigo: 'SKU ', costo: '0.0000', stock: '0.00', stock_minimo: '0.00', notificar_minimo: true },
+    ]);
+    await client.query('RESET ROLE');
     for (const role of ['anon','authenticated','service_role']) {
       const { rows } = await client.query(`SELECT has_table_privilege($1,'public.formulas_precios','SELECT') AS tabla,
         has_sequence_privilege($1,'public.formulas_precios_id_seq','USAGE') AS secuencia,

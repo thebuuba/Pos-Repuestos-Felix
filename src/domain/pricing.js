@@ -2,6 +2,7 @@ const PRICE_KEYS = ['p1', 'p2', 'p3'];
 const FACTOR_SCALE = 1_000n;
 const PERCENT_SCALE = 1_000_000n; // 100 percent at four decimal places.
 const MAX_CENTS = 99_999_999_999_999n;
+const COST_UNITS_PER_CENT = 100n;
 const ROUNDING_STEPS = [0, 1, 5, 10, 25];
 
 function scaledDecimal(value, wholeDigits, scale, label) {
@@ -49,9 +50,10 @@ function halfUp(numerator, denominator) {
 
 export function calculateFormula(cost, formula, rounding) {
   if (!ROUNDING_STEPS.includes(rounding)) throw new RangeError('Revisa el paso de redondeo.');
-  const costCents = scaledDecimal(cost, 12, 2, 'el costo');
+  const costUnits = scaledDecimal(cost, 12, 4, 'el costo');
+  if (costUnits > MAX_CENTS * COST_UNITS_PER_CENT) throw new RangeError('El costo excede el límite permitido.');
   const { costFactor, margins } = formulaUnits(formula);
-  const adjustedCents = halfUp(costCents * costFactor, FACTOR_SCALE);
+  const adjustedCents = halfUp(costUnits * costFactor, FACTOR_SCALE * COST_UNITS_PER_CENT);
   const adjustedCost = money(adjustedCents);
   const stepCents = BigInt(rounding) * 100n;
   const stepNumerator = PERCENT_SCALE * stepCents;
