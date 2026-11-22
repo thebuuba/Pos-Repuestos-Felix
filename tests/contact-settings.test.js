@@ -2,6 +2,7 @@ import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
+import { historicalBackup } from './fixtures/relational-backup.js';
 import { temporaryPostgres } from './postgres.js';
 import { migrateDatabase } from '../src/db/migrations.js';
 import { createApp } from '../src/server.js';
@@ -137,29 +138,6 @@ test('formulas validate assignments, including an inactive supplier, and seriali
   await rejected(400, 'suplidores', { nombre: 'Inválido', formulaId: unused });
 });
 
-const settingsColumns = ['rnc', 'tel', 'correo', 'direccion', 'redondeo', 'nivel_precio_predeterminado', 'formato_impresion', 'pie_ticket', 'permitir_stock_negativo'];
-function oldBackup(backup, version) {
-  const old = structuredClone(backup);
-  old.version = version;
-  delete old.tables.formulas_precios;
-  for (const [table, columns] of [['configuracion', settingsColumns], ['clientes', ['correo', 'direccion', 'limite_credito', 'es_contado']],
-    ['suplidores', ['correo', 'contacto', 'dias_credito', 'formula_id']]]) {
-    for (const row of old.tables[table]) for (const col of columns) delete row[col];
-  }
-  for (const row of old.tables.productos) {
-    delete row.notificar_minimo;
-    row.stock = Number(row.stock);
-    row.stock_minimo = Number(row.stock_minimo);
-    row.costo = Number(row.costo).toFixed(2);
-  }
-  for (const table of ['venta_detalles', 'compra_detalles', 'movimientos_inventario'])
-    for (const row of old.tables[table]) row.cantidad = Number(row.cantidad);
-  for (const row of old.tables.movimientos_inventario) row.existencia_posterior = Number(row.existencia_posterior);
-  for (const row of old.tables.compra_detalles) row.costo = Number(row.costo).toFixed(2);
-  if (version === 2) for (const row of old.tables.productos)
-    for (const col of ['marca', 'categoria', 'ubicacion', 'stock_minimo', 'gravado']) delete row[col];
-  return old;
-}
 const restore = async backup => confirmed('restore', { revision: (await get()).revision, backup });
 
 test('v5 restores inactive records, references and cash identity while archiving pre-restore data', async () => {
@@ -213,7 +191,7 @@ test('malformed v5 rows, relations and per-version layouts roll back without rot
 test('v3, v2 and legacy imports have neutral metadata and infer only the unique canonical cash customer', async () => {
   const backup = await get('backup');
   for (const version of [3, 2]) {
-    const old = oldBackup(backup, version);
+    const old = historicalBackup(backup, version);
     const candidate = old.tables.clientes.find(row => row.nombre === 'Cliente Contado');
     if (version === 2) old.tables.clientes.push({ ...candidate, id: '9100', nombre: 'CLIENTE CONTADO', rnc: '123', activo: false });
     const { state } = await restore(old);

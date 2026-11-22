@@ -45,7 +45,8 @@ test('decimal fields use bounded, signed and exact scaled units', () => {
   assert.equal(decimalUnits(123456n, 4), '12.3456');
 });
 
-test('catalog creation and editing preserve exact cost and case-sensitive codes', async () => {
+test('fractional inventory survives catalog edits, sales, purchases and v5 backup', async () => {
+  // Create distinct literal codes and edit the stock before recording documents.
   const lower = await write('productos', item);
   const upper = await write('productos', { ...item, codigo: 'CASO', stock: '0.01', costo: '999999999999.9898' });
   const padded = await write('productos', { ...item, codigo: 'caso ', stock: 0 });
@@ -58,24 +59,20 @@ test('catalog creation and editing preserve exact cost and case-sensitive codes'
   const path = 'productos/' + lower.result.id;
   await assert.rejects(write(path, { ...item, codigo: 'CASO', version: 1 }, { method: 'PUT' }), { status: 409 });
   const edited = await write(path, { ...item, stock: 1.35, version: 1 }, { method: 'PUT' });
-  const lowerProduct = edited.state.productos.find(p => p.id === lower.result.id);
-  assert.deepEqual([lowerProduct.codigo, lowerProduct.costo, lowerProduct.costoExacto, lowerProduct.stock,
-    lowerProduct.stockMinimo, lowerProduct.notificarMinimo, lowerProduct.version], ['caso', 12.3456, '12.3456', 1.35, 0.5, false, 2]);
-});
+  const product = edited.state.productos.find(p => p.id === lower.result.id);
+  assert.deepEqual([product.codigo, product.costo, product.costoExacto, product.stock,
+    product.stockMinimo, product.notificarMinimo, product.version], ['caso', 12.3456, '12.3456', 1.35, 0.5, false, 2]);
 
-test('fractional sales and purchases round each line and preserve stock and retry proofs', async () => {
-  const original = await snapshot();
-  const product = original.state.productos.find(p => p.codigo === 'caso');
-  const upper = original.state.productos.find(p => p.codigo === 'CASO');
+  // Record fractional document lines and verify both idempotent replays.
   const { result: supplier } = await write('suplidores', { nombre: 'Suplidor sintético' });
   const line = { productoId: product.id, cantidad: '0.25', nivelPrecio: 'precio1' };
-  const sale = { clienteId: original.state.clientes[0].id, condicion: 'Contado', tipoComprobante: 'B02', items: [line, line] };
+  const sale = { clienteId: edited.state.clientes[0].id, condicion: 'Contado', tipoComprobante: 'B02', items: [line, line] };
   const key = randomUUID();
   const sold = await write('ventas', sale, { key });
   const replay = await write('ventas', sale, { key });
   assert.equal(replay.result.id, sold.result.id);
   assert.equal(sold.confirmation.replayed, false);
-  assert.deepEqual(replay.confirmation, { operationId: key, databaseId: original.databaseId,
+  assert.deepEqual(replay.confirmation, { operationId: key, databaseId: edited.databaseId,
     method: 'POST', path: '/api/ventas', replayed: true });
   assert.equal(replay.revision, sold.revision);
   const document = sold.state.facturas.find(f => f.id === sold.result.id);
@@ -97,7 +94,7 @@ test('fractional sales and purchases round each line and preserve stock and retr
   assert.equal(invoice.total, 2.46);
   const updated = bought.state.productos.find(p => p.id === product.id);
   assert.deepEqual([updated.stock, updated.costoExacto, updated.notificarMinimo], [1.05, '12.3456', false]);
-  assert.equal(bought.state.productos.find(p => p.id === upper.id).stock, 0.01);
+  assert.equal(bought.state.productos.find(p => p.id === upper.result.id).stock, 0.01);
   const ledger = (await pool.query('SELECT tipo,cantidad,existencia_posterior FROM movimientos_inventario WHERE producto_id=$1 ORDER BY id', [product.id])).rows;
   assert.deepEqual(ledger.map(m => [m.tipo, m.cantidad, m.existencia_posterior]), [
     ['apertura', '1.25', '1.25'], ['ajuste', '0.10', '1.35'],
@@ -113,14 +110,14 @@ test('fractional sales and purchases round each line and preserve stock and retr
   await assert.rejects(write('ventas', { ...sale, items: Array(5).fill(line) }, { key: rejectedKey }),
     error => error.status === 409 && error.rejection?.operationId === rejectedKey);
   assert.deepEqual(await snapshot(), beforeFailure);
-});
 
-test('v5 backup round-trips fractional stock, costs and notices with unchanged legacy limits', async () => {
+  // Restore that ledger from v5 and verify the legacy layout rejects its precision.
   const beforeRestore = await snapshot();
   const backup = JSON.parse(JSON.stringify(await snapshot(true)));
   assert.equal(backup.version, 5);
-  const lower = backup.tables.productos.find(p => p.codigo === 'caso');
-  assert.deepEqual([lower.stock, lower.stock_minimo, lower.costo, lower.notificar_minimo], ['1.05', '0.50', '12.3456', false]);
+  const backedUpProduct = backup.tables.productos.find(p => p.codigo === 'caso');
+  assert.deepEqual([backedUpProduct.stock, backedUpProduct.stock_minimo, backedUpProduct.costo, backedUpProduct.notificar_minimo],
+    ['1.05', '0.50', '12.3456', false]);
   assert.ok(backup.tables.productos.some(p => p.codigo === 'caso '));
   const restored = await write('restore', { revision: beforeRestore.revision, backup });
   assert.deepEqual(restored.state, beforeRestore.state);

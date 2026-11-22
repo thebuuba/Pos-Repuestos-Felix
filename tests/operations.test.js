@@ -95,6 +95,46 @@ test('a purchase exceeding the stock limit leaves headers, products, details and
   assert.deepEqual((await get()).state, before.state);
 });
 
+test('a SQL failure on the second purchase detail rolls back the header, products, details and movements', async t => {
+  const admin = new pg.Pool({ connectionString: database.connectionString });
+  t.after(async () => {
+    try {
+      await admin.query(`DROP TRIGGER IF EXISTS prueba_segundo_detalle ON public.compra_detalles;
+        DROP FUNCTION IF EXISTS public.prueba_segundo_detalle()`);
+    } finally { await admin.end(); }
+  });
+  await admin.query(`
+    CREATE FUNCTION public.prueba_segundo_detalle() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM public.compra_detalles d
+        JOIN public.movimientos_inventario m ON m.compra_detalle_id = d.id
+        WHERE d.compra_id = NEW.compra_id AND d.codigo = 'ROLLBACK-PRIMERA'
+      ) THEN RAISE no_data_found; END IF;
+      RAISE check_violation USING CONSTRAINT = 'prueba_segundo_detalle';
+    END;
+    $$;
+    CREATE TRIGGER prueba_segundo_detalle BEFORE INSERT ON public.compra_detalles
+      FOR EACH ROW WHEN (NEW.codigo = 'ROLLBACK-SEGUNDA')
+      EXECUTE FUNCTION public.prueba_segundo_detalle()`);
+
+  const supplier = await write('suplidores', { nombre: 'Proveedor de prueba de rollback' });
+  assert.equal(supplier.status, 200);
+  const { result } = await supplier.json();
+  const before = await get();
+  const backupTables = async () => (await (await fetch(base + '/api/backup')).json()).tables;
+  const beforeTables = await backupTables();
+  const operationId = randomUUID();
+  const line = { nombre: 'Repuesto de prueba', cantidad: '0.25', costo: '12.3456', precio1: 20, precio2: 20, precio3: 20 };
+  const body = { databaseId: before.databaseId, suplidorId: result.id, numero: 'ROLLBACK-SEGUNDO-DETALLE',
+    items: [{ ...line, codigo: 'ROLLBACK-PRIMERA' }, { ...line, codigo: 'ROLLBACK-SEGUNDA' }] };
+  await assert.rejects(writeOperation(pool, 'POST', '/api/compras', body, operationId, 'Pruebas'),
+    error => error.status === 400 && error.cause?.code === '23514' && error.cause.constraint === 'prueba_segundo_detalle' &&
+      error.rejection?.operationId === operationId);
+  assert.deepEqual(await get(), before);
+  assert.deepEqual(await backupTables(), beforeTables);
+});
+
 test('backup restores complete relational data, rotates identity and preserves failed restore atomically', async () => {
   const original = await get();
   const backup = await (await fetch(base + '/api/backup')).json();
