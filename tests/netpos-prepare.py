@@ -94,6 +94,8 @@ class Preparation(unittest.TestCase):
         fixture(self.source)
         self.run_prepare(True)
         manifest = json.loads((self.out / "manifest.json").read_text("utf-8"))
+        self.assertEqual(manifest["format"], 2)
+        self.assertEqual((self.out/"archive.bin").read_bytes()[:11], b"PGCOPY\n\xff\r\n\0")
         self.assertEqual(len(manifest["sources"]), 10)
         for name, digest in manifest["artifacts"].items():
             self.assertEqual(hashlib.sha256((self.out / name).read_bytes()).hexdigest(), digest)

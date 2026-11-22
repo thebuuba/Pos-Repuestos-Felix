@@ -5,7 +5,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
 import { mkdtemp, readFile, writeFile, appendFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import pg from 'pg';
 import { temporaryPostgres } from './postgres.js';
 import { migrateDatabase } from '../src/db/migrations.js';
@@ -26,33 +26,67 @@ test('carga NetPOS atómica, privada, repetible y ligada a la generación', asyn
   assert.equal(prepared.status, 0, prepared.stderr);
   const database = await temporaryPostgres();
 
-  const admin = new pg.Pool({ connectionString: database.connectionString });
+  const bootstrap = new pg.Pool({ connectionString: database.connectionString });
+  await bootstrap.query('CREATE ROLE netpos_owner LOGIN SUPERUSER');
+  await bootstrap.query("ALTER DATABASE postgres SET log_statement = 'ddl'");
+  const ownerUrl = new URL(database.connectionString);
+  ownerUrl.username = 'netpos_owner';
+  const admin = new pg.Pool({ connectionString: ownerUrl.href });
   const app = new pg.Pool({ connectionString: database.connectionString, options: '-c role=pos_app' });
-  t.after(async () => { await app.end(); await admin.end(); await database.stop(); });
+  t.after(async () => { await app.end(); await admin.end(); await bootstrap.end(); await database.stop(); });
   await admin.query('CREATE ROLE anon; CREATE ROLE authenticated; ALTER DEFAULT PRIVILEGES GRANT ALL ON TABLES TO anon,authenticated; ALTER DEFAULT PRIVILEGES GRANT EXECUTE ON FUNCTIONS TO anon,authenticated');
   await migrateDatabase(admin);
+  const serverLog = join(dirname((await admin.query('SHOW data_directory')).rows[0].data_directory), 'postgres.log');
+  await bootstrap.query('GRANT pos_app TO netpos_owner; ALTER ROLE netpos_owner NOSUPERUSER');
+  assert.deepEqual((await admin.query("SELECT rolsuper, has_parameter_privilege(current_user,'log_error_verbosity','SET') AS log_set FROM pg_roles WHERE rolname=current_user")).rows[0], { rolsuper:false,log_set:false });
+  assert.deepEqual((await admin.query("SELECT current_setting('log_error_verbosity') AS verbosity,current_setting('log_min_error_statement') AS errors,current_setting('log_statement') AS statements")).rows[0],
+    { verbosity:'default',errors:'error',statements:'ddl' });
   const load = path => run(process.execPath, ['scripts/netpos/import.mjs', '--package', path],
-    { ...process.env, NETPOS_DATABASE_URL: database.connectionString });
+    { ...process.env, NETPOS_DATABASE_URL: ownerUrl.href });
   const counts = async () => (await admin.query('SELECT (SELECT count(*)::int FROM productos) AS productos, (SELECT count(*)::int FROM pos_privado.netpos_importaciones) AS lotes')).rows[0];
   const beforeImport = JSON.parse(JSON.stringify(await readSnapshot(app, 'Prueba', true)));
   assert.deepEqual((await readSnapshot(app, 'Prueba')).state.catalogo, empty);
-  const products = join(pkg, 'products.csv'), manifestPath = join(pkg, 'manifest.json');
+  const products = join(pkg, 'history-pagos.bin'), manifestPath = join(pkg, 'manifest.json');
   const good = await readFile(products), manifest = await readFile(manifestPath);
-  await appendFile(products, 'corrupto\n');
+  const marker = 'PRIVADO-SINTETICO';
+  assert.ok(good.includes(Buffer.from(marker)));
+  await writeFile(products, good.subarray(0, good.indexOf(marker) + marker.length + 6));
   const damaged = load(pkg);
   assert.notEqual(damaged.status, 0);
   assert.match(damaged.stderr, /verificar/);
   assert.deepEqual(await counts(), { productos: 0, lotes: 0 });
   // Verificación íntegra del artefacto, pero COPY inválido después de crear el histórico.
   const bad = JSON.parse(manifest);
-  bad.artifacts['products.csv'] = hash(await readFile(products));
+  bad.artifacts['history-pagos.bin'] = hash(await readFile(products));
   await writeFile(manifestPath, JSON.stringify(bad));
   const rejected = load(pkg);
   assert.notEqual(rejected.status, 0);
-  assert.match(rejected.stderr, /PostgreSQL.*22P04/);
+  assert.match(rejected.stderr, /PostgreSQL.*22P0[34]/);
+  assert.ok(!(rejected.stdout+rejected.stderr).includes(marker));
+  const log = await readFile(serverLog,'utf8');
+  assert.ok(/COPY .*pagos/i.test(log), 'El servidor debe registrar el fallo de COPY');
+  assert.ok(!log.includes(marker), 'El registro debe omitir los campos privados');
   assert.deepEqual(await counts(), { productos: 0, lotes: 0 });
   assert.equal((await admin.query("SELECT to_regclass('netpos_historico.pagos') AS tabla")).rows[0].tabla, null);
   await writeFile(products, good); await writeFile(manifestPath, manifest);
+  // Un error de conversión después del transporte tampoco debe registrar el valor.
+  const productBinary = join(pkg, 'products.bin'), validProductBinary = await readFile(productBinary);
+  const invalidProduct = Buffer.from(validProductBinary);
+  const costField = Buffer.concat([Buffer.from([0,0,0,7]),Buffer.from('12.3456')]);
+  const costIndex = invalidProduct.indexOf(costField);
+  assert.ok(costIndex >= 0);
+  invalidProduct.write('XYZDATA',costIndex+4,'ascii');
+  await writeFile(productBinary,invalidProduct);
+  const invalidManifest = JSON.parse(manifest);
+  invalidManifest.artifacts['products.bin'] = hash(invalidProduct);
+  await writeFile(manifestPath,JSON.stringify(invalidManifest));
+  const invalidResult = load(pkg);
+  assert.notEqual(invalidResult.status,0);
+  assert.match(invalidResult.stderr,/22P02/);
+  assert.ok(!(invalidResult.stdout+invalidResult.stderr).includes('XYZDATA'));
+  assert.ok(!(await readFile(serverLog,'utf8')).includes('XYZDATA'));
+  assert.deepEqual(await counts(), { productos:0, lotes:0 });
+  await writeFile(productBinary,validProductBinary); await writeFile(manifestPath,manifest);
   await admin.query("INSERT INTO productos(codigo,nombre,costo,precio1,precio2,precio3) VALUES('X','Prueba',0,0,0,0)");
   assert.notEqual(load(pkg).status, 0);
   await admin.query('DELETE FROM productos');
@@ -113,4 +147,15 @@ test('carga NetPOS atómica, privada, repetible y ligada a la generación', asyn
   assert.deepEqual(await counts(), { productos:0, lotes:1 });
   assert.equal((await admin.query('SELECT count(*) FROM pos_privado.netpos_archivos')).rows[0].count,'10');
   assert.notEqual(load(pkg).status,0);
+});
+
+test('TLS administrativo verifica certificados y host para conexiones remotas', async () => {
+  const { connectionEnvironment } = await import('../scripts/netpos/import.mjs');
+  const remoto = 'postgresql://usuario@db.example.invalid/prueba';
+  assert.equal(connectionEnvironment(remoto).PGSSLMODE, 'verify-full');
+  assert.equal(connectionEnvironment(remoto+'?sslmode=verify-full&sslrootcert=system').PGSSLROOTCERT,'system');
+  for (const mode of ['disable','allow','prefer','require','verify-ca'])
+    assert.throws(() => connectionEnvironment(remoto+'?sslmode='+mode));
+  for (const host of ['127.0.0.1','localhost','[::1]'])
+    assert.equal(connectionEnvironment('postgresql://usuario@'+host+'/prueba?sslmode=disable').PGSSLMODE,'disable');
 });

@@ -3,6 +3,7 @@ import argparse
 import base64
 import csv
 from collections import defaultdict
+from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_DOWN, ROUND_HALF_EVEN, localcontext
 import gzip
@@ -11,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import re
+import struct
 import sys
 from tempfile import TemporaryDirectory
 from xml.etree import ElementTree as ET
@@ -56,25 +58,34 @@ def headers_ok(header, required):
     require(set(required) <= set(header), "Faltan columnas requeridas.")
 
 
-def writer(file):
-    # Las comillas conservan los campos vacíos como texto durante COPY CSV.
-    return csv.writer(file, quoting=csv.QUOTE_ALL)
+@contextmanager
+def binary_copy(path):
+    """Flujo COPY binario. Los campos son TEXT UTF-8 salvo el ordinal bigint de los históricos."""
+    with path.open("wb") as file:
+        file.write(b"PGCOPY\n\xff\r\n\0" + struct.pack("!ii", 0, 0))
+        def write_row(values):
+            parts = [struct.pack("!h", len(values))]
+            for value in values:
+                field = value if isinstance(value, bytes) else str(value).encode("utf-8")
+                parts.extend((struct.pack("!i", len(field)), field))
+            file.writelines(parts)
+        yield write_row
+        file.write(struct.pack("!h", -1))
 
 
 def read_history(path, output, keys):
     table = path.stem.upper()
     retained = []
     count = 0
-    with path.open(encoding="utf-8-sig", newline="") as source, output.open("w", encoding="utf-8", newline="") as out:
+    with path.open(encoding="utf-8-sig", newline="") as source, binary_copy(output) as history:
         reader = csv.reader(source, strict=True)
         columns = next(reader, [])
         headers_ok(columns, REQUIRED.get(table, []))
         article = columns.index("ARTICULO") if "ARTICULO" in columns else None
-        history = writer(out)
         for count, row in enumerate(reader, 1):
             require(len(row) == len(columns) and all("\x00" not in v for v in row),
                     f"Fila CSV inválida en {table}, registro {count}.")
-            history.writerow([count, *row])
+            history([struct.pack("!q", count), *row])
             if article is not None and (key := row[article].rstrip(" ")):
                 keys.add(key)
             if table in REQUIRED:
@@ -239,8 +250,8 @@ def catalog_data(out, rows, keys, masters):
         options[label] = sorted(set(lookup.values()))
     review = []
     maximum = Decimal("999999999999.99")
-    with (out/"products.csv").open("w",encoding="utf-8",newline="") as file:
-        products = writer(file)
+    with (out/"products.csv").open("w",encoding="utf-8",newline="") as file, binary_copy(out/"products.bin") as send:
+        products = csv.writer(file, quoting=csv.QUOTE_ALL)
         products.writerow(PRODUCT_COLUMNS)
         for (number, values, _), (code,evidence,hint) in zip(rows,keys_for(rows,keys)):
             row = {k:c["valor"] for k,c in values.items()}
@@ -253,20 +264,21 @@ def catalog_data(out, rows, keys, masters):
             review.append(dict(zip(PRODUCT_COLUMNS[:5], detail)))
             require(row["DESCRIPCION"].strip(), f"Artículo sin descripción, fila {number}.")
             require(all(row[k] in v for k,v in names.items()), f"Referencia de catálogo desconocida, fila {number}.")
-            products.writerow([*detail, dump(values), row["DESCRIPCION"], quantity("COSTO",4,maximum),
+            product = [*detail, dump(values), row["DESCRIPCION"], quantity("COSTO",4,maximum),
                 *[quantity(k,4,maximum) for k in ("PRECIO","PRECIO2","PRECIO3")],
                 *[quantity(k,2,2147483647) for k in ("EXISTENCIA","MINIMO")],
                 *[flag(row[k]) for k in ("NOTIFICAR_MINIMO","IMPUESTOS","ACTIVO")],
-                *[names[k][row[k]] for k in ("CATEGORIA","MARCA","UBICACION")]])
+                *[names[k][row[k]] for k in ("CATEGORIA","MARCA","UBICACION")]]
+            products.writerow(product)
+            send(product)
     (out/"key-review.json").write_text(dump(review), encoding="utf-8")
     require(len(masters["EMPRESA"]) == 1, "Se requiere una empresa.")
     company = masters["EMPRESA"][0]
     require(flag(company["IMPUESTOS_INCLUIDOS"]) and Decimal(company["ITBIS"]) == 18, "Se requiere ITBIS 18 % incluido.")
-    with (out/"settings.csv").open("w",encoding="utf-8",newline="") as file:
-        writer(file).writerow([*[company[k] for k in ("NOMBRE_EMPRESA","RNC","TELEFONO","EMAIL","DIRECCION")],
+    with binary_copy(out/"settings.bin") as settings:
+        settings([*[company[k] for k in ("NOMBRE_EMPRESA","RNC","TELEFONO","EMAIL","DIRECCION")],
                               *[dump(options[k]) for _,k in CHOICES.values()]])
-    with (out/"contacts.csv").open("w",encoding="utf-8",newline="") as file:
-        contacts = writer(file)
+    with binary_copy(out/"contacts.bin") as contacts:
         for table, field in [("CLIENTES","CLIENTE"),("SUPLIDORES","SUPLIDOR")]:
             used = set()
             for row in masters[table]:
@@ -274,18 +286,13 @@ def catalog_data(out, rows, keys, masters):
                 require(key and key not in used and row["NOMBRE_"+field].strip(), "Contacto inválido o repetido.")
                 used.add(key)
                 credit = row.get("LIMITE_CREDITO","") if table == "CLIENTES" else ""
-                contacts.writerow([table,key,row["NOMBRE_"+field],row["RNC"],row["TELEFONO"],row["EMAIL"],
+                contacts([table,key,row["NOMBRE_"+field],row["RNC"],row["TELEFONO"],row["EMAIL"],
                                   row.get("DIRECCION",""),row.get("CONTACTO",""),amount(credit,2,maximum) if credit else "",flag(row["ACTIVO"])])
 
 def load_sql(fingerprint, sources):
     # Los únicos fragmentos variables son identificadores validados, enteros y una huella hexadecimal.
     sql = [rf"""BEGIN;
 SET LOCAL search_path = pg_catalog, pg_temp;
-DO $$ BEGIN
-  IF current_setting('log_error_verbosity') <> 'terse' THEN PERFORM set_config('log_error_verbosity','terse',true); END IF;
-  IF current_setting('log_min_error_statement') <> 'panic' THEN PERFORM set_config('log_min_error_statement','panic',true); END IF;
-  IF current_setting('log_statement') <> 'none' THEN PERFORM set_config('log_statement','none',true); END IF;
-END $$;
 SELECT pg_advisory_xact_lock(74198232);
 SELECT EXISTS(SELECT FROM pos_privado.netpos_importaciones i JOIN pos_privado.sistema s
   ON s.database_id=i.database_id WHERE i.huella='{fingerprint}') AS repetido \gset
@@ -308,32 +315,37 @@ DO $$ BEGIN
   END IF;
 END $$;
 CREATE TEMP TABLE empresa(nombre text,rnc text,tel text,correo text,direccion text,
- categorias jsonb,marcas jsonb,ubicaciones jsonb,unidades jsonb) ON COMMIT DROP;
-\copy empresa FROM 'settings.csv' WITH (FORMAT csv)
-INSERT INTO pos_privado.netpos_importaciones(huella,database_id,categorias,marcas,ubicaciones,unidades)
-SELECT '{fingerprint}',s.database_id,
- ARRAY(SELECT jsonb_array_elements_text(e.categorias)),ARRAY(SELECT jsonb_array_elements_text(e.marcas)),
- ARRAY(SELECT jsonb_array_elements_text(e.ubicaciones)),ARRAY(SELECT jsonb_array_elements_text(e.unidades))
- FROM pos_privado.sistema s CROSS JOIN empresa e WHERE s.id=1;
-UPDATE public.configuracion c SET empresa=e.nombre,rnc=e.rnc,tel=e.tel,correo=e.correo,direccion=e.direccion,
- tasa_itbis=0.18,version=c.version+1,actualizado_en=now() FROM empresa e WHERE c.id=1;
-CREATE TEMP TABLE archivos(nombre text,tamano bigint,sha256 text,columnas jsonb,filas bigint,contenido text) ON COMMIT DROP;
-\copy archivos FROM 'archive.csv' WITH (FORMAT csv)
-INSERT INTO pos_privado.netpos_archivos(huella,nombre,tamano,sha256,columnas,filas,original_gzip)
- SELECT '{fingerprint}',nombre,tamano,sha256,columnas,filas,decode(contenido,'base64') FROM archivos;"""]
+ categorias text,marcas text,ubicaciones text,unidades text) ON COMMIT DROP;
+\copy empresa FROM 'settings.bin' WITH (FORMAT binary)
+CREATE TEMP TABLE archivos(nombre text,tamano text,sha256 text,columnas text,filas text,contenido text) ON COMMIT DROP;
+\copy archivos FROM 'archive.bin' WITH (FORMAT binary)
+CREATE TEMP TABLE articulos({','.join(c+' text' for c in PRODUCT_COLUMNS)}) ON COMMIT DROP;
+\copy articulos FROM 'products.bin' WITH (FORMAT binary)
+CREATE TEMP TABLE contactos(tipo text,origen text,nombre text,rnc text,tel text,correo text,direccion text,
+ contacto text,limite text,activo text,id bigint) ON COMMIT DROP;
+\copy contactos(tipo,origen,nombre,rnc,tel,correo,direccion,contacto,limite,activo) FROM 'contacts.bin' WITH (FORMAT binary)"""]
     for entry in sources:
         if "table" not in entry:
             continue
         table = entry["table"]
-        definitions = ", ".join(f'"{h}" text NOT NULL' for h in entry["columns"])
-        sql.append(rf"""CREATE TABLE netpos_historico."{table}" (_fila bigint PRIMARY KEY, {definitions});
-\copy netpos_historico."{table}" FROM 'history-{table}.csv' WITH (FORMAT csv)
+        definitions = ", ".join(f'"{h}" text' for h in entry["columns"])
+        constraints = ", ".join(f'ALTER COLUMN "{h}" SET NOT NULL' for h in entry["columns"])
+        # COPY sin restricciones de fila evita que un error describa la fila completa en el log.
+        sql.append(rf"""CREATE TABLE netpos_historico."{table}" (_fila bigint, {definitions});
+\copy netpos_historico."{table}" FROM 'history-{table}.bin' WITH (FORMAT binary)
 DO $$ BEGIN
+  ALTER TABLE netpos_historico."{table}" ADD PRIMARY KEY(_fila), {constraints};
   IF (SELECT count(*) FROM netpos_historico."{table}") <> {entry["rows"]} THEN
     RAISE EXCEPTION 'Conteo histórico incorrecto';
   END IF;
+EXCEPTION WHEN OTHERS THEN
+  RAISE EXCEPTION USING ERRCODE=SQLSTATE, MESSAGE='Histórico NetPOS inválido';
 END $$;""")
-    sql.append(r"""REVOKE ALL ON ALL TABLES IN SCHEMA netpos_historico FROM PUBLIC,pos_app;
+    # Después del COPY, PostgreSQL puede incluir valores en errores de cast o restricciones.
+    # Capturarlos en el servidor protege esos datos incluso con el registro predeterminado.
+    expected = {e["table"]:e["rows"] for e in sources if "table" in e}
+    product_count = next(e["rows"] for e in sources if "table" not in e)
+    sql.append(rf"""REVOKE ALL ON ALL TABLES IN SCHEMA netpos_historico FROM PUBLIC,pos_app;
 DO $$ DECLARE rol text; BEGIN
   FOREACH rol IN ARRAY ARRAY['anon','authenticated','service_role'] LOOP
     IF EXISTS(SELECT FROM pg_roles WHERE rolname=rol) THEN
@@ -341,42 +353,45 @@ DO $$ DECLARE rol text; BEGIN
     END IF;
   END LOOP;
 END $$;
-CREATE TEMP TABLE articulos(fila integer,codigo_original text,codigo text,evidencia text,sugerencia text,original jsonb,
- nombre text,costo numeric,precio1 numeric,precio2 numeric,precio3 numeric,stock numeric,stock_minimo numeric,
- notificar_minimo boolean,gravado boolean,activo boolean,categoria text,marca text,ubicacion text) ON COMMIT DROP;
-\copy articulos FROM 'products.csv' WITH (FORMAT csv, HEADER MATCH)
-INSERT INTO public.productos(codigo,nombre,costo,precio1,precio2,precio3,stock,stock_minimo,notificar_minimo,
- gravado,activo,categoria,marca,ubicacion) SELECT codigo,nombre,costo,precio1,precio2,precio3,stock,stock_minimo,
- notificar_minimo,gravado,activo,categoria,marca,ubicacion FROM articulos ORDER BY fila;
-INSERT INTO pos_privado.netpos_catalogo(huella,fila,codigo_original,codigo,evidencia,sugerencia,original,producto_id)
- SELECT i.huella,a.fila,a.codigo_original,a.codigo,a.evidencia,a.sugerencia,a.original,p.id
- FROM articulos a JOIN public.productos p USING(codigo) CROSS JOIN pos_privado.netpos_importaciones i;
-INSERT INTO public.movimientos_inventario(producto_id,tipo,cantidad,existencia_posterior,motivo)
- SELECT id,'apertura',stock,stock,'Apertura NetPOS' FROM public.productos WHERE stock<>0;
-CREATE TEMP TABLE contactos(tipo text,origen text,nombre text,rnc text,tel text,correo text,direccion text,
- contacto text,limite text,activo boolean,id bigint,PRIMARY KEY(tipo,origen)) ON COMMIT DROP;
-\copy contactos(tipo,origen,nombre,rnc,tel,correo,direccion,contacto,limite,activo) FROM 'contacts.csv' WITH (FORMAT csv)
-UPDATE contactos SET id=CASE tipo WHEN 'CLIENTES' THEN nextval('public.clientes_id_seq')
- WHEN 'SUPLIDORES' THEN nextval('public.suplidores_id_seq') END;
-INSERT INTO public.clientes(id,nombre,rnc,tel,correo,direccion,limite_credito,activo,saldo_apertura)
- SELECT id,nombre,rnc,tel,correo,direccion,NULLIF(limite,'')::numeric,activo,0 FROM contactos WHERE tipo='CLIENTES';
-INSERT INTO public.suplidores(id,nombre,rnc,tel,correo,contacto,activo)
- SELECT id,nombre,rnc,tel,correo,contacto,activo FROM contactos WHERE tipo='SUPLIDORES';
-INSERT INTO pos_privado.netpos_contactos(huella,tipo,origen,contacto_id)
- SELECT i.huella,c.tipo,c.origen,c.id FROM contactos c CROSS JOIN pos_privado.netpos_importaciones i;""")
-    expected = {e["table"]:e["rows"] for e in sources if "table" in e}
-    product_count = next(e["rows"] for e in sources if "table" not in e)
-    sql.append(rf"""DO $$ BEGIN
+DO $$ BEGIN
+ INSERT INTO pos_privado.netpos_importaciones(huella,database_id,categorias,marcas,ubicaciones,unidades)
+ SELECT '{fingerprint}',s.database_id,
+  ARRAY(SELECT jsonb_array_elements_text(e.categorias::jsonb)),ARRAY(SELECT jsonb_array_elements_text(e.marcas::jsonb)),
+  ARRAY(SELECT jsonb_array_elements_text(e.ubicaciones::jsonb)),ARRAY(SELECT jsonb_array_elements_text(e.unidades::jsonb))
+  FROM pos_privado.sistema s CROSS JOIN empresa e WHERE s.id=1;
+ UPDATE public.configuracion c SET empresa=e.nombre,rnc=e.rnc,tel=e.tel,correo=e.correo,direccion=e.direccion,
+  tasa_itbis=0.18,version=c.version+1,actualizado_en=now() FROM empresa e WHERE c.id=1;
+ INSERT INTO pos_privado.netpos_archivos(huella,nombre,tamano,sha256,columnas,filas,original_gzip)
+  SELECT '{fingerprint}',nombre,tamano::bigint,sha256,columnas::jsonb,filas::bigint,decode(contenido,'base64') FROM archivos;
+ INSERT INTO public.productos(codigo,nombre,costo,precio1,precio2,precio3,stock,stock_minimo,notificar_minimo,
+  gravado,activo,categoria,marca,ubicacion) SELECT codigo,nombre,costo::numeric,precio1::numeric,precio2::numeric,
+  precio3::numeric,stock::numeric,stock_minimo::numeric,notificar_minimo::boolean,gravado::boolean,activo::boolean,
+  categoria,marca,ubicacion FROM articulos ORDER BY fila::integer;
+ INSERT INTO pos_privado.netpos_catalogo(huella,fila,codigo_original,codigo,evidencia,sugerencia,original,producto_id)
+  SELECT i.huella,a.fila::integer,a.codigo_original,a.codigo,a.evidencia,a.sugerencia,a.original::jsonb,p.id
+  FROM articulos a JOIN public.productos p USING(codigo) CROSS JOIN pos_privado.netpos_importaciones i;
+ INSERT INTO public.movimientos_inventario(producto_id,tipo,cantidad,existencia_posterior,motivo)
+  SELECT id,'apertura',stock,stock,'Apertura NetPOS' FROM public.productos WHERE stock<>0;
+ UPDATE contactos SET id=CASE tipo WHEN 'CLIENTES' THEN nextval('public.clientes_id_seq')
+  WHEN 'SUPLIDORES' THEN nextval('public.suplidores_id_seq') END;
+ INSERT INTO public.clientes(id,nombre,rnc,tel,correo,direccion,limite_credito,activo,saldo_apertura)
+  SELECT id,nombre,rnc,tel,correo,direccion,NULLIF(limite,'')::numeric,activo::boolean,0 FROM contactos WHERE tipo='CLIENTES';
+ INSERT INTO public.suplidores(id,nombre,rnc,tel,correo,contacto,activo)
+  SELECT id,nombre,rnc,tel,correo,contacto,activo::boolean FROM contactos WHERE tipo='SUPLIDORES';
+ INSERT INTO pos_privado.netpos_contactos(huella,tipo,origen,contacto_id)
+  SELECT i.huella,c.tipo,c.origen,c.id FROM contactos c CROSS JOIN pos_privado.netpos_importaciones i;
  IF (SELECT count(*) FROM pos_privado.netpos_archivos) <> {len(sources)}
  OR (SELECT count(*) FROM pos_privado.netpos_catalogo) <> {product_count}
  OR EXISTS(SELECT FROM articulos a JOIN public.productos p USING(codigo)
-    WHERE (a.costo,a.precio1,a.precio2,a.precio3,a.stock,a.stock_minimo)
+    WHERE (a.costo::numeric,a.precio1::numeric,a.precio2::numeric,a.precio3::numeric,a.stock::numeric,a.stock_minimo::numeric)
        <> (p.costo,p.precio1,p.precio2,p.precio3,p.stock,p.stock_minimo))
  OR (SELECT count(*) FROM pos_privado.netpos_contactos) <> {expected['clientes']+expected['suplidores']} THEN
    RAISE EXCEPTION 'Conteo de carga incorrecto';
  END IF;
+ UPDATE pos_privado.sistema SET revision=revision+1 WHERE id=1;
+EXCEPTION WHEN OTHERS THEN
+ RAISE EXCEPTION USING ERRCODE=SQLSTATE, MESSAGE='Datos NetPOS incompatibles con el destino';
 END $$;
-UPDATE pos_privado.sistema SET revision=revision+1 WHERE id=1;
 COMMIT;
 \endif
 """)
@@ -408,25 +423,24 @@ def prepare(source, destination):
         keys, masters, details = set(), {}, {}
         for path in csvs:
             table = path.stem.lower()
-            columns,count,retained = read_history(path, out/f"history-{table}.csv",keys)
+            columns,count,retained = read_history(path, out/f"history-{table}.bin",keys)
             masters[table.upper()] = retained
             details[path.name] = {"table":table,"columns":columns,"rows":count}
         header,rows = xlsx(books[0])
         details[books[0].name] = {"columns":header,"rows":len(rows)}
         catalog_data(out,rows,keys,masters)
         sources = []
-        with (out/"archive.csv").open("w",encoding="utf-8",newline="") as file:
-            archive = writer(file)
+        with binary_copy(out/"archive.bin") as archive:
             for path in files:
                 original = path.read_bytes()
                 digest = hashlib.sha256(original).hexdigest()
                 require(digest == first[path.name], "Un archivo cambió durante la preparación.")
                 entry = {"name":path.name,"bytes":len(original),"sha256":digest,**details[path.name]}
                 sources.append(entry)
-                archive.writerow([path.name,len(original),digest,dump(entry["columns"]),entry["rows"],
+                archive([path.name,len(original),digest,dump(entry["columns"]),entry["rows"],
                                   base64.b64encode(gzip.compress(original, compresslevel=6,mtime=0)).decode("ascii")])
         (out/"load.sql").write_text(load_sql(fingerprint,sources),encoding="utf-8",newline="\n")
-        manifest = {"format":1,"fingerprint":fingerprint,"sources":sources,"artifacts":{p.name:sha(p) for p in sorted(out.iterdir())}}
+        manifest = {"format":2,"fingerprint":fingerprint,"sources":sources,"artifacts":{p.name:sha(p) for p in sorted(out.iterdir())}}
         (out/"manifest.json").write_text(dump(manifest),encoding="utf-8")
         require(first == {p.name:sha(p) for p in sorted(source.iterdir())}, "El origen cambió al preparar el paquete.")
         out.rename(destination)

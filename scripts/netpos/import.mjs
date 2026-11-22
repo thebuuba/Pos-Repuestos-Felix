@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process';
+import { isIP } from 'node:net';
 import { createHash } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import { createReadStream } from 'node:fs';
 import { lstat, readFile, readdir, realpath } from 'node:fs/promises';
-import { basename, isAbsolute, join, relative, sep } from 'node:path';
+import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repo = fileURLToPath(new URL('../../', import.meta.url));
@@ -19,8 +20,8 @@ async function digest(path) {
 }
 async function verify(directory) {
   const manifest = JSON.parse(await readFile(join(directory,'manifest.json'),'utf8'));
-  check(manifest.format === 1 && sha256.test(manifest.fingerprint) && Array.isArray(manifest.sources));
-  const expected = new Set(['archive.csv','settings.csv','products.csv','contacts.csv','key-review.json','load.sql']);
+  check(manifest.format === 2 && sha256.test(manifest.fingerprint) && Array.isArray(manifest.sources));
+  const expected = new Set(['archive.bin','settings.bin','products.bin','products.csv','contacts.bin','key-review.json','load.sql']);
   const fingerprint = [];
   let books = 0;
   for (const entry of manifest.sources) {
@@ -28,7 +29,7 @@ async function verify(directory) {
     fingerprint.push([entry.name,entry.sha256]);
     if (entry.table) {
       check(identifier.test(entry.table) && entry.name.toLowerCase() === entry.table+'.csv');
-      expected.add('history-'+entry.table+'.csv');
+      expected.add('history-'+entry.table+'.bin');
     } else {
       check(entry.name.toLowerCase().endsWith('.xlsx'));
       books++;
@@ -43,7 +44,7 @@ async function verify(directory) {
   }
 }
 
-function connectionEnvironment(raw) {
+export function connectionEnvironment(raw) {
   check(raw && /^postgres(?:ql)?:\/\//i.test(raw));
   const url = new URL(raw);
   check(url.hostname && url.username && url.pathname.length>1 && !url.hash);
@@ -58,6 +59,13 @@ function connectionEnvironment(raw) {
   for (const [key,value] of url.searchParams) {
     check(Object.hasOwn(params,key) && url.searchParams.getAll(key).length === 1);
     env[params[key]] = value;
+  }
+  const host = env.PGHOST.toLowerCase();
+  const loopback = host === 'localhost' || host === '::1' || (isIP(host) === 4 && host.startsWith('127.'));
+  if (!loopback) {
+    check(env.PGSSLMODE === undefined || env.PGSSLMODE === 'verify-full');
+    env.PGSSLMODE = 'verify-full';
+    env.PGGSSENCMODE = 'disable';
   }
   return env;
 }
@@ -88,7 +96,7 @@ async function main() {
   check(code === 0);
   console.log('Importación NetPOS confirmada.');
 }
-main().catch(() => {
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch(() => {
   console.error(failure);
   process.exitCode = 1;
 });
