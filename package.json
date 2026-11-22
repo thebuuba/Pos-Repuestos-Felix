@@ -14,6 +14,7 @@
     "db:migrate:local": "node --env-file=.env.local --env-file-if-exists=.env.local.migrations scripts/migrate.js",
     "db:migrate:supabase": "node --env-file=.env.supabase --env-file-if-exists=.env.migrations scripts/migrate.js",
     "start": "node --env-file-if-exists=.env src/server.js",
+    "start:operational": "node src/server.js --operational",
     "start:local": "node --env-file=.env.local src/server.js",
     "start:supabase": "node --env-file=.env.supabase src/server.js",
     "dev:worker": "wrangler dev --local-protocol https",

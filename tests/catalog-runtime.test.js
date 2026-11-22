@@ -80,8 +80,7 @@ test('rendered Polymet inventory stores all attributes and survives navigation a
   assert.equal((await snapshot()).state.productos.length, 0, 'operational entry must not seed the database');
   const sheet = await newProduct('UI-CATALOGO', 'Artículo de integración');
   await sheet.getByLabel('Marca', { exact: true }).fill('Marca real de prueba');
-  await sheet.getByLabel('Categoría', { exact: true }).click();
-  await page.getByRole('option', { name: 'Eléctrico', exact: true }).click();
+  await sheet.getByRole('textbox', { name: 'Categoría', exact: true }).fill('Encendido sintético');
   await sheet.getByLabel('Ubicación', { exact: true }).fill('c-07');
   await sheet.getByLabel('Precio 2 · Por mayor', { exact: true }).fill('0');
   await sheet.getByLabel('Precio 3 · Taller', { exact: true }).fill('110.50');
@@ -93,7 +92,7 @@ test('rendered Polymet inventory stores all attributes and survives navigation a
   productId = product.id;
   assert.equal(product.nombre, 'Artículo de integración');
   assert.equal(product.marca, 'Marca real de prueba');
-  assert.equal(product.categoria, 'Eléctrico');
+  assert.equal(product.categoria, 'Encendido sintético');
   assert.equal(product.ubicacion, 'C-07');
   assert.equal(product.stockMinimo, 3);
   assert.equal(product.gravado, false);

@@ -3,6 +3,7 @@ import { Button } from "../../components/ui/button.jsx";
 import { Link } from "react-router-dom";
 import { cn } from "../../lib/utils.js";
 import { TriangleAlert } from "lucide-react";
+import { formatNumber } from "../lib/format.js";
 function LowStockList({ products }) {
   return (
     <section className="flex h-full flex-col rounded-2xl border border-border bg-card p-5">
@@ -10,7 +11,7 @@ function LowStockList({ products }) {
         <h2 className="flex items-center gap-2 text-[17px] font-medium">
           {"Bajo inventario"}
           <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground">
-            {products.length}
+            {formatNumber(products.length)}
           </span>
         </h2>
         <Button
@@ -19,7 +20,7 @@ function LowStockList({ products }) {
           size="sm"
           className="text-muted-foreground"
         >
-          <Link to="/inventario">{"Ver inventario"}</Link>
+          <Link to="/inventario?existencia=reposicion">{"Ver inventario"}</Link>
         </Button>
       </div>
       {products.length === 0 ? (
@@ -28,7 +29,7 @@ function LowStockList({ products }) {
         </p>
       ) : (
         <ul className="mt-3 divide-y divide-border">
-          {products.map((p) => {
+          {products.slice(0, 10).map((p) => {
             const pct = p.minStock > 0 ? Math.max(4, Math.min(100, Math.round((p.stock / p.minStock) * 100))) : 0;
             const out = p.stock === 0;
             return (
@@ -54,9 +55,9 @@ function LowStockList({ products }) {
                           : "text-amber-600 dark:text-amber-400",
                       )}
                     >
-                      {p.stock}
+                      {formatNumber(p.stock)}
                       {"/"}
-                      {p.minStock}
+                      {formatNumber(p.minStock)}
                     </span>
                   </div>
                   <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">

@@ -13,7 +13,6 @@ import { Select2 } from "../../components/ui/select.jsx";
 import { SelectTrigger2 } from "../../components/ui/select.jsx";
 import { SelectValue2 } from "../../components/ui/select.jsx";
 import { SelectContent2 } from "../../components/ui/select.jsx";
-import { CATEGORIES } from "../../data/catalog-options.js";
 import { SelectItem2 } from "../../components/ui/select.jsx";
 import { formulaSummary } from "../lib/pricing.js";
 import { Button } from "../../components/ui/button.jsx";
@@ -29,7 +28,7 @@ var EMPTY = {
   code: "",
   name: "",
   brand: "",
-  category: "Motor",
+  category: "",
   location: "",
   cost: "",
   stock: "",
@@ -86,6 +85,11 @@ function ProductFormSheet({
   onSave,
 }) {
   const product = draft?.product;
+  const categories = draft?.categories ?? [];
+  const defaultCategory = categories[0] ?? "";
+  const categoryChoices = product?.category && !categories.includes(product.category)
+    ? [product.category, ...categories]
+    : categories;
   const [form, setForm] = useState(EMPTY);
   const [formulaId, setFormulaId] = useState(String(formulas[0]?.id ?? ""));
   const [submitted, setSubmitted] = useState(false);
@@ -99,12 +103,12 @@ function ProductFormSheet({
   const locked = sending || retryPayload !== null;
   useEffect(() => {
     if (open) {
-      setForm(product ? fromProduct(product) : EMPTY);
+      setForm(product ? fromProduct(product) : { ...EMPTY, category: defaultCategory });
       setSubmitted(false);
       setError(null);
       setRetryPayload(null);
     }
-  }, [open, draft, product]);
+  }, [open, draft, product, defaultCategory]);
   const set = (key, value) =>
     setForm((f) => ({
       ...f,
@@ -295,22 +299,33 @@ function ProductFormSheet({
               htmlFor={fieldId("category")}
               error={submitted ? errors.category : undefined}
             >
-              <Select2
-                value={form.category}
-                onValueChange={(v) => set("category", v)}
-                disabled={locked}
-              >
-                <SelectTrigger2 id={fieldId("category")} className={inputClass}>
-                  <SelectValue2 />
-                </SelectTrigger2>
-                <SelectContent2>
-                  {CATEGORIES.map((c) => (
-                    <SelectItem2 value={c} key={c}>
-                      {c}
-                    </SelectItem2>
-                  ))}
-                </SelectContent2>
-              </Select2>
+              {categoryChoices.length > 0 ? (
+                <Select2
+                  value={form.category}
+                  onValueChange={(v) => set("category", v)}
+                  disabled={locked}
+                >
+                  <SelectTrigger2 id={fieldId("category")} className={inputClass}>
+                    <SelectValue2 placeholder="Sin categoría" />
+                  </SelectTrigger2>
+                  <SelectContent2>
+                    {categoryChoices.map((c) => (
+                      <SelectItem2 value={c} key={c}>
+                        {c}
+                      </SelectItem2>
+                    ))}
+                  </SelectContent2>
+                </Select2>
+              ) : (
+                <Input
+                  id={fieldId("category")}
+                  disabled={locked}
+                  value={form.category}
+                  onChange={(e) => set("category", e.target.value)}
+                  className={inputClass}
+                  aria-invalid={submitted && !!errors.category}
+                />
+              )}
             </Field>
             <Field
               label="Ubicación"
@@ -507,7 +522,7 @@ function ProductFormSheet({
               if (inFlight.current) return;
               if (product || retryPayload) onOpenChange(false);
               else {
-                setForm(EMPTY);
+                setForm({ ...EMPTY, category: defaultCategory });
                 setSubmitted(false);
                 setError(null);
               }

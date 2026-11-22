@@ -1,5 +1,6 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
 import { PRODUCTS } from "./pos-data.js";
+import { CATEGORIES } from "./pos-data.js";
 import { CUSTOMERS } from "./pos-data.js";
 import { SEED_SUPPLIERS } from "./seed-data.js";
 import { SEED_FORMULAS } from "./seed-data.js";
@@ -453,6 +454,7 @@ function PosStoreProvider({ children }) {
   const value = {
     cashierAvatar,
     products,
+    categories: CATEGORIES,
     customers,
     suppliers,
     formulas,

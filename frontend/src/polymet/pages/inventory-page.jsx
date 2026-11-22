@@ -6,26 +6,35 @@ import { Link } from "react-router-dom";
 import { PackagePlus } from "lucide-react";
 import { Plus } from "lucide-react";
 import { StatCard } from "../components/stat-card.jsx";
-import { InventoryTable } from "../components/inventory-table.jsx";
+import { InventoryTable, needsRestock, stockState } from "../components/inventory-table.jsx";
 import { LowStockList } from "../components/low-stock-list.jsx";
 import { ProductFormSheet } from "../components/product-form-sheet.jsx";
 import { toast as ue } from "sonner";
 import { ConfirmDialog } from "../components/confirm-dialog.jsx";
-import { Fragment, useRef, useState } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
+import { formatMoney, formatNumber } from "../lib/format.js";
 function InventoryPage() {
-  const { products, formulas, settings, saveProduct, deleteProduct, runtime } =
+  const { products, categories, formulas, settings, saveProduct, deleteProduct, runtime } =
     usePosStore();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [draft, setDraft] = useState(null);
   const [toDelete, setToDelete] = useState(null);
   const newProductButtonRef = useRef(null);
-  const totalUnits = products.reduce((s, p) => s + p.stock, 0);
-  const stockValue = products.reduce((s, p) => s + p.stock * p.cost, 0);
-  const retailValue = products.reduce((s, p) => s + p.stock * p.prices.p1, 0);
-  const lowStock = products
-    .filter((p) => p.stock <= p.minStock)
-    .sort((a, b) => a.stock / (a.minStock || 1) - b.stock / (b.minStock || 1));
-  const outCount = products.filter((p) => p.stock === 0).length;
+  const { totalUnits, stockValue, retailValue, lowStock, lowCount, outCount } = useMemo(() => {
+    let totalUnits = 0, stockValue = 0, retailValue = 0, lowCount = 0, outCount = 0;
+    const lowStock = [];
+    for (const product of products) {
+      totalUnits += product.stock;
+      stockValue += product.stock * product.cost;
+      retailValue += product.stock * product.prices.p1;
+      const state = stockState(product);
+      if (state === "out") outCount++;
+      if (state === "low") lowCount++;
+      if (needsRestock(product)) lowStock.push(product);
+    }
+    lowStock.sort((a, b) => a.stock / (a.minStock || 1) - b.stock / (b.minStock || 1));
+    return { totalUnits, stockValue, retailValue, lowStock, lowCount, outCount };
+  }, [products]);
   const openProduct = (product = null) => {
     setDraft({
       product,
@@ -33,6 +42,7 @@ function InventoryPage() {
       databaseId: product?.databaseId ?? runtime?.databaseId,
       version: product?.version,
       existingCodes: products.map((p) => p.code),
+      categories,
     });
     setSheetOpen(true);
   };
@@ -68,12 +78,9 @@ function InventoryPage() {
         <StatCard
           title="Valor del inventario"
           value={stockValue}
-          footer={`A precio de venta: RD$ ${retailValue.toLocaleString(
-            "en-US",
-            {
-              maximumFractionDigits: 0,
-            },
-          )}`}
+          footer={`A precio de venta: ${runtime
+            ? formatMoney(retailValue)
+            : `RD$ ${retailValue.toLocaleString("es-DO", { maximumFractionDigits: 0 })}`}`}
           to="/reportes"
           highlight={true}
         />
@@ -81,12 +88,12 @@ function InventoryPage() {
           title="Artículos activos"
           value={products.length}
           format="number"
-          footer={`${totalUnits.toLocaleString("en-US")} unidades en almacén`}
+          footer={`${formatNumber(totalUnits)} unidades en almacén`}
           to="/inventario"
         />
         <StatCard
           title="Bajo mínimo"
-          value={lowStock.length - outCount}
+          value={lowCount}
           format="number"
           footer="Requieren reposición pronto"
           to="/compras"
@@ -99,9 +106,11 @@ function InventoryPage() {
           to="/compras"
         />
       </div>
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
         <InventoryTable
           products={products}
+          categories={categories}
+          connected={Boolean(runtime)}
           onEdit={openProduct}
           onDelete={setToDelete}
         />

@@ -1,23 +1,29 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
-import { Search } from "lucide-react";
+import { PackageSearch, Pencil, Search, Trash2 } from "lucide-react";
 import { Input } from "../../components/ui/input.jsx";
 import { Select2 } from "../../components/ui/select.jsx";
 import { SelectTrigger2 } from "../../components/ui/select.jsx";
 import { SelectValue2 } from "../../components/ui/select.jsx";
 import { SelectContent2 } from "../../components/ui/select.jsx";
 import { SelectItem2 } from "../../components/ui/select.jsx";
-import { CATEGORIES } from "../../data/catalog-options.js";
 import { cn } from "../../lib/utils.js";
-import { PackageSearch } from "lucide-react";
-import { formatMoney } from "../lib/format.js";
+import { formatNumber, formatUnitMoney } from "../lib/format.js";
 import { Button } from "../../components/ui/button.jsx";
-import { Pencil } from "lucide-react";
-import { Trash2 } from "lucide-react";
-import { useMemo } from "react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useLocation, useSearchParams } from "react-router-dom";
+const PAGE_SIZE = 50;
+const STOCK_FILTERS = [
+  ["all", "Todos"],
+  ["ok", "OK"],
+  ["low", "Bajo"],
+  ["out", "Agotado"],
+];
+function needsRestock(p) {
+  return p.notifyMinStock !== false && (p.stock === 0 || (p.stock > 0 && p.stock <= p.minStock));
+}
 function stockState(p) {
   if (p.stock === 0) return "out";
-  if (p.stock <= p.minStock) return "low";
+  if (needsRestock(p)) return "low";
   return "ok";
 }
 var STATE_UI = {
@@ -40,15 +46,20 @@ var STATE_UI = {
     bg: "bg-accent",
   },
 };
-function InventoryTable({ products, onEdit, onDelete }) {
-  const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("all");
-  const [stock, setStock] = useState("all");
+function InventoryTable({ products, categories, connected, onEdit, onDelete }) {
+  const [params, setParams] = useSearchParams();
+  const { key } = useLocation();
+  const selectedStock = params.get("existencia");
+  const restock = selectedStock === "reposicion";
+  const stock = restock || STOCK_FILTERS.some(([value]) => value === selectedStock) ? selectedStock : "all";
+  const [filters, setFilters] = useState({ query: "", category: "", page: 0, stock, restockKey: key });
+  const { query } = filters;
+  const category = categories.includes(filters.category) ? filters.category : "";
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return products.filter((p) => {
-      if (category !== "all" && p.category !== category) return false;
-      if (stock !== "all" && stockState(p) !== stock) return false;
+      if (category && p.category !== category) return false;
+      if (restock ? !needsRestock(p) : stock !== "all" && stockState(p) !== stock) return false;
       if (!q) return true;
       return (
         p.code.toLowerCase().includes(q) ||
@@ -56,44 +67,73 @@ function InventoryTable({ products, onEdit, onDelete }) {
         p.brand.toLowerCase().includes(q)
       );
     });
-  }, [products, query, category, stock]);
+  }, [products, query, category, stock, restock]);
+  const lastPage = Math.max(0, Math.ceil(rows.length / PAGE_SIZE) - 1);
+  const resetPage = stock !== filters.stock || category !== filters.category;
+  const page = resetPage ? 0 : Math.min(filters.page, lastPage);
+  if (restock && filters.restockKey !== key) {
+    setFilters({ query: "", category: "", page: 0, stock, restockKey: key });
+  } else if (resetPage || filters.page !== page) {
+    setFilters({ ...filters, category, page, stock });
+  }
+  const start = page * PAGE_SIZE;
+  const end = Math.min(start + PAGE_SIZE, rows.length);
+  const paginated = connected || lastPage > 0;
+  const range = rows.length ? `${formatNumber(start + 1)}–${formatNumber(end)}` : "0";
+  const setStock = (value) => {
+    setFilters({ ...filters, page: 0 });
+    if (value === stock) return;
+    setParams(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        if (value === "all") next.delete("existencia");
+        else next.set("existencia", value);
+        return next;
+      },
+      { replace: true },
+    );
+  };
   return (
     <section className="overflow-hidden rounded-2xl border border-border bg-card">
       <div className="flex flex-col gap-3 p-5 md:flex-row md:items-center">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
+            aria-label="Buscar por código, nombre o marca"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => setFilters({ ...filters, query: e.target.value, page: 0 })}
             placeholder="Buscar por código, nombre o marca…"
             className="h-10 rounded-xl pl-9"
           />
         </div>
-        <Select2 value={category} onValueChange={setCategory}>
-          <SelectTrigger2 className="h-10 rounded-xl md:w-[180px]">
+        <Select2
+          value={category ? `categoria:${category}` : "all"}
+          onValueChange={(value) => setFilters({
+            ...filters,
+            category: value === "all" ? "" : value.slice("categoria:".length),
+            page: 0,
+          })}
+        >
+          <SelectTrigger2 aria-label="Filtrar por categoría" className="h-10 rounded-xl md:w-[180px]">
             <SelectValue2 />
           </SelectTrigger2>
           <SelectContent2>
             <SelectItem2 value="all">{"Todas las categorías"}</SelectItem2>
-            {CATEGORIES.map((c) => (
-              <SelectItem2 value={c} key={c}>
+            {categories.map((c) => (
+              <SelectItem2 value={`categoria:${c}`} key={c}>
                 {c}
               </SelectItem2>
             ))}
           </SelectContent2>
         </Select2>
         <div className="grid grid-cols-4 gap-1 rounded-xl bg-muted p-1">
-          {[
-            ["all", "Todos"],
-            ["ok", "OK"],
-            ["low", "Bajo"],
-            ["out", "Agotado"],
-          ].map(([value, label]) => (
+          {STOCK_FILTERS.map(([value, label]) => (
             <button
               type="button"
+              aria-pressed={stock === value}
               onClick={() => setStock(value)}
               className={cn(
-                "h-8 rounded-lg px-3 text-xs font-medium transition-all",
+                "h-8 rounded-lg px-3 text-xs font-medium transition-all focus-visible:ring-1 focus-visible:ring-ring",
                 stock === value
                   ? "bg-card text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground",
@@ -143,7 +183,7 @@ function InventoryTable({ products, onEdit, onDelete }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((p) => {
+              {rows.slice(start, end).map((p) => {
                 const state = stockState(p);
                 const ui = STATE_UI[state];
                 const margin = p.prices.p1 > 0 ? ((p.prices.p1 - p.cost) / p.prices.p1) * 100 : null;
@@ -157,7 +197,12 @@ function InventoryTable({ products, onEdit, onDelete }) {
                     <td className="px-5 py-3">
                       <p className="font-medium">{p.name}</p>
                       <p className="text-xs text-muted-foreground">
-                        <span className="font-mono">{p.code}</span>
+                        <span
+                          className="font-mono"
+                          style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}
+                        >
+                          {p.code}
+                        </span>
                         {" · "}
                         {p.brand}
                       </p>
@@ -184,10 +229,10 @@ function InventoryTable({ products, onEdit, onDelete }) {
                         </span>
                         <div className="w-24">
                           <div className="flex justify-between text-xs tabular-nums">
-                            <span className="font-semibold">{p.stock}</span>
+                            <span className="font-semibold">{formatNumber(p.stock)}</span>
                             <span className="text-muted-foreground">
                               {"mín. "}
-                              {p.minStock}
+                              {formatNumber(p.minStock)}
                             </span>
                           </div>
                           <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted">
@@ -202,16 +247,16 @@ function InventoryTable({ products, onEdit, onDelete }) {
                       </div>
                     </td>
                     <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">
-                      {formatMoney(p.cost)}
+                      {formatUnitMoney(p.costExact ?? p.cost)}
                     </td>
                     <td className="px-3 py-3 text-right font-semibold tabular-nums">
-                      {formatMoney(p.prices.p1)}
+                      {formatUnitMoney(p.pricesExact?.p1 ?? p.prices.p1)}
                     </td>
                     <td className="px-3 py-3 text-right tabular-nums">
-                      {formatMoney(p.prices.p2)}
+                      {formatUnitMoney(p.pricesExact?.p2 ?? p.prices.p2)}
                     </td>
                     <td className="px-3 py-3 text-right tabular-nums">
-                      {formatMoney(p.prices.p3)}
+                      {formatUnitMoney(p.pricesExact?.p3 ?? p.prices.p3)}
                     </td>
                     <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">
                       {margin === null ? "—" : `${margin.toFixed(1)}%`}
@@ -245,14 +290,39 @@ function InventoryTable({ products, onEdit, onDelete }) {
           </table>
         </div>
       )}
-      <div className="border-t border-border px-5 py-3 text-xs text-muted-foreground">
-        {"Mostrando "}
-        {rows.length}
-        {" de "}
-        {products.length}
-        {" productos"}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-5 py-3 text-xs text-muted-foreground">
+        <p role="status" aria-live="polite">
+          {restock && "Reposición · "}
+          <span>{paginated
+            ? `Mostrando ${range} de ${formatNumber(rows.length)} ${rows.length === 1 ? "producto" : "productos"}`
+            : `Mostrando ${formatNumber(rows.length)} de ${formatNumber(products.length)} productos`}</span>
+        </p>
+        {paginated && (
+          <nav aria-label="Páginas del inventario" className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="rounded-xl bg-card"
+              disabled={page === 0}
+              onClick={() => setFilters({ ...filters, page: page - 1 })}
+            >
+              {"Anterior"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="rounded-xl bg-card"
+              disabled={page === lastPage}
+              onClick={() => setFilters({ ...filters, page: page + 1 })}
+            >
+              {"Siguiente"}
+            </Button>
+          </nav>
+        )}
       </div>
     </section>
   );
 }
-export { InventoryTable };
+export { InventoryTable, needsRestock, stockState };

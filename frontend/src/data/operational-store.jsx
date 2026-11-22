@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { PosStoreContext } from './pos-context.jsx';
+import { catalogCategories } from './catalog-options.js';
 
 function productFromSnapshot(p, databaseId) {
   return {
@@ -38,6 +39,7 @@ function presentation(snapshot) {
   const config = state?.configuracion;
   return {
     products: state?.productos.map(p => productFromSnapshot(p, databaseId)) ?? [],
+    categories: catalogCategories(state),
     customers: state?.clientes.map(c => ({ ...recordIdentity(c, databaseId), ...readFields(c, customerFields),
       isCashCustomer: c.esContado, balance: c.deuda })) ?? [],
     suppliers: state?.suplidores.map(s => ({ ...recordIdentity(s, databaseId), ...readFields(s, supplierFields), balance: null })) ?? [],
