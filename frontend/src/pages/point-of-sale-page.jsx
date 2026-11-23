@@ -8,10 +8,12 @@ import { CONDITIONS } from "../data/sales-options.js";
 import { PAYMENT_METHODS } from "../data/sales-options.js";
 import { PageHeader } from "../components/pos/page-header.jsx";
 import { Button } from "../components/ui/button.jsx";
-import { CirclePause, RotateCcw, Lock, ChevronDown, LayoutGrid } from "lucide-react";
+import { CirclePause, RotateCcw, Lock, ChevronDown, LayoutGrid, Printer } from "lucide-react";
 import { Link } from "react-router-dom";
 import { InvoiceSettingsCard } from "../components/pos/invoice-settings-card.jsx";
 import { HeldSalesDialog } from "../components/pos/held-sales-dialog.jsx";
+import { SalesHistoryDialog } from "../components/pos/sales-history-dialog.jsx";
+import { receiptFromStoredSale } from "../data/operational-sales.js";
 import { businessTodayIso } from "../lib/dates.js";
 import { ProductSearchBar } from "../components/pos/product-search-bar.jsx";
 import { QuickProductsGrid } from "../components/pos/quick-products-grid.jsx";
@@ -373,6 +375,7 @@ export { PointOfSalePage };
 const EMPTY_CATEGORIES = [];
 
 export function OperationalPointOfSalePage() {
+  const { sales } = usePosStore();
   const { products, customers, settings, cashSession, runtime, cashCustomer,
     customerId, setCustomerId, comprobante, setComprobante, condition, setCondition,
     paymentMethod, setPaymentMethod, discountMode, setDiscountMode, discountValue, setDiscountValue, discountError,
@@ -381,6 +384,8 @@ export function OperationalPointOfSalePage() {
     receipt, failure, sending, customer, lines, totals, cartQuantities,
     locked, disabledReason, resetSale, editQuantity, checkout } = useSaleDraft();
   const [heldOpen, setHeldOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [reprintSale, setReprintSale] = useState(null);
 
   const recoveryIssue = runtime.recoveryIssue?.operationId === failure?.operationId ? runtime.recoveryIssue : null;
   const todayIso = businessTodayIso();
@@ -441,6 +446,17 @@ export function OperationalPointOfSalePage() {
               {activeHoldLabel}
             </span>
           )}
+          <Button
+            disabled={locked || !sales?.length}
+            variant="outline"
+            size="icon"
+            className="sale-history-btn h-11 w-11 rounded-xl bg-card"
+            onClick={() => setHistoryOpen(true)}
+            title="Facturas recientes / Reimprimir"
+            aria-label="Facturas recientes y reimpresión"
+          >
+            <Printer className="h-4 w-4" />
+          </Button>
           <Button
             disabled={locked || (!items.length && !heldSales.length)}
             variant="outline"
@@ -561,6 +577,25 @@ export function OperationalPointOfSalePage() {
         onResume={resumeHeldSale}
         onRename={renameHeldSale}
         onRemove={removeHeldSale}
+      />
+      <SalesHistoryDialog
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        sales={sales}
+        onSelect={(sale) => {
+          setHistoryOpen(false);
+          setReprintSale(sale);
+        }}
+      />
+      <ReceiptDialog
+        sale={receiptFromStoredSale(reprintSale)}
+        open={Boolean(reprintSale)}
+        onOpenChange={(open) => { if (!open) setReprintSale(null); }}
+        onNewSale={() => setReprintSale(null)}
+        business={settings.business}
+        printFormat={settings.printFormat}
+        footer={settings.ticketFooter}
+        isReprint
       />
     </div>
   );

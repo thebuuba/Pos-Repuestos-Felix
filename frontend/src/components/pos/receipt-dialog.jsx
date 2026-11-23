@@ -2,7 +2,7 @@
 import { Dialog } from "../ui/dialog.jsx";
 import { DialogContent } from "../ui/dialog.jsx";
 import { DialogHeader } from "../ui/dialog.jsx";
-import { CircleCheck } from "lucide-react";
+import { Ban, CircleCheck, ReceiptText } from "lucide-react";
 import { DialogTitle } from "../ui/dialog.jsx";
 import { DialogDescription } from "../ui/dialog.jsx";
 import { formatMoney, formatUnitMoney } from "../../lib/format.js";
@@ -26,31 +26,44 @@ function ReceiptDialog({
   title = "Venta registrada",
   description = null,
   isQuote = false,
+  isReprint = false,
 }) {
+  const isVoided = Boolean(sale?.voided);
+  const closeAction = onNewSale ?? (() => onOpenChange?.(false));
+  const resolvedTitle = title !== "Venta registrada"
+    ? title
+    : isQuote
+      ? "Cotización"
+      : isReprint
+        ? isVoided
+          ? "Factura anulada"
+          : "Factura de venta"
+        : sale?.localReference
+          ? "Venta guardada en este equipo"
+          : title;
+  const resolvedDescription = description
+    ? description
+    : isQuote
+      ? "Cotización informativa. No descuenta inventario ni registra movimiento en caja."
+      : isReprint
+        ? isVoided
+          ? `Anulada${sale?.voidReason ? ` · ${sale.voidReason}` : ""}. Copia informativa del registro ${sale?.invoiceNumber ?? ""}.`
+          : `Reimpresión de ${sale?.invoiceNumber ?? "la factura"}.`
+        : sale?.localReference
+          ? "Registro local durable. Consulta las operaciones locales para verificar su confirmación en el servidor."
+          : <>La factura {sale?.invoiceNumber} se guardó correctamente.</>;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent data-print-format={printFormat} className="pos-receipt-dialog max-w-md gap-0 rounded-2xl p-0">
         <DialogHeader className="items-center space-y-2 px-6 pb-4 pt-6 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/10">
-            <CircleCheck className="h-6 w-6 text-emerald-600" />
+          <div className={isVoided ? "flex h-12 w-12 items-center justify-center rounded-full bg-accent text-primary" : isReprint ? "flex h-12 w-12 items-center justify-center rounded-full bg-accent text-primary" : "flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/10"}>
+            {isVoided ? <Ban className="h-6 w-6" /> : isReprint ? <ReceiptText className="h-6 w-6" /> : <CircleCheck className="h-6 w-6 text-emerald-600" />}
           </div>
           <DialogTitle className="text-lg">
-            {title !== "Venta registrada"
-              ? title
-              : isQuote
-                ? "Cotización"
-                : sale?.localReference
-                  ? "Venta guardada en este equipo"
-                  : title}
+            {resolvedTitle}
           </DialogTitle>
           <DialogDescription>
-            {description
-              ? description
-              : isQuote
-                ? "Cotización informativa. No descuenta inventario ni registra movimiento en caja."
-                : sale?.localReference
-                  ? "Registro local durable. Consulta las operaciones locales para verificar su confirmación en el servidor."
-                  : <>La factura {sale?.invoiceNumber} se guardó correctamente.</>}
+            {resolvedDescription}
           </DialogDescription>
         </DialogHeader>
         {sale && (
@@ -66,6 +79,16 @@ function ReceiptDialog({
                 {"Tel. "}
                 {business.phone}
               </p>}
+              {isVoided && (
+                <p className="mt-2 rounded border border-primary/50 bg-accent px-2 py-0.5 text-[11px] font-bold uppercase text-primary">
+                  {"*** FACTURA ANULADA ***"}
+                </p>
+              )}
+              {isReprint && !isVoided && (
+                <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {"— Reimpresión —"}
+                </p>
+              )}
             </div>
             <div className="my-3 border-t border-dashed border-border" />
             <div className="space-y-0.5">
@@ -75,7 +98,7 @@ function ReceiptDialog({
               </div>
               <div className="flex justify-between">
                 <span>{"Fecha"}</span>
-                <span>{sale.dateOnly ? sale.dateOnly.split("-").reverse().join("/") : dateFmt2.format(sale.date)}</span>
+                <span>{sale.dateOnly ? sale.dateOnly.split("-").reverse().join("/") : sale.date ? dateFmt2.format(sale.date) : "—"}</span>
               </div>
               <div className="flex justify-between gap-3">
                 <span>{"Cliente"}</span>
@@ -113,7 +136,7 @@ function ReceiptDialog({
                   <span className="font-semibold">{sale.ncf}</span>
                 </div>
               )}
-              {sale.dateOnly && !sale.ncf && !isQuote && <p className="text-muted-foreground">Sin emisión de NCF</p>}
+              {(sale.dateOnly || isReprint) && !sale.ncf && !isQuote && <p className="text-muted-foreground">Sin emisión de NCF</p>}
               {sale.localReference && <div className="space-y-1 pt-1">
                 <p className="font-semibold">Guardado en este equipo. Confirmación del servidor por verificar.</p>
                 <p style={{ overflowWrap: 'anywhere' }}>Referencia local: {sale.localReference}</p>
@@ -128,7 +151,7 @@ function ReceiptDialog({
                     <span>
                       {l.quantity}
                       {" x "}
-                      {sale.dateOnly ? formatUnitMoney(l.unitPrice) : formatMoney(l.unitPrice, false)}
+                      {(sale.dateOnly || sale.useExactUnitMoney) ? formatUnitMoney(l.unitPrice) : formatMoney(l.unitPrice, false)}
                     </span>
                     <span className="text-foreground">
                       {formatMoney(l.subtotal, false)}
@@ -213,10 +236,10 @@ function ReceiptDialog({
             onClick={() => window.print()}
           >
             <Printer />
-            {sale?.dateOnly ? "Imprimir" : "Reimprimir"}
+            {isReprint ? "Reimprimir" : sale?.dateOnly ? "Imprimir" : "Reimprimir"}
           </Button>
-          <Button className="h-11 rounded-xl" onClick={onNewSale}>
-            {isQuote ? "Cerrar" : "Nueva venta"}
+          <Button className="h-11 rounded-xl" onClick={closeAction}>
+            {isQuote || isReprint ? "Cerrar" : "Nueva venta"}
           </Button>
         </div>
       </DialogContent>

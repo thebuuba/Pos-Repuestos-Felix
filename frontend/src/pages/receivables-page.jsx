@@ -1,10 +1,14 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
+import { useState } from "react";
 import { usePosStore } from "../data/pos-context.jsx";
 import { useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/pos/page-header.jsx";
 import { AccountsView } from "../components/pos/accounts-view.jsx";
+import { ReceiptDialog } from "../components/pos/receipt-dialog.jsx";
+import { receiptFromStoredSale } from "../data/operational-sales.js";
 function ReceivablesPage() {
-  const { runtime, receivables, customers, cashSession, payReceivable, recordReceivablePayment } = usePosStore();
+  const { runtime, sales, receivables, customers, settings, cashSession, payReceivable, recordReceivablePayment } = usePosStore();
+  const [reprintSale, setReprintSale] = useState(null);
   const [params] = useSearchParams();
   const initial = params.get("cliente") ?? undefined;
   return (
@@ -25,6 +29,10 @@ function ReceivablesPage() {
         initialPartyId={initial}
         operational={Boolean(runtime)}
         cashOpen={Boolean(cashSession?.open)}
+        onViewDocument={(doc) => {
+          const found = sales.find((s) => s.id === doc.id);
+          if (found) setReprintSale(found);
+        }}
         onPay={async (doc, amount, method, note) => {
           if (runtime) {
             await recordReceivablePayment({
@@ -41,6 +49,16 @@ function ReceivablesPage() {
           }
         }}
         key={initial ?? "all"}
+      />
+      <ReceiptDialog
+        sale={receiptFromStoredSale(reprintSale)}
+        open={Boolean(reprintSale)}
+        onOpenChange={(open) => { if (!open) setReprintSale(null); }}
+        onNewSale={() => setReprintSale(null)}
+        business={settings.business}
+        printFormat={settings.printFormat}
+        footer={settings.ticketFooter}
+        isReprint
       />
     </div>
   );

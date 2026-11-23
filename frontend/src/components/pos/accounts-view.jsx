@@ -4,7 +4,7 @@ import { businessTodayIso } from "../../lib/dates.js";
 import { MoneyDisplay } from "./money-display.jsx";
 import { formatMoney } from "../../lib/format.js";
 import { cn } from "../../lib/utils.js";
-import { CircleCheck, Search } from "lucide-react";
+import { CircleCheck, Printer, Search } from "lucide-react";
 import { Input } from "../ui/input.jsx";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.jsx";
 import { Switch } from "../ui/switch.jsx";
@@ -48,6 +48,7 @@ function AccountsView({
   verb,
   initialPartyId,
   onPay,
+  onViewDocument,
 }) {
   const [partyId, setPartyId] = useState(initialPartyId ?? "all");
   const [bucket, setBucket] = useState("all");
@@ -250,11 +251,27 @@ function AccountsView({
                       key={d.id}
                     >
                       <td className="px-5 py-3">
-                        <p className="font-medium">{d.document}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {"Emitida "}
-                          {formatDate(d.date)}
-                        </p>
+                        {onViewDocument ? (
+                          <button
+                            type="button"
+                            className="text-left hover:underline"
+                            onClick={() => onViewDocument(d)}
+                          >
+                            <p className="font-medium">{d.document}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {"Emitida "}
+                              {formatDate(d.date)}
+                            </p>
+                          </button>
+                        ) : (
+                          <>
+                            <p className="font-medium">{d.document}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {"Emitida "}
+                              {formatDate(d.date)}
+                            </p>
+                          </>
+                        )}
                       </td>
                       <td className="max-w-[220px] truncate px-3 py-3">
                         {partyName(d.partyId)}
@@ -295,16 +312,31 @@ function AccountsView({
                         {formatMoney(bal)}
                       </td>
                       <td className="px-5 py-3 text-right">
-                        {bal > 0 && (
-                          <Button
-                            size="sm"
-                            className="rounded-lg"
-                            disabled={readOnly || unavailable}
-                            onClick={() => setPaying(d)}
-                          >
-                            {verb}
-                          </Button>
-                        )}
+                        <div className="inline-flex items-center justify-end gap-1.5">
+                          {onViewDocument && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:bg-muted hover:text-foreground"
+                              onClick={() => onViewDocument(d)}
+                              title={`Reimprimir ${d.document}`}
+                              aria-label={`Reimprimir ${d.document}`}
+                            >
+                              <Printer className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {bal > 0 && (
+                            <Button
+                              size="sm"
+                              className="rounded-lg"
+                              disabled={readOnly || unavailable}
+                              onClick={() => setPaying(d)}
+                            >
+                              {verb}
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

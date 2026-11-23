@@ -21,6 +21,8 @@ import { Bar } from "recharts";
 import { Coins } from "lucide-react";
 import { Trophy } from "lucide-react";
 import { SalesReportTable } from "../components/pos/sales-report-table.jsx";
+import { ReceiptDialog } from "../components/pos/receipt-dialog.jsx";
+import { receiptFromStoredSale } from "../data/operational-sales.js";
 import { Fragment } from "react";
 import { useMemo } from "react";
 import { useState } from "react";
@@ -43,8 +45,9 @@ var PERIODS = [
   },
 ];
 function ReportsPage() {
-  const { sales, products, voidSale, runtime } = usePosStore();
+  const { sales, products, settings, voidSale, runtime } = usePosStore();
   const [period, setPeriod] = useState("30d");
+  const [reprintSale, setReprintSale] = useState(null);
   const today = businessDay();
   const operational = Boolean(runtime);
   const data = useMemo(() => reportData(sales, products, period, today, operational), [sales, products, period, today, operational]);
@@ -329,6 +332,7 @@ function ReportsPage() {
         key={period}
         sales={data.inPeriod}
         operational={operational}
+        onReprint={setReprintSale}
         onVoid={
           operational
             ? runtime.isOwner
@@ -342,6 +346,16 @@ function ReportsPage() {
               : undefined
             : (sale) => voidSale(sale.id)
         }
+      />
+      <ReceiptDialog
+        sale={receiptFromStoredSale(reprintSale)}
+        open={Boolean(reprintSale)}
+        onOpenChange={(open) => { if (!open) setReprintSale(null); }}
+        onNewSale={() => setReprintSale(null)}
+        business={settings.business}
+        printFormat={settings.printFormat}
+        footer={settings.ticketFooter}
+        isReprint
       />
     </div>
   );

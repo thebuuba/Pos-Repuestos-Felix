@@ -141,16 +141,25 @@ label {
     padding: 16px;
   }
   .pos-sale .sale-selection-heading {
-    gap: 8px;
+    gap: 6px;
+  }
+  .pos-sale .sale-selection-heading h1,
+  .pos-sale .sale-selection-heading h2 {
+    font-size: 14px;
+    line-height: 20px;
   }
   .pos-sale .sale-selection-actions {
-    gap: 6px;
+    gap: 4px;
   }
   .pos-sale .sale-selection-actions button {
-    height: 36px;
-    padding-inline: 10px;
-    font-size: 12.5px;
-    gap: 6px;
+    height: 34px;
+    padding-inline: 8px;
+    font-size: 12px;
+    gap: 4px;
+  }
+  .pos-sale .sale-selection-actions button.sale-history-btn {
+    width: 34px;
+    padding-inline: 0;
   }
   .pos-sale .sale-product-search {
     grid-template-columns: 104px minmax(0, 1fr) auto;
@@ -447,6 +456,23 @@ label {
   .mobile-more-panel {
     padding-top: calc(64px + env(safe-area-inset-top));
   }
+}
+
+.pos-dialog-overlay {
+  background-color: rgb(0 0 0 / 0.35);
+}
+.dark .pos-dialog-overlay {
+  background-color: rgb(0 0 0 / 0.55);
+}
+
+.sales-history-dialog {
+  width: calc(100vw - 2rem);
+  max-width: 680px;
+  background: hsl(var(--card));
+}
+.sales-history-list {
+  min-height: 280px;
+  max-height: 62vh;
 }
 
 .settings-tabs {

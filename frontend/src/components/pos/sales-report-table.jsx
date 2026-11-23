@@ -7,7 +7,7 @@ import { formatDateTime } from "../../lib/accounts.js";
 import { formatMoney } from "../../lib/format.js";
 import { cn } from "../../lib/utils.js";
 import { Button } from "../ui/button.jsx";
-import { Ban } from "lucide-react";
+import { Ban, Printer } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../ui/dialog.jsx";
 import { Field, inputClass } from "./form-field.jsx";
 import { toast as ue } from "sonner";
@@ -19,7 +19,7 @@ var STATUS_UI = {
   pendiente: "border-foreground/50 text-foreground",
   anulada: "border-primary/50 text-primary line-through",
 };
-function SalesReportTable({ sales, onVoid, operational = false }) {
+function SalesReportTable({ sales, onVoid, onReprint, operational = false }) {
   const [params] = useSearchParams();
   const urlQuery = params.get("buscar") ?? "";
   const [query, setQuery] = useState(urlQuery);
@@ -47,7 +47,13 @@ function SalesReportTable({ sales, onVoid, operational = false }) {
         <div>
           <h2 className="text-base font-semibold">{"Facturas del período"}</h2>
           <p className="text-xs text-muted-foreground">
-            {onVoid ? "Busca y anula facturas. Al anular, la mercancía vuelve al inventario." : "Busca por número de registro, NCF o cliente. La anulación no está habilitada."}
+            {onReprint && onVoid
+              ? "Haz clic en una factura para verla o reimprimirla. Al anular, la mercancía vuelve al inventario."
+              : onReprint
+                ? "Haz clic en una factura para verla o reimprimirla. Busca por número, NCF o cliente."
+                : onVoid
+                  ? "Busca y anula facturas. Al anular, la mercancía vuelve al inventario."
+                  : "Busca por número de registro, NCF o cliente. La anulación no está habilitada."}
           </p>
         </div>
         <div className="relative w-full sm:w-72">
@@ -79,13 +85,17 @@ function SalesReportTable({ sales, onVoid, operational = false }) {
                   {"Total"}
                 </th>
                 <th className="px-3 py-2.5 font-medium">{"Estado"}</th>
-                <th className="w-12 px-5 py-2.5" />
+                <th className="w-24 px-5 py-2.5 text-right font-medium" />
               </tr>
             </thead>
             <tbody>
               {rows.map((s) => (
                 <tr
-                  className="border-b border-border last:border-0 hover:bg-muted/30"
+                  className={cn(
+                    "border-b border-border last:border-0 hover:bg-muted/30",
+                    onReprint && "cursor-pointer",
+                  )}
+                  onClick={onReprint ? () => onReprint(s) : undefined}
                   key={s.id}
                 >
                   <td className="px-5 py-3">
@@ -126,21 +136,42 @@ function SalesReportTable({ sales, onVoid, operational = false }) {
                     )}
                   </td>
                   <td className="px-5 py-3 text-right">
-                    {onVoid && s.status !== "anulada" && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:bg-accent hover:text-primary"
-                        onClick={() => {
-                          setToVoid(s);
-                          setReason("");
-                          setVoidError(null);
-                        }}
-                        aria-label="Anular"
-                      >
-                        <Ban />
-                      </Button>
-                    )}
+                    <div className="inline-flex items-center justify-end gap-1">
+                      {onReprint && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:bg-muted hover:text-foreground"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onReprint(s);
+                          }}
+                          title={`Reimprimir ${s.number}`}
+                          aria-label={`Reimprimir ${s.number}`}
+                        >
+                          <Printer className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {onVoid && s.status !== "anulada" && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:bg-accent hover:text-primary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setToVoid(s);
+                            setReason("");
+                            setVoidError(null);
+                          }}
+                          title="Anular"
+                          aria-label="Anular"
+                        >
+                          <Ban />
+                        </Button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

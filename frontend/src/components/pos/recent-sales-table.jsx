@@ -1,7 +1,7 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
 import { Button } from "../ui/button.jsx";
 import { Link } from "react-router-dom";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Printer } from "lucide-react";
 import { formatMoney } from "../../lib/format.js";
 import { cn } from "../../lib/utils.js";
 var STATUS = {
@@ -19,7 +19,7 @@ var STATUS = {
     className: "border-primary/50 text-primary line-through decoration-1",
   },
 };
-function RecentSalesTable({ sales, showAllLink = true }) {
+function RecentSalesTable({ sales, showAllLink = true, onSelect }) {
   return (
     <section className="flex h-full flex-col rounded-2xl border border-border bg-card p-5">
       <div className="flex items-center justify-between">
@@ -48,13 +48,18 @@ function RecentSalesTable({ sales, showAllLink = true }) {
               <th className="px-3 py-1 text-center font-medium">{"Art."}</th>
               <th className="px-3 py-1 text-right font-medium">{"Monto"}</th>
               <th className="px-3 py-1 font-medium">{"Estado"}</th>
+              {onSelect && <th className="w-10 px-2 py-1" />}
             </tr>
           </thead>
           <tbody>
-            {!sales.length && <tr><td colSpan={6} className="px-3 py-3 text-muted-foreground">Sin ventas registradas.</td></tr>}
+            {!sales.length && <tr><td colSpan={onSelect ? 7 : 6} className="px-3 py-3 text-muted-foreground">Sin ventas registradas.</td></tr>}
             {sales.map((s) => (
               <tr
-                className="bg-muted/60 transition-colors hover:bg-muted"
+                className={cn(
+                  "bg-muted/60 transition-colors hover:bg-muted",
+                  onSelect && "cursor-pointer",
+                )}
+                onClick={onSelect ? () => onSelect(s.id) : undefined}
                 key={s.id}
               >
                 <td className="rounded-l-xl px-3 py-3">
@@ -77,7 +82,7 @@ function RecentSalesTable({ sales, showAllLink = true }) {
                 <td className="px-3 py-3 text-right font-semibold tabular-nums">
                   {formatMoney(s.amount)}
                 </td>
-                <td className="rounded-r-xl px-3 py-3">
+                <td className={cn("px-3 py-3", !onSelect && "rounded-r-xl")}>
                   <span
                     className={cn(
                       "inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium",
@@ -87,6 +92,24 @@ function RecentSalesTable({ sales, showAllLink = true }) {
                     {STATUS[s.status]?.label ?? "Registrada"}
                   </span>
                 </td>
+                {onSelect && (
+                  <td className="rounded-r-xl px-2 py-3 text-right">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:bg-card hover:text-foreground"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelect(s.id);
+                      }}
+                      title={`Reimprimir ${s.invoice}`}
+                      aria-label={`Reimprimir ${s.invoice}`}
+                    >
+                      <Printer className="h-4 w-4" />
+                    </Button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

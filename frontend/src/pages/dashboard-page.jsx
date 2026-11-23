@@ -2,7 +2,7 @@
 import { usePosStore } from "../data/pos-context.jsx";
 import { formatDate } from "../lib/accounts.js";
 import { averageAmount, businessDay, downloadSales, monthlyActivity, paymentGroups, paymentLabel, salesTotal, shiftDay, sumAmounts } from "../lib/sales-analytics.js";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { balanceOf } from "../lib/accounts.js";
 import { formatTime } from "../lib/accounts.js";
 import { PageHeader } from "../components/pos/page-header.jsx";
@@ -15,6 +15,8 @@ import { SalesActivityChart } from "../components/pos/sales-activity-chart.jsx";
 import { SalesGoalGauge } from "../components/pos/sales-goal-gauge.jsx";
 import { PeakHoursHeatmap } from "../components/pos/peak-hours-heatmap.jsx";
 import { RecentSalesTable } from "../components/pos/recent-sales-table.jsx";
+import { ReceiptDialog } from "../components/pos/receipt-dialog.jsx";
+import { receiptFromStoredSale } from "../data/operational-sales.js";
 import { Fragment } from "react";
 const barColors = ["bg-primary", "bg-primary/45", "bg-primary/20", "bg-foreground/70"];
 const utcWeekdayFmt = new Intl.DateTimeFormat("es-DO", { weekday: "long", timeZone: "UTC" });
@@ -24,6 +26,7 @@ function pctChange(now, before) {
 }
 function DashboardPage({ reference }) {
   const { sales, receivables, customers, settings, cashSession, runtime } = usePosStore();
+  const [reprintSale, setReprintSale] = useState(null);
   const isOwner = !runtime || runtime.isOwner;
   const end = businessDay();
   const lastWeekDay = shiftDay(end, -7);
@@ -132,9 +135,26 @@ function DashboardPage({ reference }) {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <PeakHoursHeatmap {...reference?.peak} />
         <div className="min-w-0 lg:col-span-2">
-          <RecentSalesTable sales={recent} showAllLink={isOwner} />
+          <RecentSalesTable
+            sales={recent}
+            showAllLink={isOwner}
+            onSelect={reference ? undefined : (saleId) => {
+              const found = sales.find((s) => s.id === saleId);
+              if (found) setReprintSale(found);
+            }}
+          />
         </div>
       </div>
+      <ReceiptDialog
+        sale={receiptFromStoredSale(reprintSale)}
+        open={Boolean(reprintSale)}
+        onOpenChange={(open) => { if (!open) setReprintSale(null); }}
+        onNewSale={() => setReprintSale(null)}
+        business={settings.business}
+        printFormat={settings.printFormat}
+        footer={settings.ticketFooter}
+        isReprint
+      />
     </div>
   );
 }

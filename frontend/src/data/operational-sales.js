@@ -232,3 +232,55 @@ export function receiptFromConfirmation(snapshot) {
     lines: doc.items.map(row => ({ key: row.id, product: { name: row.nombre }, quantity: row.cant,
       unitPrice: row.precioExacto ?? row.precio, subtotal: row.subtotal })) };
 }
+
+const STORED_PAYMENT_LABELS = {
+  efectivo: 'Efectivo',
+  tarjeta: 'Tarjeta',
+  transferencia: 'Transferencia',
+  credito: 'Crédito',
+};
+
+export function receiptFromStoredSale(sale) {
+  if (!sale) return null;
+  const rawDate = typeof sale.date === 'string' ? sale.date : '';
+  const hasTime = rawDate.includes('T');
+  const parsedDate = hasTime ? new Date(rawDate) : null;
+  const validDate = parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate : null;
+  const discount = Number(sale.discount ?? 0) || 0;
+  const total = Number(sale.total ?? 0) || 0;
+  const subtotal = Number(sale.subtotal ?? sale.netBase ?? 0) || 0;
+  const itbis = Number(sale.itbis ?? 0) || 0;
+  const methodKey = sale.condition === 'credito' ? 'credito' : (sale.paymentMethod ?? sale.method);
+  const paymentLabel = STORED_PAYMENT_LABELS[methodKey] ?? (sale.condition === 'credito' ? 'Crédito' : null);
+  return {
+    invoiceNumber: sale.number || ('Registro ' + sale.id),
+    ...(validDate ? { date: validDate } : { dateOnly: rawDate.slice(0, 10) }),
+    useExactUnitMoney: true,
+    dueDate: sale.dueDate ?? null,
+    customerName: sale.customerName || 'Cliente Contado',
+    customerRnc: sale.customerRnc || null,
+    ncf: sale.ncf || null,
+    comprobante: sale.comprobante || 'B02',
+    itbisRate: null,
+    conditionLabel: sale.condition === 'credito' ? 'Crédito' : 'Contado',
+    paymentLabel,
+    voided: sale.status === 'anulada',
+    voidReason: sale.voidReason || null,
+    voidedAt: sale.voidedAt || null,
+    totals: {
+      subtotal,
+      ...(discount > 0 ? { grossTotal: Math.round((total + discount) * 100) / 100 } : {}),
+      discount,
+      discountPercent: Number(sale.discountPercent ?? 0) || 0,
+      itbis,
+      total,
+    },
+    lines: (sale.lines ?? []).map((line, index) => ({
+      key: line.id ?? `${line.productId ?? index}-${index}`,
+      product: { name: line.name, code: line.code },
+      quantity: line.quantity,
+      unitPrice: line.priceExact ?? line.price ?? line.unitPrice ?? 0,
+      subtotal: line.subtotal,
+    })),
+  };
+}
