@@ -23,6 +23,7 @@
     "build:worker": "pnpm build && wrangler deploy --assets dist/operational --dry-run --outdir dist/worker",
     "build": "node scripts/build-operational.mjs",
     "build:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-build.ps1",
+    "release:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-release.ps1",
     "prepare:windows": "node scripts/build-windows.mjs",
     "build:operational": "node scripts/build-operational.mjs",
     "build:design": "node scripts/build-operational.mjs",

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Repuestos Felix",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "identifier": "com.repuestosfelix.pos",
   "build": {
     "frontendDist": "../dist/operational"
@@ -16,6 +16,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": ["nsis"],
     "category": "Business",
     "shortDescription": "Punto de venta Repuestos Félix",
@@ -26,13 +27,24 @@
       "../dist/windows-payload/payload-manifest.json": "payload-manifest.json"
     },
     "windows": {
-      "webviewInstallMode": { "type": "offlineInstaller", "silent": true },
+      "webviewInstallMode": { "type": "downloadBootstrapper", "silent": true },
       "nsis": {
         "installMode": "currentUser",
         "languages": ["Spanish"],
         "displayLanguageSelector": false,
         "startMenuFolder": "Repuestos Felix",
         "compression": "lzma"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEYzOUEzNjcyMzQyNEU3MjEKUldRaDV5UTBjamFhOCtKcEVVdmJ3eDRFeS9ieVFMQlU1NXZCbitBQW93b1p6UE9QYlhjOXJNYkYK",
+      "endpoints": [
+        "https://github.com/thebuuba/Pos-Repuestos-Felix/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
       }
     }
   }

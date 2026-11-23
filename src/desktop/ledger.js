@@ -5,6 +5,52 @@ import { randomUUID } from 'node:crypto';
 import { tables, backupLayout } from '../pos/relational-backup.js';
 
 const booleans = new Set(['activo', 'gravado', 'es_contado', 'notificar_minimo', 'permitir_stock_negativo', 'activa']);
+const columnDefaults = {
+  turnos_caja: { version: '1' },
+  configuracion: {
+    rnc: '', tel: '', correo: '', direccion: '',
+    redondeo: 0, pie_ticket: '', permitir_stock_negativo: 0, version: '1',
+  },
+  clientes: {
+    rnc: '', tel: '', correo: '', direccion: '',
+    es_contado: 0, version: '1',
+  },
+  suplidores: {
+    rnc: '', tel: '', correo: '', contacto: '', version: '1',
+  },
+  productos: {
+    marca: '', categoria: '', ubicacion: '',
+    stock_minimo: '0.00', gravado: 1, notificar_minimo: 1, version: '1',
+  },
+  ventas: {
+    descuento_porcentaje: '0.00',
+    descuento: '0.00',
+    estado: 'activa',
+    version: '1',
+  },
+  compras: {
+    condicion: 'Contado',
+    version: '1',
+  },
+};
+const legacyEffectDefaults = (method, path) => {
+  if (method === 'POST' && path === '/api/ventas') {
+    return {
+      descuento_porcentaje: '0.00', descuento: '0.00', estado: 'activa',
+      anulada_en: null, anulada_por: null, motivo_anulacion: null, vencimiento: null,
+    };
+  }
+  if (method === 'POST' && path === '/api/compras') {
+    return { condicion: 'Contado', vencimiento: null };
+  }
+  if ((method === 'POST' && path === '/api/productos') || (method === 'PUT' && /^\/api\/productos\/\d+$/.test(path))) {
+    return { altCodes: [] };
+  }
+  if (method === 'PUT' && path === '/api/configuracion') {
+    return { meta_diaria: null };
+  }
+  return null;
+};
 export const references = {
   suplidores: { formula_id: 'formulas_precios' },
   productos_codigos: { producto_id: 'productos' },
@@ -31,14 +77,32 @@ export class DesktopLedger {
       CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL,expires INTEGER NOT NULL) STRICT;`);
     this.database.exec(`CREATE TABLE IF NOT EXISTS reconciliation_archives(id TEXT PRIMARY KEY,record TEXT NOT NULL) STRICT;
       CREATE TABLE IF NOT EXISTS remembered_sessions(token_hash TEXT PRIMARY KEY REFERENCES sessions(token_hash) ON DELETE CASCADE) STRICT;`);
-    for (const [table, columns] of Object.entries(tables)) {
-      this.database.exec(`CREATE TABLE IF NOT EXISTS local_${table}(${columns.map(column => `${column} ANY${column === 'id' ? ' PRIMARY KEY' : ''}`).join(',')}) STRICT;`);
-      const existing = new Set(this.database.prepare(`PRAGMA table_info(local_${table})`).all().map(row => row.name));
-      for (const column of columns) {
-        if (!existing.has(column)) this.database.exec(`ALTER TABLE local_${table} ADD COLUMN ${column} ANY`);
+    this.transaction(() => {
+      for (const [table, columns] of Object.entries(tables)) {
+        this.database.exec(`CREATE TABLE IF NOT EXISTS local_${table}(${columns.map(column => `${column} ANY${column === 'id' ? ' PRIMARY KEY' : ''}`).join(',')}) STRICT;`);
+        const existing = new Set(this.database.prepare(`PRAGMA table_info(local_${table})`).all().map(row => row.name));
+        for (const column of columns) {
+          if (!existing.has(column)) this.database.exec(`ALTER TABLE local_${table} ADD COLUMN ${column} ANY`);
+        }
+        for (const [column, value] of Object.entries(columnDefaults[table] || {})) {
+          this.database.prepare(`UPDATE local_${table} SET ${column}=? WHERE ${column} IS NULL`).run(value);
+        }
       }
-    }
-    if (!this.get('deviceId')) this.set('deviceId', randomUUID());
+      const pendingRows = this.database.prepare("SELECT operation_id,record FROM operations WHERE status='pending' AND wire IS NULL").all();
+      const updateOperation = this.database.prepare('UPDATE operations SET record=? WHERE operation_id=?');
+      for (const row of pendingRows) {
+        const record = JSON.parse(row.record);
+        const defaults = legacyEffectDefaults(record.method, record.path);
+        const effect = record.expected?.effect;
+        if (!defaults || !effect || typeof effect !== 'object') continue;
+        let changed = false;
+        for (const [key, value] of Object.entries(defaults)) {
+          if (!Object.hasOwn(effect, key)) { effect[key] = value; changed = true; }
+        }
+        if (changed) updateOperation.run(JSON.stringify(record), row.operation_id);
+      }
+      if (!this.get('deviceId')) this.set('deviceId', randomUUID());
+    });
   }
   get(key) { const row = this.database.prepare('SELECT value FROM metadata WHERE key=?').get(key); return row ? JSON.parse(row.value) : null; }
   set(key, value) { this.database.prepare('INSERT INTO metadata VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key, JSON.stringify(value)); }

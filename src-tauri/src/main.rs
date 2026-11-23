@@ -1,13 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::{
-    io::{BufRead, BufReader},
-    path::Path,
+    fs,
+    io::{BufRead, BufReader, Read},
+    path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{mpsc, Mutex},
     time::{Duration, Instant},
 };
 use tauri::{webview::NewWindowResponse, Manager, RunEvent, Url, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_updater::UpdaterExt;
 
 struct LocalServer(Mutex<Option<Child>>);
 
@@ -50,11 +52,57 @@ fn ready_url(line: &str) -> Option<Url> {
     .then_some(url)
 }
 
+enum StartupEvent {
+    Ready(Url),
+    Failed(String),
+}
+
+fn sanitize_diagnostic(raw: &str) -> String {
+    raw.chars()
+        .map(|ch| if ch.is_control() { ' ' } else { ch })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(360)
+        .collect()
+}
+
+fn error_message(line: &str) -> Option<String> {
+    let text = sanitize_diagnostic(line.strip_prefix("FELIX_ERROR=")?);
+    (!text.is_empty()).then_some(text)
+}
+
+fn default_data_dir() -> Option<PathBuf> {
+    std::env::var_os("LOCALAPPDATA")
+        .map(|local| Path::new(&local).join("RepuestosFelix").join("POS"))
+}
+
+fn record_native_startup_error(data_dir: Option<&Path>, detail: &str) -> Option<PathBuf> {
+    let dir = data_dir?;
+    let log_path = dir.join("startup-error.log");
+    let _ = fs::create_dir_all(dir);
+    let content = format!(
+        "Origen: lanzador-windows\nDiagnostico: {}\n",
+        sanitize_diagnostic(detail)
+    );
+    if !log_path.exists() {
+        let _ = fs::write(&log_path, content);
+    } else if let Ok(existing) = fs::read_to_string(&log_path) {
+        if !existing.contains(&sanitize_diagnostic(detail)) {
+            let _ = fs::write(&log_path, format!("{existing}\n{content}"));
+        }
+    }
+    Some(log_path)
+}
+
 fn start_server(resources: &Path, data_dir: &Path) -> Result<(LocalServer, Url), String> {
     // Tauri returns canonical Windows paths. Node's CLI rejects the \\?\ prefix.
     let resources = dunce::simplified(resources);
     let app = resources.join("app");
-    let mut command = Command::new(resources.join("runtime").join("node.exe"));
+    let node = resources.join("runtime").join("node.exe");
+    let mut command = Command::new(&node);
     command
         .arg(app.join("src").join("desktop").join("main.js"))
         .arg("--data-dir")
@@ -66,53 +114,171 @@ fn start_server(resources: &Path, data_dir: &Path) -> Result<(LocalServer, Url),
         .env_remove("NODE_PATH")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null());
+        .stderr(Stdio::piped());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         command.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
-    let mut child = command.spawn().map_err(|_| "No se pudo iniciar el servicio local.")?;
-    let output = child.stdout.take().ok_or("No se pudo abrir el servicio local.")?;
+    let mut child = command.spawn().map_err(|err| {
+        format!(
+            "No se pudo iniciar el motor local (node.exe): {}.",
+            sanitize_diagnostic(&err.to_string())
+        )
+    })?;
+    let output = child.stdout.take().ok_or("No se pudo abrir la salida del servicio local.")?;
+    let stderr = child.stderr.take();
     let server = LocalServer(Mutex::new(Some(child)));
     let (send, receive) = mpsc::sync_channel(1);
-    std::thread::spawn(move || {
-        for line in BufReader::new(output).lines().map_while(Result::ok) {
-            if let Some(url) = ready_url(&line) {
-                let _ = send.try_send(url);
+    let stderr_handle = std::thread::spawn(move || {
+        let mut captured = Vec::new();
+        if let Some(mut err) = stderr {
+            let mut chunk = [0u8; 512];
+            while let Ok(read) = err.read(&mut chunk) {
+                if read == 0 {
+                    break;
+                }
+                if captured.len() < 2048 {
+                    let take = (2048 - captured.len()).min(read);
+                    captured.extend_from_slice(&chunk[..take]);
+                }
             }
+        }
+        sanitize_diagnostic(&String::from_utf8_lossy(&captured))
+    });
+    std::thread::spawn(move || {
+        let mut ready_sent = false;
+        let mut reported_error: Option<String> = None;
+        for line in BufReader::new(output).lines().map_while(Result::ok) {
+            if !ready_sent {
+                if let Some(url) = ready_url(&line) {
+                    ready_sent = true;
+                    let _ = send.try_send(StartupEvent::Ready(url));
+                } else if let Some(message) = error_message(&line) {
+                    reported_error = Some(message);
+                    break;
+                }
+            }
+        }
+        if !ready_sent {
+            let detail = reported_error.unwrap_or_else(|| {
+                let err = stderr_handle.join().unwrap_or_default();
+                if err.is_empty() {
+                    "El servicio local se cerró antes de quedar listo.".into()
+                } else {
+                    format!("El servicio local falló al iniciar: {err}")
+                }
+            });
+            let _ = send.try_send(StartupEvent::Failed(detail));
         }
     });
     match receive.recv_timeout(Duration::from_secs(90)) {
-        Ok(url) => Ok((server, url)),
+        Ok(StartupEvent::Ready(url)) => Ok((server, url)),
+        Ok(StartupEvent::Failed(detail)) => {
+            server.stop();
+            Err(detail)
+        }
         Err(_) => {
             server.stop();
-            Err("No se pudo abrir el POS. Comprueba que no esté abierto y que la carpeta de datos permita escribir.".into())
+            Err("Tiempo de espera agotado (90 s) iniciando el servicio local del POS.".into())
         }
     }
 }
 
-fn show_startup_error() {
+#[cfg(windows)]
+fn message_box(title: &str, text: &str, flags: u32) -> i32 {
+    #[link(name = "user32")]
+    extern "system" {
+        fn MessageBoxW(window: *mut std::ffi::c_void, text: *const u16, caption: *const u16, flags: u32) -> i32;
+    }
+    let text: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+    let title: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
+    unsafe { MessageBoxW(std::ptr::null_mut(), text.as_ptr(), title.as_ptr(), flags) }
+}
+
+fn show_startup_error(detail: &str, log_path: Option<&Path>) {
     #[cfg(windows)]
     {
-        #[link(name = "user32")]
-        extern "system" {
-            fn MessageBoxW(window: *mut std::ffi::c_void, text: *const u16, caption: *const u16, flags: u32) -> i32;
+        let clean = sanitize_diagnostic(detail);
+        let mut body = String::from("No se pudo abrir Repuestos Félix.");
+        if !clean.is_empty() {
+            body.push_str("\n\nDetalle:\n");
+            body.push_str(&clean);
         }
-        let text: Vec<u16> = "No se pudo abrir Repuestos Félix. Comprueba que no esté abierto, que WebView2 esté instalado y que la carpeta de datos permita escribir.\0".encode_utf16().collect();
-        let title: Vec<u16> = "Repuestos Félix\0".encode_utf16().collect();
-        unsafe { MessageBoxW(std::ptr::null_mut(), text.as_ptr(), title.as_ptr(), 0x10); }
+        if let Some(path) = log_path {
+            body.push_str("\n\nRegistro de diagnóstico:\n");
+            body.push_str(&path.display().to_string());
+        }
+        body.push_str("\n\nComprueba que no esté abierto, que WebView2 esté instalado y que la carpeta de datos permita escribir.");
+        message_box("Repuestos Félix", &body, 0x10);
     }
+    #[cfg(not(windows))]
+    {
+        let _ = (detail, log_path);
+    }
+}
+
+fn ask_update(version: &str) -> bool {
+    #[cfg(windows)]
+    {
+        // MB_YESNO (0x04) | MB_ICONINFORMATION (0x40) | MB_SETFOREGROUND (0x10000)
+        let msg = format!(
+            "Hay una nueva versión de Repuestos Félix disponible (v{version}).\n\n¿Deseas descargarla e instalarla ahora? Tus datos y ventas pendientes se conservan."
+        );
+        return message_box("Actualización disponible — Repuestos Félix", &msg, 0x0001_0044) == 6;
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = version;
+        false
+    }
+}
+
+fn show_update_error() {
+    #[cfg(windows)]
+    {
+        message_box(
+            "Repuestos Félix",
+            "No se pudo completar la actualización automática. Puedes seguir trabajando con normalidad y volver a intentarlo al reabrir el POS.",
+            0x30,
+        );
+    }
+}
+
+async fn check_and_apply_update(app: tauri::AppHandle) {
+    let Ok(updater) = app.updater() else { return; };
+    let Ok(Some(update)) = updater.check().await else { return; };
+    let version = update.version.clone();
+    if !ask_update(&version) {
+        return;
+    }
+    let bytes = match update.download(|_, _| {}, || {}).await {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            show_update_error();
+            return;
+        }
+    };
+    // Cerrar el servidor local Node/SQLite antes de que NSIS reemplace app/ y runtime/node.exe.
+    if let Some(server) = app.try_state::<LocalServer>() {
+        server.stop();
+    }
+    if update.install(bytes).is_err() {
+        show_update_error();
+        return;
+    }
+    app.restart();
 }
 
 fn main() {
     let result = tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
+            let data_dir = default_data_dir();
             let configured: Result<(), Box<dyn std::error::Error>> = (|| {
                 let resources = app.path().resource_dir()?;
-                let local = std::env::var_os("LOCALAPPDATA").ok_or("Falta la carpeta local del usuario.")?;
-                let data_dir = Path::new(&local).join("RepuestosFelix").join("POS");
-                let (server, url) = start_server(&resources, &data_dir)?;
+                let dir = data_dir.as_deref().ok_or("Falta la carpeta local del usuario (LOCALAPPDATA).")?;
+                let (server, url) = start_server(&resources, dir)?;
                 app.manage(server);
                 let origin = url.origin();
                 WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
@@ -123,11 +289,19 @@ fn main() {
                     .resizable(true)
                     .on_navigation(move |next| next.origin() == origin)
                     .on_new_window(|_, _| NewWindowResponse::Deny)
-                    .build()?;
+                    .build()
+                    .map_err(|err| format!("No se pudo abrir la ventana del POS (WebView2): {err}"))?;
+                let update_handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(Duration::from_secs(4));
+                    tauri::async_runtime::block_on(check_and_apply_update(update_handle));
+                });
                 Ok(())
             })();
-            if configured.is_err() {
-                show_startup_error();
+            if let Err(err) = configured {
+                let detail = err.to_string();
+                let log_path = record_native_startup_error(data_dir.as_deref(), &detail);
+                show_startup_error(&detail, log_path.as_deref());
                 app.handle().exit(1);
             }
             Ok(())
@@ -141,13 +315,18 @@ fn main() {
                 }
             }
         }),
-        Err(_) => show_startup_error(),
+        Err(err) => {
+            let detail = format!("No se pudo inicializar la aplicación Windows: {err}");
+            let data_dir = default_data_dir();
+            let log_path = record_native_startup_error(data_dir.as_deref(), &detail);
+            show_startup_error(&detail, log_path.as_deref());
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{ready_url, start_server};
+    use super::{error_message, ready_url, start_server};
 
     #[test]
     #[cfg(windows)]
@@ -158,7 +337,19 @@ mod tests {
         let unique = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
         let data = std::env::temp_dir().join(format!("felix-native-start-{}-{unique}", std::process::id()));
         let outcome = start_server(&resources, &data);
-        if let Ok((server, _)) = &outcome { server.stop(); }
+        if let Ok((server, _)) = &outcome {
+            let second_started = std::time::Instant::now();
+            let duplicate = start_server(&resources, &data);
+            let elapsed = second_started.elapsed();
+            assert!(duplicate.is_err(), "a second instance on the same data dir must fail");
+            let message = duplicate.err().unwrap();
+            assert!(
+                message.contains("acceso exclusivo") || message.contains("ya está abierto"),
+                "expected clear diagnostic message, got: {message}"
+            );
+            assert!(elapsed.as_secs() < 20, "duplicate startup must fail fast, took {:?}", elapsed);
+            server.stop();
+        }
         if data.exists() {
             let actual = std::fs::canonicalize(&data).unwrap();
             let temporary = std::fs::canonicalize(std::env::temp_dir()).unwrap();
@@ -176,5 +367,15 @@ mod tests {
             "FELIX_READY=http://localhost:43123", "FELIX_READY=file:///C:/data"] {
             assert!(ready_url(value).is_none(), "{value}");
         }
+    }
+
+    #[test]
+    fn parses_sanitized_startup_error_lines() {
+        assert_eq!(
+            error_message("FELIX_ERROR=Error en carga de datos locales: columna faltante"),
+            Some("Error en carga de datos locales: columna faltante".into())
+        );
+        assert_eq!(error_message("FELIX_ERROR=   "), None);
+        assert_eq!(error_message("otro mensaje"), None);
     }
 }

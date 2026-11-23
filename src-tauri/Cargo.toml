@@ -1,6 +1,6 @@
 [package]
 name = "repuestos-felix"
-version = "1.0.0"
+version = "1.1.0"
 description = "Punto de venta Repuestos Félix para Windows"
 edition = "2021"
 publish = false
@@ -10,7 +10,9 @@ tauri-build = { version = "=2.7.6", features = [] }
 
 [dependencies]
 dunce = "=1.0.5"
+serde_json = "1"
 tauri = { version = "=2.12.7", features = [] }
+tauri-plugin-updater = "2"
 
 [profile.release]
 strip = true
