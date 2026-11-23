@@ -194,7 +194,7 @@ test('el catálogo transmite los datos operativos exactos sin repetir metadatos 
   statements.length = 0;
   assert.deepEqual((await (await getState()).json()).state.productos.find(p => p.id === product.id), product);
   const productQuery = statements.find(sql => /FROM public\.productos\b/.test(sql));
-  assert.doesNotMatch(productQuery, /creado_en|actualizado_en/);
+  assert.doesNotMatch(productQuery, /p\.(?:creado_en|actualizado_en)/);
   const backup = await (await fetch(origin + '/api/backup')).json();
   const row = backup.tables.productos.find(p => Number(p.id) === product.id);
   assert.ok(row.creado_en && row.actualizado_en);

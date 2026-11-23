@@ -147,7 +147,7 @@ function OrderSummaryPanel({
               })}
             </div>
           </div>
-          {(onDiscountValueChange || onDiscountChange) && (
+          {operational && (onDiscountValueChange || onDiscountChange) && (
             <div className="sale-summary-discount-custom flex items-center gap-1.5">
               {onDiscountModeChange && (
                 <div className="flex shrink-0 rounded-lg bg-muted p-0.5">

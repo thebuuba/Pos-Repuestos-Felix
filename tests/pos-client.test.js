@@ -521,8 +521,14 @@ for (const resource of ['ventas', 'compras']) for (const mismatch of ['missing',
       const observed=await response.json();
       observed.confirmation.replayed=true;
       const documents=sale?'facturas':'compras';
-      if(mismatch==='missing')observed.state[documents]=observed.state[documents].filter(d=>d.id!==observed.result.id);
-      else observed.state[documents].find(d=>d.id===observed.result.id).items[0].cant=2;
+      if (observed.delta) {
+        const key = documents + 'Upsert';
+        if (mismatch === 'missing') observed.changes[key] = (observed.changes[key] ?? []).filter(d => d.id !== observed.result.id);
+        else observed.changes[key].find(d => d.id === observed.result.id).items[0].cant = 2;
+      } else {
+        if(mismatch==='missing')observed.state[documents]=observed.state[documents].filter(d=>d.id!==observed.result.id);
+        else observed.state[documents].find(d=>d.id===observed.result.id).items[0].cant=2;
+      }
       return route.fulfill({response,json:observed});
     });
     await assert.rejects(page.evaluate(op=>client.writeOperation(op),{method:'POST',path:'/api/'+resource,

@@ -28,9 +28,66 @@ const number = value => {
 };
 const date = value => String(value).slice(0, 10);
 const displayDate = value => { const [year, month, day] = date(value).split('-'); return `${Number(day)}/${Number(month)}/${year}`; };
-const iso = value => value instanceof Date ? value.toISOString() : value;
-// The operational catalogue does not use audit timestamps; backups retain them.
-const productColumns = tables.productos.filter(key => !['creado_en', 'actualizado_en'].includes(key)).join(',');
+const iso = value => value instanceof Date ? value.toISOString() : (typeof value === 'string' && value ? new Date(value).toISOString() : value);
+const normalizeCashRows = (data) => ({
+  turnos_caja: data.turnos_caja.map(r => ({ ...r, abierto_en: iso(r.abierto_en), cerrado_en: r.cerrado_en ? iso(r.cerrado_en) : null })),
+  movimientos_caja: data.movimientos_caja.map(r => ({ ...r, creado_en: iso(r.creado_en) })),
+  abonos_cuentas: (data.abonos_cuentas || []).map(r => ({ ...r, creado_en: iso(r.creado_en) })),
+  ventas: data.ventas,
+});
+
+function presentConfig(config) {
+  return {
+    empresa: config.empresa,
+    itbisRate: Number(config.tasa_itbis),
+    configuracionVersion: number(config.version),
+    configuracion: {
+      version: number(config.version), empresa: config.empresa, rnc: config.rnc, tel: config.tel,
+      correo: config.correo, direccion: config.direccion, itbisPorcentaje: Number((Number(config.tasa_itbis) * 100).toFixed(4)),
+      redondeo: config.redondeo, nivelPrecioPredeterminado: config.nivel_precio_predeterminado, formatoImpresion: config.formato_impresion,
+      pieTicket: config.pie_ticket, permitirStockNegativo: config.permitir_stock_negativo,
+      metaDiaria: config.meta_diaria === null ? null : Number(config.meta_diaria),
+    },
+  };
+}
+function presentNcf(rows) {
+  return rows.map(s => ({
+    id: number(s.id), tipo: s.tipo, prefijo: s.prefijo, inicio: number(s.inicio), fin: number(s.fin),
+    actual: number(s.actual), vencimiento: date(s.vencimiento), activa: s.activa, version: number(s.version),
+  }));
+}
+function presentSale(v, items) {
+  return {
+    id: number(v.id), version: number(v.version), cajaId: v.caja_id === null ? null : number(v.caja_id),
+    metodoPago: v.metodo_pago, clienteId: number(v.cliente_id), cliente: v.cliente_nombre, clienteRnc: v.cliente_rnc,
+    ncf: v.ncf, tipoComprobante: v.tipo_comprobante, fecha: displayDate(v.fecha), fechaISO: date(v.fecha),
+    vencimiento: v.vencimiento ? date(v.vencimiento) : null, condicion: v.condicion,
+    descuentoPorcentaje: Number(v.descuento_porcentaje), descuento: Number(v.descuento),
+    base: Number(v.base), itbis: Number(v.itbis), total: Number(v.total),
+    pagado: Number(v.pagado ?? 0),
+    estado: v.estado, anuladaEn: v.anulada_en ? iso(v.anulada_en) : null, anuladaPor: v.anulada_por, motivoAnulacion: v.motivo_anulacion,
+    items,
+  };
+}
+function presentPurchase(c, items) {
+  return {
+    id: number(c.id), version: number(c.version), suplidorId: number(c.suplidor_id),
+    suplidor: c.suplidor_nombre, numero: c.numero, fecha: displayDate(c.fecha), fechaISO: date(c.fecha),
+    condicion: c.condicion, vencimiento: c.vencimiento ? date(c.vencimiento) : null,
+    total: Number(c.total), pagado: Number(c.pagado ?? 0),
+    items,
+  };
+}
+function presentAbono(a) {
+  return {
+    id: number(a.id), tipo: a.tipo,
+    ventaId: a.venta_id === null ? null : number(a.venta_id),
+    compraId: a.compra_id === null ? null : number(a.compra_id),
+    cajaId: a.caja_id === null ? null : number(a.caja_id),
+    metodoPago: a.metodo_pago, monto: Number(a.monto), referencia: a.referencia, nota: a.nota,
+    usuario: a.usuario, creadoEn: iso(a.creado_en),
+  };
+}
 
 function validOptionalDate(value, label) {
   if (value === undefined || value === null || value === '') return null;
@@ -60,89 +117,337 @@ export async function snapshotVersion(client, databaseLabel) {
   return { databaseId: system.database_id, revision: number(system.revision), databaseLabel };
 }
 export async function snapshot(client, databaseLabel) {
-  const version = await snapshotVersion(client, databaseLabel);
-  const data = {};
-  for (const table of Object.keys(tables)) data[table] = table === 'productos'
-    ? (await client.query(`SELECT ${productColumns} FROM public.productos WHERE activo ORDER BY id`)).rows
-    : await rows(client, table);
-  const config = data.configuracion[0];
-  if (!config) fail('La configuración de la base está incompleta.', 503);
-  const saleItems = itemsByDocument(data.venta_detalles, 'venta_id', d => ({ ...lineFields(d), precio: Number(d.precio), precioExacto: d.precio, base: Number(d.base), itbis: Number(d.itbis) }));
-  const purchaseItems = itemsByDocument(data.compra_detalles, 'compra_id', d => ({ ...lineFields(d), costo: Number(d.costo),
-    costoExacto: d.costo, preciosExactos: exactPrices(d), p1: Number(d.precio1), p2: Number(d.precio2), p3: Number(d.precio3) }));
-  const altCodes = new Map();
-  for (const row of data.productos_codigos) {
-    const list = altCodes.get(row.producto_id) ?? [];
-    list.push(row.codigo);
-    altCodes.set(row.producto_id, list);
-  }
-  const paidBySale = new Map();
-  const paidByPurchase = new Map();
-  for (const payment of data.abonos_cuentas) {
-    const amountCents = cents(payment.monto);
-    if (payment.venta_id !== null) paidBySale.set(payment.venta_id, (paidBySale.get(payment.venta_id) ?? 0n) + amountCents);
-    if (payment.compra_id !== null) paidByPurchase.set(payment.compra_id, (paidByPurchase.get(payment.compra_id) ?? 0n) + amountCents);
-  }
-  const balances = new Map((await client.query(`SELECT c.id,(c.saldo_apertura
-      + COALESCE((SELECT sum(v.total) FROM ventas v WHERE v.cliente_id=c.id AND v.condicion='Credito' AND v.estado='activa'),0)
-      - COALESCE((SELECT sum(a.monto) FROM abonos_cuentas a JOIN ventas v ON v.id=a.venta_id WHERE v.cliente_id=c.id AND v.condicion='Credito' AND v.estado='activa'),0)
-    )::text AS deuda FROM clientes c`)).rows.map(row => [row.id, Number(row.deuda)]));
-  const supplierBalances = new Map((await client.query(`SELECT s.id,(
-      COALESCE((SELECT sum(c.total) FROM compras c WHERE c.suplidor_id=s.id AND c.condicion='Credito'),0)
-      - COALESCE((SELECT sum(a.monto) FROM abonos_cuentas a JOIN compras c ON c.id=a.compra_id WHERE c.suplidor_id=s.id AND c.condicion='Credito'),0)
-    )::text AS deuda FROM suplidores s`)).rows.map(row => [row.id, Number(row.deuda)]));
+  const row = (await client.query(`
+    WITH alt_codes AS (
+      SELECT producto_id, json_agg(codigo ORDER BY id) AS codigos
+      FROM public.productos_codigos GROUP BY producto_id
+    ),
+    sale_paid AS (
+      SELECT venta_id, sum(monto) AS pagado FROM public.abonos_cuentas WHERE venta_id IS NOT NULL GROUP BY venta_id
+    ),
+    purchase_paid AS (
+      SELECT compra_id, sum(monto) AS pagado FROM public.abonos_cuentas WHERE compra_id IS NOT NULL GROUP BY compra_id
+    ),
+    customer_sales AS (
+      SELECT cliente_id, sum(total) AS total FROM public.ventas WHERE condicion='Credito' AND estado='activa' GROUP BY cliente_id
+    ),
+    customer_paid AS (
+      SELECT v.cliente_id, sum(a.monto) AS pagado
+      FROM public.abonos_cuentas a JOIN public.ventas v ON v.id=a.venta_id
+      WHERE v.condicion='Credito' AND v.estado='activa' GROUP BY v.cliente_id
+    ),
+    supplier_buys AS (
+      SELECT suplidor_id, sum(total) AS total FROM public.compras WHERE condicion='Credito' GROUP BY suplidor_id
+    ),
+    supplier_paid AS (
+      SELECT c.suplidor_id, sum(a.monto) AS pagado
+      FROM public.abonos_cuentas a JOIN public.compras c ON c.id=a.compra_id
+      WHERE c.condicion='Credito' GROUP BY c.suplidor_id
+    ),
+    sale_lines AS (
+      SELECT venta_id, json_agg(json_build_object(
+        'id', id, 'productoId', producto_id, 'codigo', codigo, 'nombre', nombre,
+        'cant', cantidad::double precision, 'subtotal', total::double precision,
+        'precio', precio::double precision, 'precioExacto', precio::text,
+        'base', base::double precision, 'itbis', itbis::double precision
+      ) ORDER BY id) AS items
+      FROM public.venta_detalles GROUP BY venta_id
+    ),
+    purchase_lines AS (
+      SELECT compra_id, json_agg(json_build_object(
+        'id', id, 'productoId', producto_id, 'codigo', codigo, 'nombre', nombre,
+        'cant', cantidad::double precision, 'subtotal', total::double precision,
+        'costo', costo::double precision, 'costoExacto', costo::text,
+        'preciosExactos', json_build_object('p1', precio1::text, 'p2', precio2::text, 'p3', precio3::text),
+        'p1', precio1::double precision, 'p2', precio2::double precision, 'p3', precio3::double precision
+      ) ORDER BY id) AS items
+      FROM public.compra_detalles GROUP BY compra_id
+    )
+    SELECT json_build_object(
+      'databaseId', s.database_id,
+      'revision', s.revision,
+      'catalogo', pos_privado.netpos_opciones(),
+      'configuracion', (SELECT row_to_json(c) FROM (SELECT id,empresa,rnc,tel,correo,direccion,tasa_itbis::text AS tasa_itbis,redondeo,nivel_precio_predeterminado,formato_impresion,pie_ticket,permitir_stock_negativo,meta_diaria::text AS meta_diaria,version FROM public.configuracion ORDER BY id LIMIT 1) c),
+      'secuencias_ncf', COALESCE((SELECT json_agg(n ORDER BY n.id) FROM (SELECT id,tipo,prefijo,inicio,fin,actual,vencimiento::text AS vencimiento,activa,version FROM public.secuencias_ncf) n), '[]'::json),
+      'formulas', COALESCE((SELECT json_agg(json_build_object(
+        'id', id, 'version', version, 'nombre', nombre,
+        'factorCosto', factor_costo::double precision, 'recargo1', recargo1::double precision,
+        'recargo2', recargo2::double precision, 'recargo3', recargo3::double precision
+      ) ORDER BY id) FROM public.formulas_precios WHERE activo), '[]'::json),
+      'productos', COALESCE((SELECT json_agg(json_build_object(
+        'id', p.id, 'version', p.version, 'codigo', p.codigo,
+        'codigosAlternativos', COALESCE(ac.codigos, '[]'::json),
+        'nombre', p.nombre, 'marca', p.marca, 'categoria', p.categoria, 'ubicacion', p.ubicacion,
+        'gravado', p.gravado, 'activo', p.activo,
+        'stock', p.stock::double precision, 'stockMinimo', p.stock_minimo::double precision,
+        'notificarMinimo', p.notificar_minimo,
+        'costo', p.costo::double precision, 'costoExacto', p.costo::text,
+        'preciosExactos', json_build_object('p1', p.precio1::text, 'p2', p.precio2::text, 'p3', p.precio3::text),
+        'precio1', p.precio1::double precision, 'precio2', p.precio2::double precision, 'precio3', p.precio3::double precision
+      ) ORDER BY p.id) FROM public.productos p LEFT JOIN alt_codes ac ON ac.producto_id=p.id WHERE p.activo), '[]'::json),
+      'clientes', COALESCE((SELECT json_agg(json_build_object(
+        'id', c.id, 'version', c.version, 'nombre', c.nombre, 'rnc', c.rnc, 'tel', c.tel,
+        'correo', c.correo, 'direccion', c.direccion,
+        'limiteCredito', CASE WHEN c.limite_credito IS NULL THEN NULL ELSE c.limite_credito::double precision END,
+        'esContado', c.es_contado,
+        'deuda', (c.saldo_apertura + COALESCE(cs.total, 0) - COALESCE(cp.pagado, 0))::double precision
+      ) ORDER BY c.id) FROM public.clientes c LEFT JOIN customer_sales cs ON cs.cliente_id=c.id LEFT JOIN customer_paid cp ON cp.cliente_id=c.id WHERE c.activo), '[]'::json),
+      'suplidores', COALESCE((SELECT json_agg(json_build_object(
+        'id', sp.id, 'version', sp.version, 'nombre', sp.nombre, 'rnc', sp.rnc, 'tel', sp.tel,
+        'correo', sp.correo, 'contacto', sp.contacto, 'diasCredito', sp.dias_credito,
+        'formulaId', sp.formula_id,
+        'deuda', (COALESCE(sb.total, 0) - COALESCE(spp.pagado, 0))::double precision
+      ) ORDER BY sp.id) FROM public.suplidores sp LEFT JOIN supplier_buys sb ON sb.suplidor_id=sp.id LEFT JOIN supplier_paid spp ON spp.suplidor_id=sp.id WHERE sp.activo), '[]'::json),
+      'ventas', COALESCE((SELECT json_agg(json_build_object(
+        'id', v.id, 'version', v.version, 'caja_id', v.caja_id, 'metodo_pago', v.metodo_pago,
+        'cliente_id', v.cliente_id, 'cliente_nombre', v.cliente_nombre, 'cliente_rnc', v.cliente_rnc,
+        'ncf', v.ncf, 'tipo_comprobante', v.tipo_comprobante, 'fecha', v.fecha::text,
+        'vencimiento', v.vencimiento::text, 'condicion', v.condicion,
+        'descuento_porcentaje', v.descuento_porcentaje::text, 'descuento', v.descuento::text,
+        'base', v.base::text, 'itbis', v.itbis::text, 'total', v.total::text,
+        'pagado', COALESCE(sp.pagado, 0)::double precision,
+        'estado', v.estado, 'anulada_en', v.anulada_en, 'anulada_por', v.anulada_por, 'motivo_anulacion', v.motivo_anulacion,
+        'items', COALESCE(sl.items, '[]'::json)
+      ) ORDER BY v.id) FROM public.ventas v LEFT JOIN sale_paid sp ON sp.venta_id=v.id LEFT JOIN sale_lines sl ON sl.venta_id=v.id), '[]'::json),
+      'compras', COALESCE((SELECT json_agg(json_build_object(
+        'id', c.id, 'version', c.version, 'suplidor_id', c.suplidor_id, 'suplidor_nombre', c.suplidor_nombre,
+        'numero', c.numero, 'fecha', c.fecha::text, 'condicion', c.condicion, 'vencimiento', c.vencimiento::text,
+        'total', c.total::text, 'pagado', COALESCE(pp.pagado, 0)::double precision,
+        'items', COALESCE(pl.items, '[]'::json)
+      ) ORDER BY c.id) FROM public.compras c LEFT JOIN purchase_paid pp ON pp.compra_id=c.id LEFT JOIN purchase_lines pl ON pl.compra_id=c.id), '[]'::json),
+      'abonos_cuentas', COALESCE((SELECT json_agg(json_build_object(
+        'id', id, 'tipo', tipo, 'venta_id', venta_id, 'compra_id', compra_id, 'caja_id', caja_id,
+        'metodo_pago', metodo_pago, 'monto', monto::text, 'referencia', referencia, 'nota', nota,
+        'usuario', usuario, 'creado_en', creado_en
+      ) ORDER BY id) FROM public.abonos_cuentas), '[]'::json),
+      'turnos_caja', COALESCE((SELECT json_agg(json_build_object(
+        'id', id, 'version', version, 'abierto_en', abierto_en, 'cerrado_en', cerrado_en,
+        'cajero', cajero, 'fondo', fondo::text, 'esperado', esperado::text, 'contado', contado::text, 'ventas', ventas::text
+      ) ORDER BY id) FROM public.turnos_caja), '[]'::json),
+      'movimientos_caja', COALESCE((SELECT json_agg(json_build_object(
+        'id', id, 'caja_id', caja_id, 'tipo', tipo, 'monto', monto::text, 'concepto', concepto, 'creado_en', creado_en
+      ) ORDER BY id) FROM public.movimientos_caja), '[]'::json),
+      'movimientos', COALESCE((SELECT json_agg(json_build_object(
+        'id', m.id, 'producto_id', m.producto_id, 'productoId', m.producto_id,
+        'cantidad', m.cantidad::double precision, 'existencia_posterior', m.existencia_posterior::double precision,
+        'tipo', m.tipo, 'venta_detalle_id', m.venta_detalle_id, 'compra_detalle_id', m.compra_detalle_id,
+        'motivo', m.motivo, 'creado_en', m.creado_en
+      ) ORDER BY m.id) FROM (SELECT * FROM public.movimientos_inventario ORDER BY id DESC LIMIT 100) m), '[]'::json)
+    ) AS payload
+    FROM pos_privado.sistema s WHERE s.id = 1
+  `)).rows[0]?.payload;
+  if (!row) fail('Ejecuta las migraciones de la base antes de iniciar.', 503);
+  if (!row.configuracion) fail('La configuración de la base está incompleta.', 503);
   return {
-    ...version,
+    databaseId: row.databaseId,
+    revision: number(row.revision),
+    databaseLabel,
     state: {
-      caja: cashPresentation(data),
-      catalogo: (await client.query('SELECT pos_privado.netpos_opciones() AS opciones')).rows[0].opciones,
-      empresa: config.empresa, itbisRate: Number(config.tasa_itbis), configuracionVersion: number(config.version),
-      configuracion: { version: number(config.version), empresa: config.empresa, rnc: config.rnc, tel: config.tel,
-        correo: config.correo, direccion: config.direccion, itbisPorcentaje: Number((Number(config.tasa_itbis) * 100).toFixed(4)),
-        redondeo: config.redondeo, nivelPrecioPredeterminado: config.nivel_precio_predeterminado, formatoImpresion: config.formato_impresion,
-        pieTicket: config.pie_ticket, permitirStockNegativo: config.permitir_stock_negativo,
-        metaDiaria: config.meta_diaria === null ? null : Number(config.meta_diaria) },
-      secuenciasNcf: data.secuencias_ncf.map(s => ({ id: number(s.id), tipo: s.tipo, prefijo: s.prefijo,
-        inicio: number(s.inicio), fin: number(s.fin), actual: number(s.actual), vencimiento: date(s.vencimiento),
-        activa: s.activa, version: number(s.version) })),
-      formulas: data.formulas_precios.filter(f => f.activo).map(f => ({ id: number(f.id), version: number(f.version), nombre: f.nombre,
-        factorCosto: Number(f.factor_costo), recargo1: Number(f.recargo1), recargo2: Number(f.recargo2), recargo3: Number(f.recargo3) })),
-      productos: data.productos.map(p => ({ id: number(p.id), version: number(p.version), codigo: p.codigo,
-        codigosAlternativos: altCodes.get(p.id) ?? [], nombre: p.nombre,
-        marca: p.marca, categoria: p.categoria, ubicacion: p.ubicacion, gravado: p.gravado, activo: p.activo,
-        stock: Number(p.stock), stockMinimo: Number(p.stock_minimo),
-        notificarMinimo: p.notificar_minimo, costo: Number(p.costo), costoExacto: p.costo,
-        preciosExactos: exactPrices(p), precio1: Number(p.precio1), precio2: Number(p.precio2), precio3: Number(p.precio3) })),
-      clientes: data.clientes.filter(c => c.activo).map(c => ({ id: number(c.id), version: number(c.version), nombre: c.nombre, rnc: c.rnc, tel: c.tel,
-        correo: c.correo, direccion: c.direccion, limiteCredito: c.limite_credito === null ? null : Number(c.limite_credito),
-        esContado: c.es_contado, deuda: balances.get(c.id) })),
-      suplidores: data.suplidores.filter(s => s.activo).map(s => ({ id: number(s.id), version: number(s.version), nombre: s.nombre, rnc: s.rnc, tel: s.tel,
-        correo: s.correo, contacto: s.contacto, diasCredito: s.dias_credito, formulaId: s.formula_id === null ? null : number(s.formula_id),
-        deuda: supplierBalances.get(s.id) ?? 0 })),
-      facturas: data.ventas.map(v => ({ id: number(v.id), version: number(v.version), cajaId: v.caja_id === null ? null : number(v.caja_id),
-        metodoPago: v.metodo_pago, clienteId: number(v.cliente_id), cliente: v.cliente_nombre, clienteRnc: v.cliente_rnc,
-        ncf: v.ncf, tipoComprobante: v.tipo_comprobante, fecha: displayDate(v.fecha), fechaISO: date(v.fecha),
-        vencimiento: v.vencimiento ? date(v.vencimiento) : null, condicion: v.condicion,
-        descuentoPorcentaje: Number(v.descuento_porcentaje), descuento: Number(v.descuento),
-        base: Number(v.base), itbis: Number(v.itbis), total: Number(v.total),
-        pagado: Number(money(paidBySale.get(v.id) ?? 0n)),
-        estado: v.estado, anuladaEn: v.anulada_en ? iso(v.anulada_en) : null, anuladaPor: v.anulada_por, motivoAnulacion: v.motivo_anulacion,
-        items: saleItems.get(v.id) ?? [] })),
-      compras: data.compras.map(c => ({ id: number(c.id), version: number(c.version), suplidorId: number(c.suplidor_id),
-        suplidor: c.suplidor_nombre, numero: c.numero, fecha: displayDate(c.fecha), fechaISO: date(c.fecha),
-        condicion: c.condicion, vencimiento: c.vencimiento ? date(c.vencimiento) : null,
-        total: Number(c.total), pagado: Number(money(paidByPurchase.get(c.id) ?? 0n)),
-        items: purchaseItems.get(c.id) ?? [] })),
-      abonos: data.abonos_cuentas.map(a => ({ id: number(a.id), tipo: a.tipo,
-        ventaId: a.venta_id === null ? null : number(a.venta_id),
-        compraId: a.compra_id === null ? null : number(a.compra_id),
-        cajaId: a.caja_id === null ? null : number(a.caja_id),
-        metodoPago: a.metodo_pago, monto: Number(a.monto), referencia: a.referencia, nota: a.nota,
-        usuario: a.usuario, creadoEn: iso(a.creado_en) })),
-      movimientos: data.movimientos_inventario.map(m => ({ ...m, id: number(m.id), productoId: number(m.producto_id),
-        cantidad: Number(m.cantidad), existencia_posterior: Number(m.existencia_posterior) })),
+      caja: cashPresentation(normalizeCashRows(row)),
+      catalogo: row.catalogo,
+      ...presentConfig(row.configuracion),
+      secuenciasNcf: presentNcf(row.secuencias_ncf),
+      formulas: row.formulas,
+      productos: row.productos,
+      clientes: row.clientes,
+      suplidores: row.suplidores,
+      facturas: row.ventas.map(v => presentSale(v, v.items)),
+      compras: row.compras.map(c => presentPurchase(c, c.items)),
+      abonos: row.abonos_cuentas.map(presentAbono),
+      movimientos: row.movimientos.map(m => ({ ...m, creado_en: iso(m.creado_en) })),
     },
   };
+}
+
+async function fetchCashSlice(client) {
+  const row = (await client.query(`
+    WITH active_turn AS (SELECT id FROM public.turnos_caja WHERE cerrado_en IS NULL LIMIT 1)
+    SELECT json_build_object(
+      'turnos_caja', COALESCE((SELECT json_agg(json_build_object(
+        'id', id, 'version', version, 'abierto_en', abierto_en, 'cerrado_en', cerrado_en,
+        'cajero', cajero, 'fondo', fondo::text, 'esperado', esperado::text, 'contado', contado::text, 'ventas', ventas::text
+      ) ORDER BY id) FROM public.turnos_caja), '[]'::json),
+      'movimientos_caja', COALESCE((SELECT json_agg(json_build_object(
+        'id', id, 'caja_id', caja_id, 'tipo', tipo, 'monto', monto::text, 'concepto', concepto, 'creado_en', creado_en
+      ) ORDER BY id) FROM public.movimientos_caja WHERE caja_id IN (SELECT id FROM active_turn)), '[]'::json),
+      'abonos_cuentas', COALESCE((SELECT json_agg(json_build_object(
+        'id', id, 'tipo', tipo, 'caja_id', caja_id, 'metodo_pago', metodo_pago, 'monto', monto::text, 'creado_en', creado_en
+      ) ORDER BY id) FROM public.abonos_cuentas WHERE caja_id IN (SELECT id FROM active_turn)), '[]'::json),
+      'ventas', COALESCE((SELECT json_agg(json_build_object(
+        'id', id, 'caja_id', caja_id, 'metodo_pago', metodo_pago, 'total', total::text, 'estado', estado
+      ) ORDER BY id) FROM public.ventas WHERE caja_id IN (SELECT id FROM active_turn)), '[]'::json)
+    ) AS data
+  `)).rows[0].data;
+  return cashPresentation(normalizeCashRows(row));
+}
+
+async function fetchProductsSlice(client, ids) {
+  if (!ids.length) return [];
+  return (await client.query(`
+    SELECT COALESCE(json_agg(json_build_object(
+      'id', p.id, 'version', p.version, 'codigo', p.codigo,
+      'codigosAlternativos', COALESCE((SELECT json_agg(pc.codigo ORDER BY pc.id) FROM public.productos_codigos pc WHERE pc.producto_id=p.id), '[]'::json),
+      'nombre', p.nombre, 'marca', p.marca, 'categoria', p.categoria, 'ubicacion', p.ubicacion,
+      'gravado', p.gravado, 'activo', p.activo,
+      'stock', p.stock::double precision, 'stockMinimo', p.stock_minimo::double precision,
+      'notificarMinimo', p.notificar_minimo,
+      'costo', p.costo::double precision, 'costoExacto', p.costo::text,
+      'preciosExactos', json_build_object('p1', p.precio1::text, 'p2', p.precio2::text, 'p3', p.precio3::text),
+      'precio1', p.precio1::double precision, 'precio2', p.precio2::double precision, 'precio3', p.precio3::double precision
+    ) ORDER BY p.id), '[]'::json) AS rows
+    FROM public.productos p WHERE p.id = ANY($1::bigint[]) AND p.activo
+  `, [ids])).rows[0].rows;
+}
+
+async function fetchCustomersSlice(client, ids) {
+  if (!ids.length) return [];
+  return (await client.query(`
+    SELECT COALESCE(json_agg(json_build_object(
+      'id', c.id, 'version', c.version, 'nombre', c.nombre, 'rnc', c.rnc, 'tel', c.tel,
+      'correo', c.correo, 'direccion', c.direccion,
+      'limiteCredito', CASE WHEN c.limite_credito IS NULL THEN NULL ELSE c.limite_credito::double precision END,
+      'esContado', c.es_contado,
+      'deuda', (c.saldo_apertura
+        + COALESCE((SELECT sum(v.total) FROM public.ventas v WHERE v.cliente_id=c.id AND v.condicion='Credito' AND v.estado='activa'), 0)
+        - COALESCE((SELECT sum(a.monto) FROM public.abonos_cuentas a JOIN public.ventas v ON v.id=a.venta_id WHERE v.cliente_id=c.id AND v.condicion='Credito' AND v.estado='activa'), 0)
+      )::double precision
+    ) ORDER BY c.id), '[]'::json) AS rows
+    FROM public.clientes c WHERE c.id = ANY($1::bigint[]) AND c.activo
+  `, [ids])).rows[0].rows;
+}
+
+async function fetchSuppliersSlice(client, ids) {
+  if (!ids.length) return [];
+  return (await client.query(`
+    SELECT COALESCE(json_agg(json_build_object(
+      'id', s.id, 'version', s.version, 'nombre', s.nombre, 'rnc', s.rnc, 'tel', s.tel,
+      'correo', s.correo, 'contacto', s.contacto, 'diasCredito', s.dias_credito, 'formulaId', s.formula_id,
+      'deuda', (
+        COALESCE((SELECT sum(c.total) FROM public.compras c WHERE c.suplidor_id=s.id AND c.condicion='Credito'), 0)
+        - COALESCE((SELECT sum(a.monto) FROM public.abonos_cuentas a JOIN public.compras c ON c.id=a.compra_id WHERE c.suplidor_id=s.id AND c.condicion='Credito'), 0)
+      )::double precision
+    ) ORDER BY s.id), '[]'::json) AS rows
+    FROM public.suplidores s WHERE s.id = ANY($1::bigint[]) AND s.activo
+  `, [ids])).rows[0].rows;
+}
+
+async function fetchSalesSlice(client, ids) {
+  if (!ids.length) return [];
+  const list = (await client.query(`
+    SELECT COALESCE(json_agg(json_build_object(
+      'id', v.id, 'version', v.version, 'caja_id', v.caja_id, 'metodo_pago', v.metodo_pago,
+      'cliente_id', v.cliente_id, 'cliente_nombre', v.cliente_nombre, 'cliente_rnc', v.cliente_rnc,
+      'ncf', v.ncf, 'tipo_comprobante', v.tipo_comprobante, 'fecha', v.fecha::text,
+      'vencimiento', v.vencimiento::text, 'condicion', v.condicion,
+      'descuento_porcentaje', v.descuento_porcentaje::text, 'descuento', v.descuento::text,
+      'base', v.base::text, 'itbis', v.itbis::text, 'total', v.total::text,
+      'pagado', COALESCE((SELECT sum(a.monto) FROM public.abonos_cuentas a WHERE a.venta_id=v.id), 0)::double precision,
+      'estado', v.estado, 'anulada_en', v.anulada_en, 'anulada_por', v.anulada_por, 'motivo_anulacion', v.motivo_anulacion,
+      'items', COALESCE((SELECT json_agg(json_build_object(
+        'id', d.id, 'productoId', d.producto_id, 'codigo', d.codigo, 'nombre', d.nombre,
+        'cant', d.cantidad::double precision, 'subtotal', d.total::double precision,
+        'precio', d.precio::double precision, 'precioExacto', d.precio::text,
+        'base', d.base::double precision, 'itbis', d.itbis::double precision
+      ) ORDER BY d.id) FROM public.venta_detalles d WHERE d.venta_id=v.id), '[]'::json)
+    ) ORDER BY v.id), '[]'::json) AS rows
+    FROM public.ventas v WHERE v.id = ANY($1::bigint[])
+  `, [ids])).rows[0].rows;
+  return list.map(v => presentSale(v, v.items));
+}
+
+async function fetchPurchasesSlice(client, ids) {
+  if (!ids.length) return [];
+  const list = (await client.query(`
+    SELECT COALESCE(json_agg(json_build_object(
+      'id', c.id, 'version', c.version, 'suplidor_id', c.suplidor_id, 'suplidor_nombre', c.suplidor_nombre,
+      'numero', c.numero, 'fecha', c.fecha::text, 'condicion', c.condicion, 'vencimiento', c.vencimiento::text,
+      'total', c.total::text,
+      'pagado', COALESCE((SELECT sum(a.monto) FROM public.abonos_cuentas a WHERE a.compra_id=c.id), 0)::double precision,
+      'items', COALESCE((SELECT json_agg(json_build_object(
+        'id', d.id, 'productoId', d.producto_id, 'codigo', d.codigo, 'nombre', d.nombre,
+        'cant', d.cantidad::double precision, 'subtotal', d.total::double precision,
+        'costo', d.costo::double precision, 'costoExacto', d.costo::text,
+        'preciosExactos', json_build_object('p1', d.precio1::text, 'p2', d.precio2::text, 'p3', d.precio3::text),
+        'p1', d.precio1::double precision, 'p2', d.precio2::double precision, 'p3', d.precio3::double precision
+      ) ORDER BY d.id) FROM public.compra_detalles d WHERE d.compra_id=c.id), '[]'::json)
+    ) ORDER BY c.id), '[]'::json) AS rows
+    FROM public.compras c WHERE c.id = ANY($1::bigint[])
+  `, [ids])).rows[0].rows;
+  return list.map(c => presentPurchase(c, c.items));
+}
+
+async function buildDelta(client, method, path, body, result, databaseLabel, baseRevision) {
+  const version = await snapshotVersion(client, databaseLabel);
+  const changes = {};
+  if (method === 'POST' && path === '/api/ventas') {
+    const productIds = [...new Set(body.items.map(i => Number(i.productoId)))];
+    changes.caja = await fetchCashSlice(client);
+    changes.productosUpsert = await fetchProductsSlice(client, productIds);
+    changes.clientesUpsert = await fetchCustomersSlice(client, [Number(body.clienteId)]);
+    changes.facturasUpsert = await fetchSalesSlice(client, [result.id]);
+    changes.secuenciasNcf = presentNcf((await client.query('SELECT id,tipo,prefijo,inicio,fin,actual,vencimiento::text AS vencimiento,activa,version FROM public.secuencias_ncf ORDER BY id')).rows);
+  } else if (method === 'POST' && /^\/api\/ventas\/\d+\/anular$/.test(path)) {
+    const [saleRow] = await fetchSalesSlice(client, [result.id]);
+    const productIds = [...new Set((saleRow?.items ?? []).map(i => Number(i.productoId)))];
+    changes.caja = await fetchCashSlice(client);
+    changes.productosUpsert = await fetchProductsSlice(client, productIds);
+    if (saleRow) {
+      changes.clientesUpsert = await fetchCustomersSlice(client, [saleRow.clienteId]);
+      changes.facturasUpsert = [saleRow];
+    }
+  } else if (method === 'POST' && ['/api/caja/abrir', '/api/caja/cerrar', '/api/caja/movimiento'].includes(path)) {
+    changes.caja = await fetchCashSlice(client);
+  } else if (method === 'POST' && path === '/api/cuentas/cobros') {
+    const [saleRow] = await fetchSalesSlice(client, [Number(body.ventaId)]);
+    if (body.metodoPago === 'efectivo') changes.caja = await fetchCashSlice(client);
+    if (saleRow) {
+      changes.facturasUpsert = [saleRow];
+      changes.clientesUpsert = await fetchCustomersSlice(client, [saleRow.clienteId]);
+    }
+    const abonoRows = (await client.query('SELECT id,tipo,venta_id,compra_id,caja_id,metodo_pago,monto::text AS monto,referencia,nota,usuario,creado_en FROM public.abonos_cuentas WHERE id=$1', [result.id])).rows;
+    changes.abonosUpsert = abonoRows.map(presentAbono);
+  } else if (method === 'POST' && path === '/api/cuentas/pagos') {
+    const [buyRow] = await fetchPurchasesSlice(client, [Number(body.compraId)]);
+    if (body.metodoPago === 'efectivo') changes.caja = await fetchCashSlice(client);
+    if (buyRow) {
+      changes.comprasUpsert = [buyRow];
+      changes.suplidoresUpsert = await fetchSuppliersSlice(client, [buyRow.suplidorId]);
+    }
+    const abonoRows = (await client.query('SELECT id,tipo,venta_id,compra_id,caja_id,metodo_pago,monto::text AS monto,referencia,nota,usuario,creado_en FROM public.abonos_cuentas WHERE id=$1', [result.id])).rows;
+    changes.abonosUpsert = abonoRows.map(presentAbono);
+  } else if (method === 'POST' && path === '/api/compras') {
+    const [buyRow] = await fetchPurchasesSlice(client, [result.id]);
+    const productIds = [...new Set((buyRow?.items ?? []).map(i => Number(i.productoId)))];
+    if (buyRow) changes.comprasUpsert = [buyRow];
+    changes.suplidoresUpsert = await fetchSuppliersSlice(client, [Number(body.suplidorId)]);
+    changes.productosUpsert = await fetchProductsSlice(client, productIds);
+    changes.catalogo = (await client.query('SELECT pos_privado.netpos_opciones() AS opciones')).rows[0].opciones;
+  } else if (/^\/api\/productos(?:\/\d+)?$/.test(path)) {
+    if (method === 'DELETE') changes.productosDelete = [result.id];
+    else changes.productosUpsert = await fetchProductsSlice(client, [result.id]);
+    changes.catalogo = (await client.query('SELECT pos_privado.netpos_opciones() AS opciones')).rows[0].opciones;
+  } else if (/^\/api\/clientes(?:\/\d+)?$/.test(path)) {
+    if (method === 'DELETE') changes.clientesDelete = [result.id];
+    else changes.clientesUpsert = await fetchCustomersSlice(client, [result.id]);
+  } else if (/^\/api\/suplidores(?:\/\d+)?$/.test(path)) {
+    if (method === 'DELETE') changes.suplidoresDelete = [result.id];
+    else changes.suplidoresUpsert = await fetchSuppliersSlice(client, [result.id]);
+  } else if (/^\/api\/formulas(?:\/\d+)?$/.test(path)) {
+    if (method === 'DELETE') changes.formulasDelete = [result.id];
+    else {
+      changes.formulasUpsert = (await client.query(`SELECT id,version,nombre,factor_costo::double precision AS "factorCosto",
+        recargo1::double precision AS recargo1,recargo2::double precision AS recargo2,recargo3::double precision AS recargo3
+        FROM public.formulas_precios WHERE id=$1 AND activo`, [result.id])).rows.map(f => ({ ...f, id: number(f.id), version: number(f.version) }));
+    }
+  } else if (method === 'PUT' && path === '/api/configuracion') {
+    const cfg = (await client.query('SELECT id,empresa,rnc,tel,correo,direccion,tasa_itbis::text AS tasa_itbis,redondeo,nivel_precio_predeterminado,formato_impresion,pie_ticket,permitir_stock_negativo,meta_diaria::text AS meta_diaria,version FROM public.configuracion ORDER BY id LIMIT 1')).rows[0];
+    Object.assign(changes, presentConfig(cfg));
+  } else if (method === 'PUT' && path === '/api/ncf') {
+    changes.secuenciasNcf = presentNcf((await client.query('SELECT id,tipo,prefijo,inicio,fin,actual,vencimiento::text AS vencimiento,activa,version FROM public.secuencias_ncf ORDER BY id')).rows);
+  } else {
+    return null;
+  }
+  return { ...version, delta: true, baseRevision, changes };
 }
 async function rollbackFailure(client) {
   try { await client.query('ROLLBACK'); }
@@ -470,7 +775,7 @@ export async function writeOperation(pool, method, path, body, key, databaseLabe
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', ['solicitud:' + key]);
     const system = (await client.query('SELECT database_id FROM pos_privado.sistema WHERE id=1')).rows[0];
     const previous = (await client.query('SELECT tipo,huella,resultado FROM pos_privado.solicitudes WHERE clave=$1', [key])).rows[0];
-    let result, metadata;
+    let result, metadata, newRevision = null;
     if (previous) {
       if (previous.tipo !== type || previous.huella !== fingerprint) fail('Esta clave ya se usó para otra operación.', 409);
       // Ordinary writes hold this row through COMMIT. A replay must likewise
@@ -487,11 +792,19 @@ export async function writeOperation(pool, method, path, body, key, databaseLabe
       result = await execute(client, method, path, body, actor, context.occurredAt, context);
       metadata = await context.afterExecute?.(client, result);
       executingNewOperation = false;
-      await client.query('UPDATE pos_privado.sistema SET revision=revision+1 WHERE id=1');
-      const identity = (await client.query('SELECT database_id FROM pos_privado.sistema WHERE id=1')).rows[0].database_id;
-      await client.query('INSERT INTO pos_privado.solicitudes(clave,tipo,huella,resultado) VALUES($1,$2,$3,$4)', [key, type, fingerprint, { result, databaseId: identity, ...(metadata && { metadata }) }]);
+      const updated = (await client.query('UPDATE pos_privado.sistema SET revision=revision+1 WHERE id=1 RETURNING database_id, revision')).rows[0];
+      newRevision = number(updated.revision);
+      await client.query('INSERT INTO pos_privado.solicitudes(clave,tipo,huella,resultado) VALUES($1,$2,$3,$4)', [key, type, fingerprint, { result, databaseId: updated.database_id, ...(metadata && { metadata }) }]);
     }
-    let response = { ...await (context.versionOnly ? snapshotVersion(client, databaseLabel) : snapshot(client, databaseLabel)), result };
+    let payload;
+    if (context.versionOnly) {
+      payload = await snapshotVersion(client, databaseLabel);
+    } else if (!previous && !context.represent && Number.isSafeInteger(context.deltaBaseRevision) && newRevision === context.deltaBaseRevision + 1) {
+      payload = (await buildDelta(client, method, path, body, result, databaseLabel, context.deltaBaseRevision)) ?? await snapshot(client, databaseLabel);
+    } else {
+      payload = await snapshot(client, databaseLabel);
+    }
+    let response = { ...payload, result };
     if (context.represent) response = await context.represent(client, response, metadata, Boolean(previous));
     await client.query('COMMIT');
     return { ...response, confirmation: { operationId: key, databaseId: body.databaseId, method, path, replayed: Boolean(previous) } };

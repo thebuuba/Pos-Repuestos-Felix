@@ -141,22 +141,25 @@ function ServiceNotice({ runtime }) {
   };
   if (!runtime || (!runtime.pending && !runtime.error && !runtime.archiveCount && !review && !historyOpen && runtime.connection !== 'unavailable')) return null;
   const changed = runtime.pending && runtime.databaseId && runtime.pending.databaseId !== runtime.databaseId;
+  // A write actively being sent in this tab is not an interrupted pending request.
+  const activeSending = Boolean(runtime.pending && !changed && runtime.inFlightOperationId === runtime.pending.id);
   // The sale already shows its exact retry here. Other routes retain the global
   // recovery action, and a changed database always keeps its explicit warning.
   const saleHandlesFailure = !changed && pathname === '/ventas' && draft?.failure?.retry &&
     (!runtime.pending || draft.failure.operationId === runtime.pending.id);
-  if (saleHandlesFailure && !runtime.archiveCount && !historyOpen) return null;
+  const suppressPending = activeSending || saleHandlesFailure;
+  if (suppressPending && !runtime.error && !runtime.archiveCount && !review && !historyOpen && runtime.connection !== 'unavailable') return null;
   const action = runtime.pending && !changed ? runtime.retryPending : runtime.reload;
   return (
     <div role="status" className="mb-4 space-y-2 rounded-xl border border-border bg-card p-4 text-sm">
-      {runtime.pending && !saleHandlesFailure && <p className="font-semibold">{changed ? 'La solicitud pendiente pertenece a otra base. Requiere revisión.' : runtime.recovering ? 'Comprobando la solicitud pendiente…' : 'Solicitud pendiente de confirmación'}</p>}
+      {runtime.pending && !suppressPending && <p className="font-semibold">{changed ? 'La solicitud pendiente pertenece a otra base. Requiere revisión.' : runtime.recovering ? 'Comprobando la solicitud pendiente…' : 'Solicitud pendiente de confirmación'}</p>}
       {runtime.error && !saleHandlesFailure && <p>{runtime.error}</p>}
       {runtime.connection === 'unavailable' && !saleHandlesFailure && <p>Sin conexión al servicio. {runtime.mode === 'online' && 'La web y la PWA requieren conexión para confirmar operaciones.'}</p>}
       {runtime.connection === 'unavailable' && runtime.lastSync && !saleHandlesFailure && <p>Datos desactualizados. Última sincronización el {syncTime.format(new Date(runtime.lastSync))}.</p>}
       <div className="flex flex-wrap gap-2">
         {changed ? <Button ref={reviewTrigger} style={{ minHeight: 44 }} variant="outline" disabled={runtime.busy || runtime.recovering}
           onClick={() => setReview({ packet: runtime.pending, databaseId: runtime.databaseId })}>Revisar solicitud</Button> :
-          !saleHandlesFailure && (runtime.pending || runtime.error || runtime.connection === 'unavailable') && <Button className={runtime.pending ? undefined : 'desktop-data-refresh'} variant="outline" disabled={runtime.busy || runtime.recovering} onClick={() => action().catch(() => {})}>
+          !suppressPending && (runtime.pending || runtime.error || runtime.connection === 'unavailable') && <Button className={runtime.pending ? undefined : 'desktop-data-refresh'} variant="outline" disabled={runtime.busy || runtime.recovering} onClick={() => action().catch(() => {})}>
             {runtime.pending ? 'Reintentar solicitud' : 'Actualizar datos'}
           </Button>}
         {!!runtime.archiveCount && <Button ref={historyTrigger} style={{ minHeight: 44 }} variant="outline" onClick={() => setHistoryOpen(true)}>Solicitudes archivadas ({runtime.archiveCount})</Button>}

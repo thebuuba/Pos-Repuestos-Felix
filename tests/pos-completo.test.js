@@ -368,11 +368,64 @@ test('roles en servidor HTTP: cajero solo opera mostrador y no ve costos ni ruta
     assert.equal(res.status, 403, `${method} ${path} debe devolver 403 para cajero`);
   }
 
-  // Operaciones permitidas para cajero: abrir caja, crear cliente, vender
+  // Operaciones permitidas para cajero: abrir caja, crear cliente, vender con respuesta delta redactada
   const openCash = await call('/api/caja/abrir', { method: 'POST', body: { databaseId: snap.databaseId, monto: '500' }, cookie });
   assert.equal(openCash.status, 200);
   const newCustomer = await call('/api/clientes', { method: 'POST', body: { databaseId: snap.databaseId, nombre: 'Cliente Cajero', rnc: '', tel: '' }, cookie });
   assert.equal(newCustomer.status, 200);
+
+  const beforeDelta = await (await call('/api/state', { cookie })).json();
+  const prodDelta = beforeDelta.state.productos[0];
+  const cashCustDelta = beforeDelta.state.clientes.find(c => c.esContado);
+  const deltaSaleRes = await handleRequest(new Request(origin + '/api/ventas', {
+    method: 'POST',
+    headers: {
+      Origin: origin,
+      'X-Forwarded-Proto': 'https',
+      'Content-Type': 'application/json',
+      Cookie: cookie,
+      'Idempotency-Key': randomUUID(),
+      'X-Felix-Delta': String(beforeDelta.revision),
+    },
+    body: JSON.stringify({
+      databaseId: snap.databaseId,
+      cajaId: beforeDelta.state.caja.session.id,
+      clienteId: cashCustDelta.id,
+      versionConfiguracion: beforeDelta.state.configuracionVersion,
+      condicion: 'Contado',
+      tipoComprobante: 'B02',
+      metodoPago: 'efectivo',
+      items: [{ productoId: prodDelta.id, cantidad: '1', nivelPrecio: 'precio1', versionProducto: prodDelta.version }],
+    }),
+  }), { hosting, pool, readAsset: () => 'asset' });
+  assert.equal(deltaSaleRes.status, 200);
+  const deltaBody = await deltaSaleRes.json();
+  assert.equal(deltaBody.delta, true);
+  assert.equal(deltaBody.baseRevision, beforeDelta.revision);
+  assert.equal(deltaBody.revision, beforeDelta.revision + 1);
+  assert.equal(deltaBody.changes.productosUpsert.length, 1);
+  assert.equal(deltaBody.changes.productosUpsert[0].costo, 0, 'Delta debe redactar costo para cajero');
+  assert.equal(deltaBody.changes.productosUpsert[0].stock, 9);
+  assert.equal(deltaBody.changes.facturasUpsert.length, 1);
+  assert.equal(deltaBody.state, undefined);
+
+  // Si X-Felix-Delta viene desactualizado (otro equipo escribió antes), el servidor devuelve snapshot completo
+  const staleDeltaRes = await handleRequest(new Request(origin + '/api/clientes', {
+    method: 'POST',
+    headers: {
+      Origin: origin,
+      'X-Forwarded-Proto': 'https',
+      'Content-Type': 'application/json',
+      Cookie: cookie,
+      'Idempotency-Key': randomUUID(),
+      'X-Felix-Delta': '0',
+    },
+    body: JSON.stringify({ databaseId: snap.databaseId, nombre: 'Cliente Fallback', rnc: '', tel: '' }),
+  }), { hosting, pool, readAsset: () => 'asset' });
+  assert.equal(staleDeltaRes.status, 200);
+  const staleBody = await staleDeltaRes.json();
+  assert.equal(staleBody.delta, undefined);
+  assert.ok(Array.isArray(staleBody.state.productos));
 });
 
 test('Windows offline SQLite: códigos alternativos, descuento, anulación y abono sincronizan sin NCF offline ni duplicados', { timeout: 120000 }, async t => {
@@ -546,8 +599,26 @@ test('E2E navegador: Ctrl K, notificaciones, códigos alternativos, espera, coti
     await customDiscount.fill('20');
     await page.getByText('400').first().waitFor();
     await page.getByRole('button', { name: 'Exacto', exact: true }).click();
+    // Demorar brevemente POST /api/ventas para verificar respuesta delta y que NO aparezca el falso aviso "Solicitud pendiente"
+    let sawPendingBannerDuringSend = false;
+    let deltaResponseSeen = false;
+    await page.route('**/api/ventas', async (route) => {
+      if (route.request().method() === 'POST') {
+        await new Promise((r) => setTimeout(r, 350));
+        sawPendingBannerDuringSend = (await page.getByText(/Solicitud pendiente de confirmación|Hay una solicitud pendiente/).count()) > 0;
+        const response = await route.fetch();
+        const body = await response.json();
+        deltaResponseSeen = body?.delta === true;
+        await route.fulfill({ response, json: body });
+        return;
+      }
+      await route.continue();
+    });
     await page.getByRole('button', { name: /Registrar venta/ }).click();
     await page.getByRole('dialog').getByText(/Registro /).first().waitFor();
+    await page.unroute('**/api/ventas');
+    assert.equal(sawPendingBannerDuringSend, false, 'No debe mostrarse el aviso de pendiente durante un envío normal');
+    assert.equal(deltaResponseSeen, true, 'POST /api/ventas debe confirmar con respuesta compacta delta');
     await page.keyboard.press('Escape');
 
     // 5. Venta a crédito y cobro en Cuentas x cobrar

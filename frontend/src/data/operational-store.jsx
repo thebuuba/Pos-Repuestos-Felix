@@ -189,7 +189,12 @@ export function OperationalStoreProvider({ client, children }) {
   const [account, setAccount] = useState({ id: null, username: '', role: 'dueno' });
   useEffect(() => {
     const reload = () => { client.reload({ background: !!client.getState().snapshot, recover: true, resumeRecovery: true }).catch(() => {}); };
-    const refreshVisible = event => { if (!document.hidden) client.reload({ background: true, recover: true, resumeRecovery: !!event }).catch(() => {}); };
+    const refreshVisible = event => {
+      if (document.hidden) return;
+      const current = client.getState();
+      if (!event && (current.busy || current.inFlightOperationId)) return;
+      client.reload({ background: true, recover: true, resumeRecovery: !!event }).catch(() => {});
+    };
     reload();
     const timer = window.setInterval(refreshVisible, 5_000);
     window.addEventListener('focus', refreshVisible);

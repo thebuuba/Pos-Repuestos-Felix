@@ -81,9 +81,9 @@ export function SaleDraftProvider({ children }) {
   let disabledReason;
   if (runtime.connection !== "connected")
     disabledReason = "Conecta con el servicio para registrar la venta.";
-  else if (runtime.pending)
+  else if (runtime.pending && runtime.inFlightOperationId !== runtime.pending.id)
     disabledReason = "Hay una solicitud pendiente de confirmación.";
-  else if (runtime.busy) disabledReason = "Espera a que termine la operación en curso.";
+  else if (runtime.busy && !sending) disabledReason = "Espera a que termine la operación en curso.";
   else if (!cashSession?.open) disabledReason = "La caja está cerrada. Ábrela para facturar.";
   else if (!customer) disabledReason = "Selecciona un cliente activo.";
   else if (comprobante !== "B02" && !customer.rnc)

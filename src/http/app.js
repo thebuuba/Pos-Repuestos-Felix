@@ -180,7 +180,10 @@ async function route(request, { pool, hosting, databaseLabel = 'PostgreSQL', rea
         const result = await writeSyncOperation(pool, body, databaseLabel, actor, { receiptOnly: request.headers.get('prefer') === 'return=receipt' });
         return json(200, result, { ETag: stateTag(result.snapshot) });
       }
-      const result = await writeOperation(pool, request.method, pathname, body, request.headers.get('idempotency-key'), databaseLabel, actor);
+      const rawDelta = request.headers.get('x-felix-delta');
+      const deltaBaseRevision = rawDelta !== null && /^\d+$/.test(rawDelta) && Number.isSafeInteger(Number(rawDelta)) ? Number(rawDelta) : null;
+      const result = await writeOperation(pool, request.method, pathname, body, request.headers.get('idempotency-key'), databaseLabel, actor,
+        deltaBaseRevision !== null ? { deltaBaseRevision } : {});
       return json(200, redactSnapshotForRole(result, role), { ETag: stateTag({ ...result, role }) });
     }
     const immutableAsset = /^\/assets\/pwa\/(app-[a-f0-9]{16}\.js|styles-[a-f0-9]{16}\.css|chunk-[A-Z0-9]{8}\.js)$/.exec(pathname);

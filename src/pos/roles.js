@@ -29,7 +29,20 @@ export function allowedOperation(role, method, path) {
 }
 
 export function redactSnapshotForRole(snapshot, role) {
-  if (isOwner(role) || !snapshot?.state) return snapshot;
+  if (isOwner(role) || !snapshot) return snapshot;
+  if (snapshot.delta && snapshot.changes) {
+    return {
+      ...snapshot,
+      changes: {
+        ...snapshot.changes,
+        ...(snapshot.changes.productosUpsert
+          ? { productosUpsert: snapshot.changes.productosUpsert.map(p => ({ ...p, costo: 0, costoExacto: '0.0000' })) }
+          : {}),
+        ...(snapshot.changes.comprasUpsert ? { comprasUpsert: [] } : {}),
+      },
+    };
+  }
+  if (!snapshot.state) return snapshot;
   return {
     ...snapshot,
     state: {

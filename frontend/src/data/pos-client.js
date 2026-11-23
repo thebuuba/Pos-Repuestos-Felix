@@ -251,6 +251,111 @@ function checkSnapshot(snapshot) {
   return snapshot;
 }
 
+function upsertById(existing, incoming) {
+  if (!incoming.length) return existing;
+  const byId = new Map(existing.map(row => [row.id, row]));
+  for (const row of incoming) byId.set(row.id, row);
+  return [...byId.values()].sort((a, b) => a.id - b.id);
+}
+function deleteById(existing, ids) {
+  if (!ids.length) return existing;
+  const drop = new Set(ids);
+  return existing.filter(row => !drop.has(row.id));
+}
+function mergeDelta(current, body) {
+  const invalid = () => { throw new Error('El servicio devolvió datos de catálogo no válidos.'); };
+  if (!current?.state || body?.delta !== true || typeof body.databaseId !== 'string' || !uuid.test(body.databaseId) ||
+      body.databaseId !== current.databaseId || !Number.isSafeInteger(body.baseRevision) ||
+      body.baseRevision !== current.revision || body.revision !== current.revision + 1 ||
+      typeof body.databaseLabel !== 'string' || !body.changes || typeof body.changes !== 'object' || Array.isArray(body.changes)) {
+    invalid();
+  }
+  const c = body.changes;
+  const next = { ...current.state };
+  if (Object.hasOwn(c, 'caja')) {
+    if (!validCash(c.caja)) invalid();
+    next.caja = c.caja;
+  }
+  if (Object.hasOwn(c, 'catalogo')) next.catalogo = c.catalogo;
+  if (Object.hasOwn(c, 'configuracion')) {
+    next.configuracion = c.configuracion;
+    next.empresa = c.empresa;
+    next.itbisRate = c.itbisRate;
+    next.configuracionVersion = c.configuracionVersion;
+    const cfg = next.configuracion;
+    if (!complete(cfg, settingsRequiredFields) || !id(cfg.version) || typeof cfg.itbisPorcentaje !== 'number' ||
+        (Object.hasOwn(cfg, 'metaDiaria') && !nullable(money)(cfg.metaDiaria)) ||
+        next.empresa !== cfg.empresa || next.configuracionVersion !== cfg.version || !Number.isFinite(next.itbisRate) ||
+        Number((cfg.itbisPorcentaje / 100).toFixed(6)) !== next.itbisRate) invalid();
+  }
+  if (Object.hasOwn(c, 'secuenciasNcf')) {
+    if (!Array.isArray(c.secuenciasNcf)) invalid();
+    next.secuenciasNcf = c.secuenciasNcf;
+  }
+  if (Object.hasOwn(c, 'productosUpsert')) {
+    if (!Array.isArray(c.productosUpsert) || !c.productosUpsert.every(validProduct)) invalid();
+    const incomingIds = new Set(c.productosUpsert.map(p => p.id));
+    if (incomingIds.size !== c.productosUpsert.length) invalid();
+    const incomingCodes = new Set(c.productosUpsert.map(p => p.codigo));
+    if (incomingCodes.size !== c.productosUpsert.length) invalid();
+    if (next.productos.some(p => !incomingIds.has(p.id) && incomingCodes.has(p.codigo))) invalid();
+    next.productos = upsertById(next.productos, c.productosUpsert);
+  }
+  if (Object.hasOwn(c, 'productosDelete')) {
+    if (!Array.isArray(c.productosDelete) || !c.productosDelete.every(id)) invalid();
+    next.productos = deleteById(next.productos, c.productosDelete);
+  }
+  if (Object.hasOwn(c, 'formulasUpsert')) {
+    if (!records(c.formulasUpsert, row => id(row.version) && name(row.nombre) && validFormula(row) &&
+        ['factorCosto', 'recargo1', 'recargo2', 'recargo3'].every(key => typeof row[key] === 'number'))) invalid();
+    next.formulas = upsertById(next.formulas, c.formulasUpsert);
+  }
+  if (Object.hasOwn(c, 'formulasDelete')) {
+    if (!Array.isArray(c.formulasDelete) || !c.formulasDelete.every(id)) invalid();
+    next.formulas = deleteById(next.formulas, c.formulasDelete);
+  }
+  if (Object.hasOwn(c, 'clientesUpsert')) {
+    if (!records(c.clientesUpsert, row => id(row.version) && complete(row, customerFields) && nullable(money)(row.limiteCredito) &&
+        typeof row.esContado === 'boolean' && Number.isFinite(row.deuda) && /^-?\d+(?:\.\d{1,2})?$/.test(String(row.deuda)))) invalid();
+    next.clientes = upsertById(next.clientes, c.clientesUpsert);
+    if (next.clientes.filter(row => row.esContado).length > 1) invalid();
+  }
+  if (Object.hasOwn(c, 'clientesDelete')) {
+    if (!Array.isArray(c.clientesDelete) || !c.clientesDelete.every(id)) invalid();
+    next.clientes = deleteById(next.clientes, c.clientesDelete);
+  }
+  if (Object.hasOwn(c, 'suplidoresUpsert')) {
+    const formulaIds = new Set(next.formulas.map(row => row.id));
+    if (!records(c.suplidoresUpsert, row => id(row.version) && complete(row, supplierFields) &&
+        (row.formulaId === null || formulaIds.has(row.formulaId)))) invalid();
+    next.suplidores = upsertById(next.suplidores, c.suplidoresUpsert);
+  }
+  if (Object.hasOwn(c, 'suplidoresDelete')) {
+    if (!Array.isArray(c.suplidoresDelete) || !c.suplidoresDelete.every(id)) invalid();
+    next.suplidores = deleteById(next.suplidores, c.suplidoresDelete);
+  }
+  if (Object.hasOwn(c, 'facturasUpsert')) {
+    if (!records(c.facturasUpsert, row => validDocument(row, true))) invalid();
+    next.facturas = upsertById(next.facturas, c.facturasUpsert);
+  }
+  if (Object.hasOwn(c, 'comprasUpsert')) {
+    if (!records(c.comprasUpsert, row => validDocument(row, false))) invalid();
+    next.compras = upsertById(next.compras, c.comprasUpsert);
+  }
+  if (Object.hasOwn(c, 'abonosUpsert')) {
+    if (!Array.isArray(c.abonosUpsert)) invalid();
+    next.abonos = upsertById(next.abonos ?? [], c.abonosUpsert);
+  }
+  return {
+    databaseId: body.databaseId,
+    revision: body.revision,
+    databaseLabel: body.databaseLabel,
+    state: next,
+    result: body.result,
+    confirmation: body.confirmation,
+  };
+}
+
 async function serviceError(response) {
   const body = await response.json().catch(() => null);
   return typeof body?.error === 'string' && body.error.trim() ? body : null;
@@ -332,7 +437,7 @@ export function createPosClient() {
   // reload. The journal is shared; another tab's pending sale is not this draft.
   let saleOperationId = null;
   try { saleOperationId = sessionStorage.getItem('repuestos-felix-venta-pendiente'); } catch { /* Optional receipt ownership. */ }
-  let state = { snapshot: null, pending: null, archiveCount: 0, busy: false, recovering: false, recoveryIssue: null, resolution: null, saleOperationId, readErrorRetryable: false, connection: 'checking', error: null, lastSync: null, authenticationRequired: false };
+  let state = { snapshot: null, pending: null, inFlightOperationId: null, archiveCount: 0, busy: false, recovering: false, recoveryIssue: null, resolution: null, saleOperationId, readErrorRetryable: false, connection: 'checking', error: null, lastSync: null, authenticationRequired: false };
   const listeners = new Set();
   const retired = new Set();
   const changes = new BroadcastChannel('repuestos-felix-operaciones');
@@ -347,7 +452,7 @@ export function createPosClient() {
   // alive until the response body is read, not just until its headers arrive.
   function deadline() {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(new DOMException('Tiempo de espera agotado.', 'TimeoutError')), 20000);
+    const timer = setTimeout(() => controller.abort(new DOMException('Tiempo de espera agotado.', 'TimeoutError')), 30000);
     return { signal: controller.signal, close: () => clearTimeout(timer) };
   }
 
@@ -413,9 +518,9 @@ export function createPosClient() {
     else readPending().then(scheduleRecovery).catch(error => set({ error: error.message }));
   };
 
-  async function updatePending(update) {
+  async function updatePending(update, markInFlight = false) {
     const pending = await journalTransaction(update);
-    set({ pending });
+    set({ pending, ...(markInFlight && pending ? { inFlightOperationId: pending.id } : {}) });
     if (!disposed) changes.postMessage(null);
     return pending;
   }
@@ -559,10 +664,16 @@ export function createPosClient() {
       const timeout = deadline();
       try {
         checkGeneration(sending.databaseId);
-        set({ recoveryIssue: null });
+        const deltaRevision = state.snapshot?.databaseId === sending.databaseId && Number.isSafeInteger(state.snapshot.revision)
+          ? String(state.snapshot.revision) : null;
+        set({ ...(recovered ? {} : { inFlightOperationId: sending.id }), recoveryIssue: null });
         received = await fetch(sending.path, {
           method: sending.method, mode: 'same-origin', credentials: 'same-origin', redirect: 'error',
-          headers: { 'Content-Type': 'application/json', 'Idempotency-Key': sending.id },
+          headers: {
+            'Content-Type': 'application/json',
+            'Idempotency-Key': sending.id,
+            ...(deltaRevision !== null ? { 'X-Felix-Delta': deltaRevision } : {}),
+          },
           body: sending.body,
           signal: timeout.signal,
         });
@@ -583,7 +694,18 @@ export function createPosClient() {
           }
           throw new Error(body?.error || unconfirmed);
         }
-        const snapshot = checkSnapshot(await received.json());
+        const raw = await received.json();
+        let snapshot;
+        if (raw?.delta === true) {
+          if (state.snapshot?.databaseId === raw.databaseId && state.snapshot.revision === raw.baseRevision) {
+            snapshot = mergeDelta(state.snapshot, raw);
+          } else {
+            const fresh = await readSnapshot({ fresh: true, background: true });
+            snapshot = { ...fresh, result: raw.result, confirmation: raw.confirmation };
+          }
+        } else {
+          snapshot = checkSnapshot(raw);
+        }
         if (snapshot.databaseId !== sending.databaseId) throw new Error(changedDatabase);
         checkConfirmation(snapshot, sending, resource, expected, payload);
         checkGeneration(sending.databaseId);
@@ -610,7 +732,10 @@ export function createPosClient() {
           set({ recoveryIssue: { operationId: sending.id, message: cause.message } });
         }
         throw uncertainError(cause, sending, remember);
-      } finally { timeout.close(); }
+      } finally {
+        timeout.close();
+        if (state.inFlightOperationId === sending.id) set({ inFlightOperationId: null });
+      }
     });
   }
 
@@ -628,12 +753,16 @@ export function createPosClient() {
         // recovery may reuse the pending invoice's idempotency key.
         if (resource !== 'ventas' && current.method === method && current.path === path && current.databaseId === databaseId && current.body === body) return current;
         throw new Error('Resuelve la solicitud pendiente antes de guardar otra operación.');
-      });
+      }, true);
       if (resource === 'ventas') {
         set({ saleOperationId: packet.id });
         try { sessionStorage.setItem('repuestos-felix-venta-pendiente', packet.id); } catch { /* The journal remains durable. */ }
       }
-      return send(packet);
+      try {
+        return await send(packet);
+      } finally {
+        if (state.inFlightOperationId === packet.id) set({ inFlightOperationId: null });
+      }
     });
   }
 
