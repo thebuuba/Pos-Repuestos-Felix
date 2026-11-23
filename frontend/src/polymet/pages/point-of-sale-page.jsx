@@ -380,7 +380,14 @@ export function OperationalPointOfSalePage() {
     locked, disabledReason, resetSale, editQuantity, checkout } = useSaleDraft();
   const [heldOpen, setHeldOpen] = useState(false);
   const recoveryIssue = runtime.recoveryIssue?.operationId === failure?.operationId ? runtime.recoveryIssue : null;
-  const activeNcf = !window.__FELIX_DESKTOP__ && (settings.ncf || []).find(s => s.type === comprobante && s.active && s.current < s.end);
+  const todayIso = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santo_Domingo" }).format(new Date());
+  const configuredNcf = !window.__FELIX_DESKTOP__ && (settings.ncf || []).find(s => s.type === comprobante && s.active);
+  const activeNcf = configuredNcf && configuredNcf.current < configuredNcf.end && configuredNcf.expiresAt >= todayIso ? configuredNcf : null;
+  const ncfWarning = configuredNcf && !activeNcf
+    ? (configuredNcf.expiresAt < todayIso
+      ? `La secuencia NCF ${comprobante} venció el ${configuredNcf.expiresAt}. Actualízala en Configuración.`
+      : `La secuencia NCF ${comprobante} está agotada. Actualízala en Configuración.`)
+    : null;
   const nextNcfPreview = activeNcf ? `${activeNcf.prefix}${String(activeNcf.current + 1).padStart(8, "0")}` : null;
   const checkoutRef = useRef(null);
   checkoutRef.current = () => checkout();
@@ -532,7 +539,7 @@ export function OperationalPointOfSalePage() {
             ncf={nextNcfPreview}
             onSaveQuote={openQuote}
             onCancel={resetSale}
-            disabledReason={disabledReason}
+            disabledReason={disabledReason || ncfWarning}
             onCheckout={() => checkout()}
           />
         }

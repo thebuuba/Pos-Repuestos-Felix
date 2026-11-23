@@ -346,6 +346,10 @@ function mergeDelta(current, body) {
     if (!Array.isArray(c.abonosUpsert)) invalid();
     next.abonos = upsertById(next.abonos ?? [], c.abonosUpsert);
   }
+  if (Object.hasOwn(c, 'movimientosUpsert')) {
+    if (!Array.isArray(c.movimientosUpsert)) invalid();
+    next.movimientos = upsertById(next.movimientos ?? [], c.movimientosUpsert).slice(-100);
+  }
   return {
     databaseId: body.databaseId,
     revision: body.revision,
@@ -353,6 +357,8 @@ function mergeDelta(current, body) {
     state: next,
     result: body.result,
     confirmation: body.confirmation,
+    ...(typeof body.localReceipt === 'string' ? { localReceipt: body.localReceipt } : {}),
+    ...(body.desktop ? { desktop: body.desktop } : {}),
   };
 }
 
@@ -696,12 +702,20 @@ export function createPosClient() {
         }
         const raw = await received.json();
         let snapshot;
+        let responseTag = received.headers.get('ETag');
         if (raw?.delta === true) {
           if (state.snapshot?.databaseId === raw.databaseId && state.snapshot.revision === raw.baseRevision) {
             snapshot = mergeDelta(state.snapshot, raw);
           } else {
             const fresh = await readSnapshot({ fresh: true, background: true });
-            snapshot = { ...fresh, result: raw.result, confirmation: raw.confirmation };
+            snapshot = {
+              ...fresh,
+              result: raw.result,
+              confirmation: raw.confirmation,
+              ...(typeof raw.localReceipt === 'string' ? { localReceipt: raw.localReceipt } : {}),
+              ...(raw.desktop ? { desktop: raw.desktop } : {}),
+            };
+            responseTag = etag;
           }
         } else {
           snapshot = checkSnapshot(raw);
@@ -709,7 +723,7 @@ export function createPosClient() {
         if (snapshot.databaseId !== sending.databaseId) throw new Error(changedDatabase);
         checkConfirmation(snapshot, sending, resource, expected, payload);
         checkGeneration(sending.databaseId);
-        apply(snapshot, received.headers.get('ETag'), request);
+        apply(snapshot, responseTag, request);
         await updatePending(current => current?.id === sending.id ? null : current);
         awaiting.delete(sending.id);
         attempts.delete(sending.id);

@@ -83,14 +83,14 @@ function TopBar({ onBrandClick } = {}) {
     for (const p of products) {
       if (p.code.toLowerCase().includes(q) || (p.altCodes || []).some(c => c.toLowerCase().includes(q)) ||
           p.name.toLowerCase().includes(q) || (p.brand || "").toLowerCase().includes(q)) {
-        items.push({ kind: "Producto", icon: Box, title: p.name, subtitle: `${p.code} · Stock ${p.stock} · ${formatMoney(p.prices.p1)}`, to: "/inventario" });
+        items.push({ kind: "Producto", icon: Box, title: p.name, subtitle: `${p.code} · Stock ${p.stock} · ${formatMoney(p.prices.p1)}`, to: `/inventario?buscar=${encodeURIComponent(p.code)}` });
         if (items.length >= 5) break;
       }
     }
     let count = 0;
     for (const c of customers) {
       if (c.name.toLowerCase().includes(q) || (c.rnc || "").toLowerCase().includes(q) || (c.phone || "").toLowerCase().includes(q)) {
-        items.push({ kind: "Cliente", icon: Users, title: c.name, subtitle: c.rnc ? `RNC ${c.rnc}` : c.phone || "Cliente", to: "/clientes" });
+        items.push({ kind: "Cliente", icon: Users, title: c.name, subtitle: c.rnc ? `RNC ${c.rnc}` : c.phone || "Cliente", to: `/clientes?buscar=${encodeURIComponent(c.name)}` });
         if (++count >= 3) break;
       }
     }
@@ -98,7 +98,7 @@ function TopBar({ onBrandClick } = {}) {
       count = 0;
       for (const s of suppliers) {
         if (s.name.toLowerCase().includes(q) || (s.rnc || "").toLowerCase().includes(q) || (s.contact || "").toLowerCase().includes(q)) {
-          items.push({ kind: "Suplidor", icon: Truck, title: s.name, subtitle: s.contact || s.phone || "Suplidor", to: "/suplidores" });
+          items.push({ kind: "Suplidor", icon: Truck, title: s.name, subtitle: s.contact || s.phone || "Suplidor", to: `/suplidores?buscar=${encodeURIComponent(s.name)}` });
           if (++count >= 3) break;
         }
       }
@@ -106,7 +106,8 @@ function TopBar({ onBrandClick } = {}) {
     count = 0;
     for (const sale of sales) {
       if ((sale.number || "").toLowerCase().includes(q) || (sale.ncf || "").toLowerCase().includes(q) || (sale.customerName || "").toLowerCase().includes(q)) {
-        items.push({ kind: "Factura", icon: ReceiptText, title: sale.ncf || sale.number, subtitle: `${sale.customerName} · ${formatMoney(sale.total)}`, to: isOwner ? "/reportes" : "/ventas" });
+        const ref = sale.ncf || sale.number;
+        items.push({ kind: "Factura", icon: ReceiptText, title: ref, subtitle: `${sale.customerName} · ${formatMoney(sale.total)}`, to: isOwner ? `/reportes?buscar=${encodeURIComponent(ref)}` : "/ventas" });
         if (++count >= 3) break;
       }
     }
@@ -142,12 +143,13 @@ function TopBar({ onBrandClick } = {}) {
           description: `Quedan ${remaining} comprobantes disponibles.`, to: '/configuracion' });
       }
     }
-    if (runtime?.pending) {
+    const hasPending = Boolean(runtime?.pending && runtime.inFlightOperationId !== runtime.pending.id);
+    if (hasPending) {
       list.push({ id: 'pending', tone: 'primary', title: 'Solicitud pendiente de confirmación',
         description: 'Revisa el aviso en la parte superior para confirmar o archivar.', to: '/ventas' });
     }
     return list;
-  }, [products, settings?.ncf, runtime?.pending, runtime, cashSession?.open, now]);
+  }, [products, settings?.ncf, runtime?.pending, runtime?.inFlightOperationId, runtime, cashSession?.open, now]);
 
   const handleSync = () => {
     if (runtime) {

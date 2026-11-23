@@ -38,7 +38,16 @@ export function redactSnapshotForRole(snapshot, role) {
         ...(snapshot.changes.productosUpsert
           ? { productosUpsert: snapshot.changes.productosUpsert.map(p => ({ ...p, costo: 0, costoExacto: '0.0000' })) }
           : {}),
+        ...(snapshot.changes.suplidoresUpsert
+          ? { suplidoresUpsert: snapshot.changes.suplidoresUpsert.map(s => ({ ...s, deuda: 0 })) }
+          : {}),
         ...(snapshot.changes.comprasUpsert ? { comprasUpsert: [] } : {}),
+        ...(snapshot.changes.abonosUpsert
+          ? { abonosUpsert: snapshot.changes.abonosUpsert.filter(a => a.tipo !== 'pago') }
+          : {}),
+        ...(snapshot.changes.movimientosUpsert
+          ? { movimientosUpsert: snapshot.changes.movimientosUpsert.filter(m => m.tipo !== 'compra') }
+          : {}),
       },
     };
   }
@@ -48,7 +57,51 @@ export function redactSnapshotForRole(snapshot, role) {
     state: {
       ...snapshot.state,
       productos: snapshot.state.productos.map(p => ({ ...p, costo: 0, costoExacto: '0.0000' })),
+      suplidores: (snapshot.state.suplidores || []).map(s => ({ ...s, deuda: 0 })),
       compras: [],
+      abonos: (snapshot.state.abonos || []).filter(a => a.tipo !== 'pago'),
+      movimientos: (snapshot.state.movimientos || []).filter(m => m.tipo !== 'compra'),
+    },
+  };
+}
+
+export function redactBootstrapForRole(download, role) {
+  if (isOwner(role) || !download) return download;
+  const snapshot = redactSnapshotForRole(download.snapshot, role);
+  if (!download.backup?.tables) return { ...download, snapshot };
+  const src = download.backup.tables;
+  // Conservar únicamente pagos en efectivo ligados a turnos de caja para preservar la cuadratura de caja en restore().
+  const keptPayments = (src.abonos_cuentas || [])
+    .filter(a => a.tipo === 'cobro' || (a.tipo === 'pago' && a.metodo_pago === 'efectivo' && a.caja_id !== null))
+    .map(a => a.tipo === 'pago' ? { ...a, referencia: '', nota: '' } : a);
+  const keptPurchaseIds = new Set(keptPayments.filter(a => a.compra_id !== null).map(a => String(a.compra_id)));
+  const keptCompras = (src.compras || [])
+    .filter(c => keptPurchaseIds.has(String(c.id)))
+    .map(c => ({ ...c, suplidor_nombre: 'Restringido', numero: 'Restringido' }));
+  const keptDetails = (src.compra_detalles || [])
+    .filter(d => keptPurchaseIds.has(String(d.compra_id)))
+    .map(d => ({ ...d, nombre: 'Restringido' }));
+  const keptDetailIds = new Set(keptDetails.map(d => String(d.id)));
+  const movimientos = (src.movimientos_inventario || []).map(m => {
+    if (m.tipo === 'compra' && !keptDetailIds.has(String(m.compra_detalle_id))) {
+      return { ...m, tipo: 'ajuste', compra_detalle_id: null, motivo: '' };
+    }
+    return m;
+  });
+  return {
+    ...download,
+    snapshot,
+    backup: {
+      ...download.backup,
+      tables: {
+        ...src,
+        productos: (src.productos || []).map(p => ({ ...p, costo: '0.0000' })),
+        compras: keptCompras,
+        compra_detalles: keptDetails,
+        abonos_cuentas: keptPayments,
+        movimientos_inventario: movimientos,
+        secuencias_ncf: [],
+      },
     },
   };
 }

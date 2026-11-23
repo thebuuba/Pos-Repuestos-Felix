@@ -44,7 +44,13 @@ function catalogChanged(line, product) {
 }
 function defaultDueDate(days) {
   const n = Number.isFinite(Number(days)) && Number(days) > 0 ? Math.trunc(Number(days)) : 30;
-  const d = new Date();
+  const todayIso = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Santo_Domingo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const d = new Date(todayIso + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 }
@@ -75,6 +81,11 @@ function PurchaseEntryForm({
   const supplier = suppliers.find(s => String(s.id) === supplierId);
   const formula = formulas.find(f => String(f.id) === formulaId);
   const findProduct = code => products.find(p => runtime ? p.code === code : p.code.toLowerCase() === code.trim().toLowerCase());
+  const altCodeOwner = useMemo(() => {
+    const q = entry.code.trim().toLowerCase();
+    if (!q) return null;
+    return products.find(p => p.code !== entry.code && (p.altCodes || []).some(c => c.toLowerCase() === q)) ?? null;
+  }, [entry.code, products]);
   const match = findProduct(entry.code);
   const entryChanged = runtime && entry.code && catalogChanged(entry, match);
   const suggestions = useMemo(() => {
@@ -96,10 +107,12 @@ function PurchaseEntryForm({
     }
   };
   const entryResult = entry.cost === "" ? {} : evaluate(entry, match?.pricesExact ?? match?.prices);
-  const entryError = !runtime && entryResult.prices && Number(entry.cost) === 0
-    ? "Indica un costo unitario mayor que cero." : entryResult.error;
+  const entryError = altCodeOwner
+    ? `Este código es alternativo de «${altCodeOwner.name}» (${altCodeOwner.code}). Usa el código principal.`
+    : !runtime && entryResult.prices && Number(entry.cost) === 0
+      ? "Indica un costo unitario mayor que cero." : entryResult.error;
   const entryPrices = !entryError && entryResult.prices;
-  const canAddLine = !locked && !entryChanged && !entryError && entryResult.units && entry.code.trim() && entry.name.trim() && lines.length < 1000;
+  const canAddLine = !locked && !entryChanged && !altCodeOwner && !entryError && entryResult.units && entry.code.trim() && entry.name.trim() && lines.length < 1000;
   const productsByCode = useMemo(() => new Map(products.map(p => [p.code, p])), [products]);
   const projectedStock = new Map();
   const pricedLines = lines.map(line => {

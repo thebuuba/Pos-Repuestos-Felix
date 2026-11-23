@@ -31,10 +31,12 @@ export const salesTotal = rows => money(rows.reduce((sum, row) => sum + cents(ro
 export const sumAmounts = amounts => money(amounts.reduce((sum, amount) => sum + cents(amount), 0n));
 
 export function paymentGroups(rows, byCondition) {
-  const groups = new Map((byCondition ? ["contado", "credito"] : ["efectivo", "tarjeta", "transferencia", "credito"])
+  const hasMethods = rows.some(row => ["efectivo", "tarjeta", "transferencia", "credito"].includes(row.method));
+  const useCondition = byCondition && !hasMethods;
+  const groups = new Map((useCondition ? ["contado", "credito"] : ["efectivo", "tarjeta", "transferencia", "credito"])
     .map(key => [key, { key, label: methods[key], cents: 0n, count: 0 }]));
   for (const row of rows) {
-    const key = (byCondition ? row.condition : row.method ?? row.condition) ?? "desconocido";
+    const key = (useCondition ? row.condition : row.method ?? row.condition) ?? "desconocido";
     const group = groups.get(key) ?? { key, label: methods[key] ?? methods.desconocido, cents: 0n, count: 0 };
     group.count++;
     group.cents += cents(row.total);
@@ -91,11 +93,19 @@ export function reportData(sales, products, period, end, operational) {
     group.base += base;
     group.itbis += itbis;
     fiscalGroups.set(type, group);
-    for (const line of sale.lines) {
+    const rawLineBases = sale.lines.map(line => cents(line.base ?? line.subtotal));
+    const rawLinesTotal = rawLineBases.reduce((sum, val) => sum + val, 0n);
+    const hasDiscount = cents(sale.discount ?? 0) > 0n && rawLinesTotal > 0n && rawLinesTotal !== base;
+    let allocated = 0n;
+    for (let idx = 0; idx < sale.lines.length; idx++) {
+      const line = sale.lines[idx];
       const product = catalog.get(line.productId);
       const row = articles.get(line.productId) ?? { id: line.productId, name: line.name, code: line.code, qty: 0n, revenue: 0n, cost: 0n };
       row.qty += cents(line.quantity);
-      const revenue = cents(line.base ?? line.subtotal);
+      const revenue = hasDiscount
+        ? (idx === sale.lines.length - 1 ? base - allocated : (base * rawLineBases[idx] + rawLinesTotal / 2n) / rawLinesTotal)
+        : rawLineBases[idx];
+      allocated += revenue;
       row.revenue += revenue;
       if (!operational) {
         const lineCost = cents(((product?.cost ?? 0) * line.quantity).toFixed(2));

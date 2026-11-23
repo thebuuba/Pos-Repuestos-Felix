@@ -278,7 +278,17 @@ export async function writeSyncOperation(pool, envelope, databaseLabel, actor, {
         ORDER BY (resultado->'metadata'->>'sequence')::bigint DESC LIMIT 1`, [deviceId, actorId, body.databaseId])).rows[0]?.metadata;
       if (sequence !== (previous ? previous.sequence + 1 : 1)) fail('La secuencia del equipo no coincide. Sincroniza primero la operación pendiente anterior.', 409);
       if (previous && occurredAt < previous.occurredAt) fail('La fecha del equipo retrocedió. La operación local se conserva para revisar.', 409);
-      if (isCashSyncOperation(path, body)) await verifyCashHead(client, expected.cashHead, occurredAt, path === '/api/ventas' ? body : null);
+      if (isCashSyncOperation(path, body)) {
+        const voidMatch = path.match(/^\/api\/ventas\/(\d+)\/anular$/);
+        if (voidMatch) {
+          const targetSale = (await client.query('SELECT metodo_pago,caja_id FROM ventas WHERE id=$1', [Number(voidMatch[1])])).rows[0];
+          if (targetSale?.metodo_pago === 'efectivo' && targetSale.caja_id !== null) {
+            await verifyCashHead(client, expected.cashHead, occurredAt, { cajaId: Number(targetSale.caja_id) });
+          }
+        } else {
+          await verifyCashHead(client, expected.cashHead, occurredAt, path === '/api/ventas' ? body : null);
+        }
+      }
       if (path === '/api/ventas') {
         const versions = new Map((await client.query('SELECT id,version FROM productos WHERE id=ANY($1::bigint[]) ORDER BY id FOR UPDATE',
           [body.items.map(line => line.productoId)])).rows.map(row => [Number(row.id), Number(row.version)]));

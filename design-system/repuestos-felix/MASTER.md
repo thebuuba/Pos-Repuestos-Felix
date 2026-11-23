@@ -92,4 +92,6 @@ La corrección de sincronización permite revisar una solicitud que pertenece a 
 
 ## Criterio de aceptación
 
+Por petición del usuario, los montos rápidos del cobro en efectivo muestran «Exacto» y los billetes de RD$50, RD$100, RD$200, RD$500, RD$1,000 y RD$2,000. Cada botón establece el monto recibido; «Exacto» usa el total de la venta. Se conservan todos los billetes aunque uno coincida con el total, con el estilo compartido y ajuste en varias filas según el ancho.
+
 Comparar con el mismo viewport, fuente cargada, tema, fecha y datos. Inspeccionar capturas y geometría, navegación por teclado, foco de modales y controles táctiles. Revisar todos los módulos; una sola captura del Panel no valida el sistema completo. La interfaz se comparte entre plataformas; SQLite, PostgreSQL y sincronización se validan aparte.

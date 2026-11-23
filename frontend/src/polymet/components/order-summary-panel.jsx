@@ -64,16 +64,7 @@ function OrderSummaryPanel({
   const receivedNum = Number(received) || 0;
   const change = receivedNum - totals.total;
   const insufficient = isCash && !empty && receivedNum < totals.total;
-  const quickAmounts = Array.from(
-    new Set([
-      totals.total,
-      Math.ceil(totals.total / 500) * 500,
-      Math.ceil(totals.total / 1000) * 1000,
-      Math.ceil(totals.total / 1000) * 1000 + 1000,
-    ]),
-  )
-    .filter((v) => v > 0)
-    .slice(0, 4);
+  const quickAmounts = [totals.total, 50, 100, 200, 500, 1000, 2000];
   const blocked = empty || insufficient || Boolean(disabledReason);
   return (
     <section ref={summaryRef} data-payment-open={paymentOpen} className="sale-summary flex flex-col overflow-hidden rounded-2xl border border-border bg-card">
@@ -311,14 +302,14 @@ function OrderSummaryPanel({
               </div>
               {!empty && (
                 <div className="sale-quick-amounts flex flex-wrap gap-1.5">
-                  {quickAmounts.map((a) => (
+                  {quickAmounts.map((a, index) => (
                     <button
                       type="button"
                       onClick={() => onReceivedChange(String(a))}
                       className="h-7 rounded-lg border border-border px-2.5 text-xs font-medium tabular-nums text-muted-foreground hover:border-foreground/30 hover:text-foreground"
-                      key={a}
+                      key={index === 0 ? "exacto" : a}
                     >
-                      {a === totals.total
+                      {index === 0
                         ? "Exacto"
                         : formatMoney(a)}
                     </button>

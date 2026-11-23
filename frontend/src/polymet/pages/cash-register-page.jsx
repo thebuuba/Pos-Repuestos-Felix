@@ -73,7 +73,8 @@ function CashRegisterPage() {
   const [failure, setFailure] = useState(null);
   const inFlight = useRef(false);
   const locked = !!sending || !!failure?.retry;
-  const unavailable = !!runtime && (runtime.connection !== "connected" || !!runtime.pending || runtime.busy);
+  const hasPending = Boolean(runtime?.pending && runtime.inFlightOperationId !== runtime.pending.id);
+  const unavailable = !!runtime && (runtime.connection !== "connected" || hasPending || (runtime.busy && !sending));
   const disabled = locked || unavailable;
   const validOpening = /^\d+(?:\.\d{1,2})?$/.test(opening) && Number.isFinite(Number(opening));
   const sessionMoves = cashMovements.filter(
@@ -155,7 +156,7 @@ function CashRegisterPage() {
         }
       />
       {runtime && unavailable && !locked && <p role="status" className="rounded-xl border border-border bg-card p-4 text-sm">
-        {runtime.pending ? "Hay una operación pendiente de confirmación. Resuélvela antes de continuar."
+        {hasPending ? "Hay una operación pendiente de confirmación. Resuélvela antes de continuar."
           : runtime.busy ? "Espera a que termine la operación en curso." : "Conecta con el servicio para registrar operaciones de caja."}
       </p>}
       {!countOpen && !moveOpen && (sending || failure) && <div role={failure ? "alert" : "status"} className="space-y-2 rounded-xl border border-border bg-card p-4 text-sm">

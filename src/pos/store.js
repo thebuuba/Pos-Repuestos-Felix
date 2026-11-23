@@ -376,7 +376,20 @@ async function fetchPurchasesSlice(client, ids) {
   return list.map(c => presentPurchase(c, c.items));
 }
 
-async function buildDelta(client, method, path, body, result, databaseLabel, baseRevision) {
+async function fetchMovementsSince(client, afterId) {
+  const list = (await client.query(`
+    SELECT COALESCE(json_agg(json_build_object(
+      'id', m.id, 'producto_id', m.producto_id, 'productoId', m.producto_id,
+      'cantidad', m.cantidad::double precision, 'existencia_posterior', m.existencia_posterior::double precision,
+      'tipo', m.tipo, 'venta_detalle_id', m.venta_detalle_id, 'compra_detalle_id', m.compra_detalle_id,
+      'motivo', m.motivo, 'creado_en', m.creado_en
+    ) ORDER BY m.id), '[]'::json) AS rows
+    FROM public.movimientos_inventario m WHERE m.id > $1
+  `, [afterId])).rows[0].rows;
+  return list.map(m => ({ ...m, creado_en: iso(m.creado_en) }));
+}
+
+async function buildDelta(client, method, path, body, result, databaseLabel, baseRevision, priorMovementId = null) {
   const version = await snapshotVersion(client, databaseLabel);
   const changes = {};
   if (method === 'POST' && path === '/api/ventas') {
@@ -386,6 +399,7 @@ async function buildDelta(client, method, path, body, result, databaseLabel, bas
     changes.clientesUpsert = await fetchCustomersSlice(client, [Number(body.clienteId)]);
     changes.facturasUpsert = await fetchSalesSlice(client, [result.id]);
     changes.secuenciasNcf = presentNcf((await client.query('SELECT id,tipo,prefijo,inicio,fin,actual,vencimiento::text AS vencimiento,activa,version FROM public.secuencias_ncf ORDER BY id')).rows);
+    if (priorMovementId !== null) changes.movimientosUpsert = await fetchMovementsSince(client, priorMovementId);
   } else if (method === 'POST' && /^\/api\/ventas\/\d+\/anular$/.test(path)) {
     const [saleRow] = await fetchSalesSlice(client, [result.id]);
     const productIds = [...new Set((saleRow?.items ?? []).map(i => Number(i.productoId)))];
@@ -395,6 +409,7 @@ async function buildDelta(client, method, path, body, result, databaseLabel, bas
       changes.clientesUpsert = await fetchCustomersSlice(client, [saleRow.clienteId]);
       changes.facturasUpsert = [saleRow];
     }
+    if (priorMovementId !== null) changes.movimientosUpsert = await fetchMovementsSince(client, priorMovementId);
   } else if (method === 'POST' && ['/api/caja/abrir', '/api/caja/cerrar', '/api/caja/movimiento'].includes(path)) {
     changes.caja = await fetchCashSlice(client);
   } else if (method === 'POST' && path === '/api/cuentas/cobros') {
@@ -422,10 +437,12 @@ async function buildDelta(client, method, path, body, result, databaseLabel, bas
     changes.suplidoresUpsert = await fetchSuppliersSlice(client, [Number(body.suplidorId)]);
     changes.productosUpsert = await fetchProductsSlice(client, productIds);
     changes.catalogo = (await client.query('SELECT pos_privado.netpos_opciones() AS opciones')).rows[0].opciones;
+    if (priorMovementId !== null) changes.movimientosUpsert = await fetchMovementsSince(client, priorMovementId);
   } else if (/^\/api\/productos(?:\/\d+)?$/.test(path)) {
     if (method === 'DELETE') changes.productosDelete = [result.id];
     else changes.productosUpsert = await fetchProductsSlice(client, [result.id]);
     changes.catalogo = (await client.query('SELECT pos_privado.netpos_opciones() AS opciones')).rows[0].opciones;
+    if (priorMovementId !== null && method !== 'DELETE') changes.movimientosUpsert = await fetchMovementsSince(client, priorMovementId);
   } else if (/^\/api\/clientes(?:\/\d+)?$/.test(path)) {
     if (method === 'DELETE') changes.clientesDelete = [result.id];
     else changes.clientesUpsert = await fetchCustomersSlice(client, [result.id]);
@@ -665,7 +682,10 @@ async function purchase(client, body, occurredAt) {
       expected, quantity, amounts: prices(item, cost), total: lineCents(cost, quantity, 10000n) };
   });
   const codes = [...new Set(lines.map(line => line.code))].sort();
-  for (const code of codes) await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', ['producto:' + code.toLowerCase()]);
+  const lowerCodes = [...new Set(codes.map(code => code.toLowerCase()))].sort();
+  for (const code of lowerCodes) await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', ['producto:' + code]);
+  const altClash = (await client.query('SELECT codigo FROM productos_codigos WHERE lower(codigo)=ANY($1::text[]) LIMIT 1', [lowerCodes])).rows[0];
+  if (altClash) fail(`El código «${altClash.codigo}» ya está asignado como código alternativo de otro artículo.`, 409);
   // Lock existing products by id (same order as sales and catalog edits).
   const products = (await client.query('SELECT id,version,activo,codigo,stock FROM productos WHERE codigo=ANY($1::text[]) ORDER BY id FOR UPDATE', [codes])).rows;
   const byCode = new Map(products.map(product => [product.codigo, product]));
@@ -775,7 +795,7 @@ export async function writeOperation(pool, method, path, body, key, databaseLabe
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', ['solicitud:' + key]);
     const system = (await client.query('SELECT database_id FROM pos_privado.sistema WHERE id=1')).rows[0];
     const previous = (await client.query('SELECT tipo,huella,resultado FROM pos_privado.solicitudes WHERE clave=$1', [key])).rows[0];
-    let result, metadata, newRevision = null;
+    let result, metadata, newRevision = null, priorMovementId = null;
     if (previous) {
       if (previous.tipo !== type || previous.huella !== fingerprint) fail('Esta clave ya se usó para otra operación.', 409);
       // Ordinary writes hold this row through COMMIT. A replay must likewise
@@ -786,6 +806,10 @@ export async function writeOperation(pool, method, path, body, key, databaseLabe
       metadata = previous.resultado.metadata;
     } else {
       if (body.databaseId !== system.database_id) fail('La base cambió. Actualiza los datos antes de guardar.', 409);
+      if (Number.isSafeInteger(context.deltaBaseRevision) && !context.versionOnly && !context.represent &&
+          (path === '/api/ventas' || path === '/api/compras' || /^\/api\/ventas\/\d+\/anular$/.test(path) || /^\/api\/productos(?:\/\d+)?$/.test(path))) {
+        priorMovementId = Number((await client.query('SELECT COALESCE(max(id),0) AS id FROM public.movimientos_inventario')).rows[0].id);
+      }
       // Only this call can reject a new operation after the guarded key miss.
       executingNewOperation = true;
       await context.beforeExecute?.(client);
@@ -800,7 +824,7 @@ export async function writeOperation(pool, method, path, body, key, databaseLabe
     if (context.versionOnly) {
       payload = await snapshotVersion(client, databaseLabel);
     } else if (!previous && !context.represent && Number.isSafeInteger(context.deltaBaseRevision) && newRevision === context.deltaBaseRevision + 1) {
-      payload = (await buildDelta(client, method, path, body, result, databaseLabel, context.deltaBaseRevision)) ?? await snapshot(client, databaseLabel);
+      payload = (await buildDelta(client, method, path, body, result, databaseLabel, context.deltaBaseRevision, priorMovementId)) ?? await snapshot(client, databaseLabel);
     } else {
       payload = await snapshot(client, databaseLabel);
     }

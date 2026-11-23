@@ -189,8 +189,7 @@ function AccountsView({
             <SelectContent2>
               <SelectItem2 value="all">
                 {"Todos los "}
-                {partyLabel.toLowerCase()}
-                {"s"}
+                {partyLabel.toLowerCase() === "suplidor" ? "suplidores" : `${partyLabel.toLowerCase()}s`}
               </SelectItem2>
               {parties.map((p) => (
                 <SelectItem2 value={String(p.id)} key={p.id}>
@@ -269,9 +268,11 @@ function AccountsView({
                                 BUCKET_STYLE[b].dot,
                               )}
                             />
-                            {days <= 0
-                              ? `Vence en ${Math.abs(days)} días`
-                              : `${days} días vencida`}
+                            {days === 0
+                              ? "Vence hoy"
+                              : days < 0
+                                ? `Vence en ${Math.abs(days)} ${Math.abs(days) === 1 ? "día" : "días"}`
+                                : `${days} ${days === 1 ? "día vencida" : "días vencida"}`}
                           </span>
                         )}
                       </td>
@@ -323,9 +324,10 @@ function AccountsView({
         operational={operational}
         cashOpen={cashOpen}
         onOpenChange={(o) => !o && setPaying(null)}
-        onConfirm={async (amount, method, note) => {
+        onConfirm={async (amount, method, note, retryAction) => {
           if (!paying) return;
-          await onPay(paying, amount, method, note);
+          if (retryAction) await retryAction();
+          else await onPay(paying, amount, method, note);
           ue.success(
             verb === "Cobrar" ? "Cobro registrado" : "Pago registrado",
             {

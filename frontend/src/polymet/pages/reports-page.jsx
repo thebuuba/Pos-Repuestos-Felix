@@ -169,7 +169,7 @@ function ReportsPage() {
             </BarChart>
           </ChartContainer>
         </SectionCard>
-        <SectionCard title={operational ? "Condiciones de venta" : "Formas de pago"} icon={Coins}>
+        <SectionCard title="Formas de pago" icon={Coins}>
           <div className="space-y-4">
             {data.methods.map((m) => (
               <div key={m.key}>

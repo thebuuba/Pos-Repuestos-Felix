@@ -120,6 +120,30 @@ export class DesktopLedger {
     return { version: 7, format: 'repuestos-felix-relacional', exportedAt: new Date().toISOString(), tables: data };
   }
   // Fixed relational columns retain NUMERIC strings; no JSON snapshot is the business authority.
+  tableIds() {
+    return Object.fromEntries(Object.keys(tables).map(table => [
+      table,
+      new Set(this.database.prepare(`SELECT id FROM local_${table}`).all().map(row => String(row.id))),
+    ]));
+  }
+  cashTables() {
+    const read = table => {
+      const columns = tables[table];
+      return this.database.prepare(`SELECT * FROM local_${table} ORDER BY CAST(id AS INTEGER)`).all().map(row =>
+        Object.fromEntries(columns.map(column => [column, row[column] !== null && booleans.has(column) ? Boolean(row[column]) : row[column]])));
+    };
+    return { tables: { turnos_caja: read('turnos_caja'), ventas: read('ventas'), movimientos_caja: read('movimientos_caja'), abonos_cuentas: read('abonos_cuentas') } };
+  }
+  upsertTableRows(table, rows) {
+    const columns = tables[table];
+    if (!rows.length) return;
+    const upsert = this.database.prepare(`INSERT INTO local_${table}(${columns}) VALUES(${columns.map(() => '?')})
+      ON CONFLICT(id) DO UPDATE SET ${columns.filter(column => column !== 'id').map(column => `${column}=excluded.${column}`)}`);
+    for (const row of rows) {
+      const values = columns.map(column => column === 'id' || column.endsWith('_id') && row[column] !== null ? String(row[column]) : encoded(row[column]));
+      upsert.run(...values);
+    }
+  }
   projection(backup) {
     backupLayout(backup);
     for (const [table, columns] of Object.entries(tables)) {

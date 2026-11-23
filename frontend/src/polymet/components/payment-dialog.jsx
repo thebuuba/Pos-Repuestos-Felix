@@ -22,19 +22,26 @@ function PaymentDialog({ doc, partyName, verb, operational = false, cashOpen = t
   const [note, setNote] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
+  const [retryFn, setRetryFn] = useState(null);
   const balance = doc ? balanceOf(doc) : 0;
+  const docId = doc?.id ?? null;
   useEffect(() => {
     if (doc) {
       setAmount(String(balanceOf(doc)));
       setMethod(operational && !cashOpen ? "transferencia" : "efectivo");
       setNote("");
       setError(null);
+      setRetryFn(null);
       setSending(false);
     }
-  }, [doc, operational, cashOpen]);
-  const value = Number(amount) || 0;
+  }, [docId]);
+  const trimmedAmount = String(amount).trim();
+  const validFormat = /^\d{1,12}(?:\.\d{1,2})?$/.test(trimmedAmount);
+  const value = validFormat ? Number(trimmedAmount) : 0;
   const cashBlocked = operational && method === "efectivo" && !cashOpen;
-  const invalid = value <= 0 || value > balance + 0.001 || cashBlocked;
+  const tooHigh = validFormat && value > balance + 0.001;
+  const invalid = !validFormat || value <= 0 || tooHigh || cashBlocked;
+  const locked = sending || Boolean(retryFn);
   return (
     <Dialog2 open={Boolean(doc)} onOpenChange={(o) => !sending && onOpenChange(o)}>
       <DialogContent2 className="max-w-md rounded-2xl">
@@ -71,13 +78,18 @@ function PaymentDialog({ doc, partyName, verb, operational = false, cashOpen = t
         <Field
           label="Monto a abonar RD$"
           error={
-            value > balance + 0.001
+            tooHigh
               ? "No puede ser mayor que el balance"
-              : undefined
+              : trimmedAmount !== "" && !validFormat
+                ? "Indica un monto válido (hasta dos decimales)"
+                : undefined
           }
         >
           <Input
             type="number"
+            step="0.01"
+            min="0.01"
+            disabled={locked}
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             className={cn(inputClass, "text-base font-semibold")}
@@ -87,10 +99,11 @@ function PaymentDialog({ doc, partyName, verb, operational = false, cashOpen = t
             {[0.25, 0.5, 1].map((f) => (
               <button
                 type="button"
+                disabled={locked}
                 onClick={() =>
                   setAmount(String(Math.round(balance * f * 100) / 100))
                 }
-                className="rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground"
+                className="rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-50"
                 key={f}
               >
                 {f === 1 ? "Saldar todo" : `${f * 100}%`}
@@ -103,9 +116,10 @@ function PaymentDialog({ doc, partyName, verb, operational = false, cashOpen = t
             {PAYMENT_METHODS.map((m) => (
               <button
                 type="button"
+                disabled={locked}
                 onClick={() => setMethod(m.value)}
                 className={cn(
-                  "h-9 rounded-lg text-xs font-medium transition-all",
+                  "h-9 rounded-lg text-xs font-medium transition-all disabled:opacity-50",
                   method === m.value
                     ? "bg-card shadow-sm"
                     : "text-muted-foreground hover:text-foreground",
@@ -119,6 +133,7 @@ function PaymentDialog({ doc, partyName, verb, operational = false, cashOpen = t
         </Field>
         <Field label="Nota (opcional)">
           <Input
+            disabled={locked}
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="Ej. Recibo #123"
@@ -138,21 +153,27 @@ function PaymentDialog({ doc, partyName, verb, operational = false, cashOpen = t
         <DialogFooter>
           <Button
             className="h-11 w-full rounded-xl font-semibold"
-            disabled={invalid || sending}
+            disabled={(!retryFn && invalid) || sending}
             onClick={async () => {
-              if (invalid || sending) return;
+              if ((!retryFn && invalid) || sending) return;
               setSending(true);
               setError(null);
               try {
-                await onConfirm(value, method, note.trim() || undefined);
+                await onConfirm(value, method, note.trim() || undefined, retryFn);
+                setRetryFn(null);
               } catch (cause) {
                 setError(cause?.message || "No se pudo registrar el abono.");
+                if (cause?.uncertain && typeof cause.retry === "function") {
+                  setRetryFn(() => cause.retry);
+                } else if (cause?.definitive) {
+                  setRetryFn(null);
+                }
               } finally {
                 setSending(false);
               }
             }}
           >
-            {sending ? "Confirmando…" : `${verb} ${formatMoney(value)}`}
+            {sending ? "Confirmando…" : retryFn ? `Reintentar ${verb.toLowerCase()}` : `${verb} ${formatMoney(value)}`}
           </Button>
         </DialogFooter>
       </DialogContent2>

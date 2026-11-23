@@ -2,16 +2,39 @@ import { createHash, randomUUID } from 'node:crypto';
 import { memoryPool } from './memory-pool.js';
 import { migrateDatabase } from '../db/migrations.js';
 import { canonical, readSnapshot, snapshotVersion, writeOperation } from '../pos/store.js';
-import { tables } from '../pos/relational-backup.js';
+import { tables, rows as exportRows } from '../pos/relational-backup.js';
 import { cashHeadFromBackup, isCashSyncOperation, operationEffect } from '../pos/sync-operations.js';
 import { stateTag } from '../pos/state-tag.js';
 
 const label = 'Este equipo · almacenamiento local';
 const failure = (message, status = 409) => Object.assign(new Error(message), { status });
-const createdRows = (before, after) => Object.fromEntries(Object.keys(tables).map(table => {
-  const ids = new Set(before.tables[table].map(row => String(row.id)));
-  return [table, after.tables[table].filter(row => !ids.has(String(row.id))).map(row => Number(row.id))];
+const createdRows = (beforeIds, after) => Object.fromEntries(Object.keys(tables).map(table => {
+  const ids = beforeIds[table];
+  return [table, (after.tables[table] || []).filter(row => !ids.has(String(row.id))).map(row => Number(row.id))];
 }));
+
+async function exportSaleSlice(pool, saleId, body) {
+  const client = await pool.connect();
+  try {
+    const data = Object.fromEntries(Object.keys(tables).map(name => [name, []]));
+    data.ventas = await exportRows(client, 'ventas', true, { sql: 'id=$1', values: [saleId] });
+    data.venta_detalles = await exportRows(client, 'venta_detalles', true, { sql: 'venta_id=$1', values: [saleId] });
+    const detailIds = data.venta_detalles.map(r => r.id);
+    if (detailIds.length) {
+      data.movimientos_inventario = await exportRows(client, 'movimientos_inventario', true, {
+        sql: 'venta_detalle_id=ANY($1::bigint[])', values: [detailIds],
+      });
+    }
+    const productIds = [...new Set((body.items || []).map(item => Number(item.productoId)))];
+    if (productIds.length) {
+      data.productos = await exportRows(client, 'productos', true, { sql: 'id=ANY($1::bigint[])', values: [productIds] });
+    }
+    if (body.cajaId != null) {
+      data.turnos_caja = await exportRows(client, 'turnos_caja', true, { sql: 'id=$1', values: [body.cajaId] });
+    }
+    return { tables: data };
+  } finally { client.release(); }
+}
 
 export class DesktopEngine {
   constructor(ledger) { this.ledger = ledger; this.tail = Promise.resolve(); this.syncFlight = null; this.pool = null; this.connection = 'offline'; this.lastError = null; }
@@ -79,7 +102,7 @@ export class DesktopEngine {
     this.ledger.set('catalogo', download.catalogo);
     this.ledger.set('lastSync', new Date().toISOString());
   }
-  async write(method, path, body, operationId, actor) {
+  async write(method, path, body, operationId, actor, options = {}) {
     const source = actor;
     return this.serial(async () => {
       if (typeof actor === 'function') actor = actor();
@@ -95,22 +118,36 @@ export class DesktopEngine {
           confirmation: { operationId, databaseId: body.databaseId, method, path, replayed: true }, localReceipt: operationId };
       }
       if (this.ledger.get('reconciliation')) throw failure('Hay una revisión de pendientes en curso. Reanúdala antes de registrar nuevas operaciones.');
-      const before = await readSnapshot(this.pool, label, true);
+      const beforeIds = this.ledger.tableIds();
+      const beforeCashHead = isCashSyncOperation(path, body) ? cashHeadFromBackup(this.ledger.cashTables()) : null;
       const occurredAt = new Date().toISOString();
+      const writeContext = {
+        occurredAt,
+        allowNcf: false,
+        ...(Number.isSafeInteger(options.deltaBaseRevision) ? { deltaBaseRevision: options.deltaBaseRevision } : {}),
+      };
       let response;
       try {
-        response = await writeOperation(this.pool, method, path, body, operationId, label, actor, { occurredAt, allowNcf: false });
-        const after = await readSnapshot(this.pool, label, true);
+        response = await writeOperation(this.pool, method, path, body, operationId, label, actor, writeContext);
+        const fastSale = method === 'POST' && path === '/api/ventas';
+        const after = fastSale
+          ? await exportSaleSlice(this.pool, response.result.id, body)
+          : await readSnapshot(this.pool, label, true);
         if (typeof source === 'function') {
           const current = source();
           if (current.id !== actor.id || current.generation !== actor.generation) throw failure('La sesión cambió antes de confirmar la operación.', 401);
         }
-        const record = { operationId, method, path, body, occurredAt, actor, result: response.result, created: createdRows(before, after),
+        const record = { operationId, method, path, body, occurredAt, actor, result: response.result, created: createdRows(beforeIds, after),
           expected: { effect: operationEffect(method, path, body, response.result, after),
-            cashHead: isCashSyncOperation(path, body) ? cashHeadFromBackup(before) : null } };
+            cashHead: beforeCashHead } };
         // This is the sole durable commit: all relational changes, the receipt and outbox.
         this.ledger.transaction(() => {
-          this.ledger.projection(after); this.ledger.add(record, fingerprint);
+          if (fastSale) {
+            for (const [table, list] of Object.entries(after.tables)) this.ledger.upsertTableRows(table, list);
+          } else {
+            this.ledger.projection(after);
+          }
+          this.ledger.add(record, fingerprint);
           this.ledger.set('revision', response.revision);
         });
       } catch (error) {
@@ -207,7 +244,7 @@ export class DesktopEngine {
           if (download.notModified) {
             if (!checkpoint.etag || download.etag !== checkpoint.etag || this.ledger.get('needsRefresh'))
               throw failure('El servidor no confirmó la versión descargada.', 503);
-          } else if (!this.pool || this.ledger.get('needsRefresh') || download.snapshot.databaseId !== this.ledger.get('databaseId') || download.snapshot.revision !== this.ledger.get('remoteRevision')) {
+          } else if (!this.pool || this.ledger.get('needsRefresh') || download.snapshot.databaseId !== this.ledger.get('databaseId') || download.snapshot.revision !== this.ledger.get('remoteRevision') || (download.etag && download.etag !== this.ledger.get('bootstrapEtag'))) {
             await this.adopt(download);
           } else if (download.etag) this.ledger.set('bootstrapEtag', download.etag);
           this.ledger.set('lastSync', new Date().toISOString());

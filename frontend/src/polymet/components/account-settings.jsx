@@ -88,7 +88,11 @@ export function AccountSettings() {
     {error && <p role="alert" className="mb-4 text-sm text-primary">{error}</p>}
     {!account ? <div className="text-sm text-muted-foreground">
       {error ? <Button type="button" variant="outline" className="rounded-xl" onClick={() => setRetry(value => value + 1)}>Volver a cargar</Button> : 'Cargando cuenta…'}
-    </div> : !account.canChangePassword ? <p className="text-sm text-muted-foreground">Esta instalación utiliza acceso local. Los cambios de cuenta estarán disponibles al configurar cuentas individuales.</p> :
+    </div> : !account.canChangePassword ? <p className="text-sm text-muted-foreground">
+      {account.offline
+        ? 'Sin conexión al servidor. Conéctate a internet para cambiar tu usuario o contraseña.'
+        : 'Esta instalación utiliza acceso local. Los cambios de cuenta estarán disponibles al configurar cuentas individuales.'}
+    </p> :
       <form onSubmit={submit} className="max-w-3xl">
         <fieldset disabled={busy} className="grid min-w-0 gap-4 sm:grid-cols-2">
           <Field label="Usuario" htmlFor="account-username" hint={account.canChangeUsername ? 'Entre 2 y 40 caracteres: letras sin tildes, números, puntos o guiones.' : 'El cambio de usuario aún no está habilitado en este servidor. Puedes cambiar tu contraseña.'}>

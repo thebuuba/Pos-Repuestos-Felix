@@ -51,9 +51,10 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
   const [params, setParams] = useSearchParams();
   const { key } = useLocation();
   const selectedStock = params.get("existencia");
+  const urlQuery = params.get("buscar") ?? "";
   const restock = selectedStock === "reposicion";
   const stock = restock || STOCK_FILTERS.some(([value]) => value === selectedStock) ? selectedStock : "all";
-  const [filters, setFilters] = useState({ query: "", category: "", page: 0, stock, restockKey: key });
+  const [filters, setFilters] = useState({ query: urlQuery, category: "", page: 0, stock, restockKey: key, urlQuery });
   const { query } = filters;
   const category = categories.includes(filters.category) ? filters.category : "";
   const rows = useMemo(() => {
@@ -73,8 +74,10 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
   const lastPage = Math.max(0, Math.ceil(rows.length / PAGE_SIZE) - 1);
   const resetPage = stock !== filters.stock || category !== filters.category;
   const page = resetPage ? 0 : Math.min(filters.page, lastPage);
-  if (restock && filters.restockKey !== key) {
-    setFilters({ query: "", category: "", page: 0, stock, restockKey: key });
+  if (urlQuery !== filters.urlQuery) {
+    setFilters({ query: urlQuery, category: "", page: 0, stock, restockKey: key, urlQuery });
+  } else if (restock && filters.restockKey !== key) {
+    setFilters({ query: "", category: "", page: 0, stock, restockKey: key, urlQuery });
   } else if (resetPage || filters.page !== page) {
     setFilters({ ...filters, category, page, stock });
   }

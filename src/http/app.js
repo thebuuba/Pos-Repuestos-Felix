@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readSnapshot, writeOperation } from '../pos/store.js';
 import { readSyncBootstrap, writeSyncOperation, retireSyncStream } from '../pos/sync-operations.js';
 import { stateTag, matchesStateTag, bootstrapTag } from '../pos/state-tag.js';
-import { allowedOperation, redactSnapshotForRole, userRole } from '../pos/roles.js';
+import { allowedOperation, redactBootstrapForRole, redactSnapshotForRole, userRole } from '../pos/roles.js';
 import { hostingConfig, authorized, validCredentials, sessionCookie, clearSessionCookie } from '../hosting.js';
 import { accountSession } from '../supabase-auth.js';
 
@@ -22,16 +22,26 @@ const publicFiles = {
   '/app.js': ['app.js', 'text/javascript'],
   '/styles.css': ['styles.css', 'text/css'],
   '/login.js': ['login.js', 'text/javascript'],
+  '/theme.js': ['theme.js', 'text/javascript'],
   '/assets/brand/repuestos-felix.jpg': ['assets/brand/repuestos-felix.jpg', 'image/jpeg'],
   '/assets/fonts/inter-latin-wght-normal.woff2': ['assets/fonts/inter-latin-wght-normal.woff2', 'font/woff2'],
   '/assets/Inter-OFL.txt': ['assets/Inter-OFL.txt', 'text/plain'],
 };
-const securityHeaders = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY',
-  'Permissions-Policy': 'camera=(self), microphone=(), geolocation=()' };
+const baseSecurityHeaders = {
+  'Cache-Control': 'no-store',
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'same-origin',
+  'Permissions-Policy': 'camera=(self), microphone=(), geolocation=()',
+  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; media-src 'self' blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'none'",
+};
+const securityFor = hosting => hosting?.origin
+  ? { ...baseSecurityHeaders, 'Strict-Transport-Security': 'max-age=31536000; includeSubDomains' }
+  : baseSecurityHeaders;
 const maxBodyBytes = 10 * 1024 * 1024;
 
-function json(status, data, headers = {}) {
-  return new Response(JSON.stringify(data), { status, headers: { ...securityHeaders, 'Content-Type': 'application/json; charset=utf-8', ...headers } });
+function json(status, data, headers = {}, hosting = null) {
+  return new Response(JSON.stringify(data), { status, headers: { ...securityFor(hosting), 'Content-Type': 'application/json; charset=utf-8', ...headers } });
 }
 
 function fail(message, status) { const error = new Error(message); error.status = status; throw error; }
@@ -62,11 +72,13 @@ export async function handleRequest(request, options = {}) {
   const hosting = options.hosting ?? hostingConfig({});
   const account = hosting.auth ? accountSession(hosting, request) : null;
   const response = await route(request, { ...options, hosting }, account);
+  if (hosting.origin) response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   if (account?.cookie) response.headers.set('Set-Cookie', account.cookie);
   return response;
 }
 
 async function route(request, { pool, hosting, databaseLabel = 'PostgreSQL', readAsset }, account) {
+  const securityHeaders = securityFor(hosting);
   try {
     const url = new URL(request.url);
     const pathname = url.pathname;
@@ -152,9 +164,9 @@ async function route(request, { pool, hosting, databaseLabel = 'PostgreSQL', rea
       }
       if (isSyncBootstrap) {
         const condition = request.headers.get('if-none-match');
-        const download = await readSyncBootstrap(pool, databaseLabel, condition ? version => matchesStateTag(condition, bootstrapTag(version)) : undefined);
-        const headers = { ETag: bootstrapTag(download.notModified ?? download.snapshot) };
-        return download.notModified ? new Response(null, { status: 304, headers: { ...securityHeaders, ...headers } }) : json(200, download, headers);
+        const download = await readSyncBootstrap(pool, databaseLabel, condition ? version => matchesStateTag(condition, bootstrapTag({ ...version, role })) : undefined);
+        const headers = { ETag: bootstrapTag({ ...(download.notModified ?? download.snapshot), role }) };
+        return download.notModified ? new Response(null, { status: 304, headers: { ...securityHeaders, ...headers } }) : json(200, redactBootstrapForRole(download, role), headers);
       }
       if (isStateRead) {
         const condition = request.headers.get('if-none-match');
@@ -171,14 +183,14 @@ async function route(request, { pool, hosting, databaseLabel = 'PostgreSQL', rea
         { id: 'local', name: hosting.username || 'Usuario local', role };
       if (pathname === '/api/sync/retire') {
         if (request.method !== 'POST') return json(405, { error: 'Método no permitido.' });
-        return json(200, await retireSyncStream(pool, body, databaseLabel, actor));
+        return json(200, redactBootstrapForRole(await retireSyncStream(pool, body, databaseLabel, actor), role));
       }
       if (pathname === '/api/sync/operations') {
         if (request.method !== 'POST') return json(405, { error: 'Método no permitido.' });
         if (request.headers.get('idempotency-key') !== body?.operationId) return json(400, { error: 'La clave de envío no coincide con la operación local.' });
         if (!allowedOperation(role, body?.method, body?.path)) return json(403, { error: 'Tu cuenta de cajero no tiene permiso para sincronizar esta operación.' });
         const result = await writeSyncOperation(pool, body, databaseLabel, actor, { receiptOnly: request.headers.get('prefer') === 'return=receipt' });
-        return json(200, result, { ETag: stateTag(result.snapshot) });
+        return json(200, redactBootstrapForRole(result, role), { ETag: stateTag({ ...result.snapshot, role }) });
       }
       const rawDelta = request.headers.get('x-felix-delta');
       const deltaBaseRevision = rawDelta !== null && /^\d+$/.test(rawDelta) && Number.isSafeInteger(Number(rawDelta)) ? Number(rawDelta) : null;

@@ -14,6 +14,12 @@ use tauri_plugin_updater::UpdaterExt;
 struct LocalServer(Mutex<Option<Child>>);
 
 impl LocalServer {
+    fn replace(&self, next: LocalServer) {
+        self.stop();
+        if let (Ok(mut dst), Ok(mut src)) = (self.0.lock(), next.0.lock()) {
+            *dst = src.take();
+        }
+    }
     fn stop(&self) {
         if let Ok(mut guard) = self.0.lock() {
             if let Some(mut child) = guard.take() {
@@ -234,14 +240,14 @@ fn ask_update(version: &str) -> bool {
     }
 }
 
-fn show_update_error() {
+fn show_update_error(detail: &str) {
     #[cfg(windows)]
     {
-        message_box(
-            "Repuestos Félix",
-            "No se pudo completar la actualización automática. Puedes seguir trabajando con normalidad y volver a intentarlo al reabrir el POS.",
-            0x30,
-        );
+        message_box("Repuestos Félix", detail, 0x30);
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = detail;
     }
 }
 
@@ -255,7 +261,9 @@ async fn check_and_apply_update(app: tauri::AppHandle) {
     let bytes = match update.download(|_, _| {}, || {}).await {
         Ok(bytes) => bytes,
         Err(_) => {
-            show_update_error();
+            show_update_error(
+                "No se pudo descargar la actualización automática. Puedes seguir trabajando con normalidad y volver a intentarlo al reabrir el POS.",
+            );
             return;
         }
     };
@@ -264,7 +272,26 @@ async fn check_and_apply_update(app: tauri::AppHandle) {
         server.stop();
     }
     if update.install(bytes).is_err() {
-        show_update_error();
+        // Intentar recuperar el servidor local en el mismo puerto guardado para no dejar la ventana muerta.
+        let restarted = (|| -> Result<(), String> {
+            let resources = app.path().resource_dir().map_err(|e| e.to_string())?;
+            let data_dir = default_data_dir().ok_or_else(|| "Falta LOCALAPPDATA.".to_string())?;
+            let (next_server, _) = start_server(&resources, &data_dir)?;
+            if let Some(server) = app.try_state::<LocalServer>() {
+                server.replace(next_server);
+            }
+            Ok(())
+        })();
+        if restarted.is_ok() {
+            show_update_error(
+                "No se pudo completar la instalación de la actualización. El servicio local se reinició y puedes seguir trabajando con normalidad.",
+            );
+        } else {
+            show_update_error(
+                "No se pudo completar la instalación de la actualización ni reiniciar el servicio local. Cierra y vuelve a abrir Repuestos Félix para continuar.",
+            );
+            app.exit(1);
+        }
         return;
     }
     app.restart();

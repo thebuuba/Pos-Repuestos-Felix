@@ -49,6 +49,7 @@ function SettingsPage() {
   const isOwner = !runtime || runtime.isOwner;
   const [drafts, setDrafts] = useState({});
   const [ncfDrafts, setNcfDrafts] = useState({});
+  const [ncfRetry, setNcfRetry] = useState({});
   const [ncfBusy, setNcfBusy] = useState(null);
   const [request, setRequest] = useState(null);
   const [error, setError] = useState(null);
@@ -91,8 +92,8 @@ function SettingsPage() {
       setError("Indica un ITBIS entre 0 y 100 %, con hasta cuatro decimales.");
       return;
     }
-    if (runtime && section === "facturacion" && patch.dailyGoal !== null && (!Number.isFinite(Number(patch.dailyGoal)) || Number(patch.dailyGoal) < 0)) {
-      setError("Indica una meta diaria válida mayor o igual a 0, o déjala vacía.");
+    if (runtime && section === "facturacion" && patch.dailyGoal !== null && !/^\d{1,12}(?:\.\d{1,2})?$/.test(String(patch.dailyGoal))) {
+      setError("Indica una meta diaria válida (hasta dos decimales), o déjala vacía.");
       return;
     }
     const dto = request?.dto ?? (runtime ? { ...patch, databaseId: draft.databaseId, version: draft.version } : patch);
@@ -296,8 +297,10 @@ function SettingsPage() {
                     const validRange =
                       Number.isInteger(startNum) &&
                       startNum >= 1 &&
+                      startNum <= 99999999 &&
                       Number.isInteger(endNum) &&
                       endNum >= startNum &&
+                      endNum <= 99999999 &&
                       Number.isInteger(currentNum) &&
                       currentNum >= startNum &&
                       currentNum <= endNum + 1 &&
@@ -308,6 +311,8 @@ function SettingsPage() {
                         ? Math.min(100, Math.max(0, ((currentNum - startNum) / (endNum - startNum + 1)) * 100))
                         : 0;
                     const dirty = Boolean(ncfDrafts[type]);
+                    const pendingRetry = ncfRetry[type] ?? null;
+                    const cardLocked = ncfBusy === type || Boolean(pendingRetry);
                     return (
                       <div className="rounded-2xl border border-border p-4" key={type}>
                         <div className="flex items-center justify-between gap-2">
@@ -319,7 +324,7 @@ function SettingsPage() {
                             <Switch2
                               aria-label={`Activar secuencia ${type}`}
                               checked={Boolean(draft.active)}
-                              disabled={ncfBusy === type}
+                              disabled={cardLocked}
                               onCheckedChange={(checked) => setField({ active: checked })}
                             />
                             <span>{draft.active ? "Activa" : "Inactiva"}</span>
@@ -340,8 +345,9 @@ function SettingsPage() {
                               id={`ncf-${type}-start`}
                               type="number"
                               min="1"
+                              max="99999999"
                               value={draft.start}
-                              disabled={ncfBusy === type}
+                              disabled={cardLocked}
                               onChange={(e) => setField({ start: e.target.value, ...(draft.current === "" ? { current: e.target.value } : {}) })}
                               placeholder="1"
                               className="h-9 rounded-lg"
@@ -352,8 +358,9 @@ function SettingsPage() {
                               id={`ncf-${type}-current`}
                               type="number"
                               min="1"
+                              max="99999999"
                               value={draft.current}
-                              disabled={ncfBusy === type}
+                              disabled={cardLocked}
                               onChange={(e) => setField({ current: e.target.value })}
                               placeholder="1"
                               className="h-9 rounded-lg"
@@ -364,8 +371,9 @@ function SettingsPage() {
                               id={`ncf-${type}-end`}
                               type="number"
                               min="1"
+                              max="99999999"
                               value={draft.end}
-                              disabled={ncfBusy === type}
+                              disabled={cardLocked}
                               onChange={(e) => setField({ end: e.target.value })}
                               placeholder="1000"
                               className="h-9 rounded-lg"
@@ -376,7 +384,7 @@ function SettingsPage() {
                               id={`ncf-${type}-expires`}
                               type="date"
                               value={draft.expiresAt}
-                              disabled={ncfBusy === type}
+                              disabled={cardLocked}
                               onChange={(e) => setField({ expiresAt: e.target.value })}
                               className="h-9 rounded-lg"
                             />
@@ -394,23 +402,32 @@ function SettingsPage() {
                             type="button"
                             size="sm"
                             className="rounded-lg"
-                            disabled={!dirty || !validRange || ncfBusy === type}
+                            disabled={(!pendingRetry && (!dirty || !validRange)) || ncfBusy === type}
                             onClick={async () => {
-                              if (!validRange || ncfBusy) return;
+                              if ((!pendingRetry && !validRange) || ncfBusy) return;
                               setNcfBusy(type);
                               setError(null);
                               try {
-                                await saveNcfSequence({
-                                  databaseId: runtime.databaseId,
-                                  type,
-                                  start: startNum,
-                                  end: endNum,
-                                  current: currentNum - 1,
-                                  expiresAt: draft.expiresAt,
-                                  active: Boolean(draft.active),
-                                  version: saved?.version,
-                                });
+                                if (pendingRetry) {
+                                  await pendingRetry();
+                                } else {
+                                  await saveNcfSequence({
+                                    databaseId: runtime.databaseId,
+                                    type,
+                                    start: startNum,
+                                    end: endNum,
+                                    current: currentNum - 1,
+                                    expiresAt: draft.expiresAt,
+                                    active: Boolean(draft.active),
+                                    version: saved?.version,
+                                  });
+                                }
                                 setNcfDrafts((prev) => {
+                                  const next = { ...prev };
+                                  delete next[type];
+                                  return next;
+                                });
+                                setNcfRetry((prev) => {
                                   const next = { ...prev };
                                   delete next[type];
                                   return next;
@@ -418,13 +435,18 @@ function SettingsPage() {
                                 ue.success(`Secuencia ${type} guardada`);
                               } catch (cause) {
                                 setError(cause?.message || `No se pudo guardar la secuencia ${type}.`);
+                                if (cause?.uncertain && typeof cause.retry === "function") {
+                                  setNcfRetry((prev) => ({ ...prev, [type]: cause.retry }));
+                                } else if (cause?.definitive) {
+                                  setNcfRetry((prev) => { const next = { ...prev }; delete next[type]; return next; });
+                                }
                               } finally {
                                 setNcfBusy(null);
                               }
                             }}
                           >
                             <Save />
-                            {ncfBusy === type ? "Guardando…" : "Guardar"}
+                            {ncfBusy === type ? "Guardando…" : pendingRetry ? "Reintentar" : "Guardar"}
                           </Button>
                         </div>
                       </div>

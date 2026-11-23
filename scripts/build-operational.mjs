@@ -19,7 +19,8 @@ export async function buildOperational(outdir = 'dist/operational') {
   await mkdir(path.join(destination, 'assets/brand'), { recursive: true });
   await copyFile(new URL('../public/assets/brand/repuestos-felix.jpg', import.meta.url), path.join(destination, 'assets/brand/repuestos-felix.jpg'));
   await copyFile(fileURLToPath(import.meta.resolve('@fontsource-variable/inter/LICENSE')), path.join(destination, 'assets/Inter-OFL.txt'));
-  const theme = `<script>${await readFile(new URL('../frontend/theme.js', import.meta.url), 'utf8')}</script>`;
+  await copyFile(new URL('../frontend/theme.js', import.meta.url), path.join(destination, 'theme.js'));
+  const theme = '<script src="/theme.js"></script>';
   const login = await readFile(new URL('../frontend/login.html', import.meta.url), 'utf8');
   await writeFile(path.join(destination, 'login.html'), login.replace('<!--APP_THEME-->', theme));
   await copyFile(new URL('../frontend/login.js', import.meta.url), path.join(destination, 'login.js'));
@@ -65,7 +66,7 @@ export async function buildOperational(outdir = 'dist/operational') {
   ].join('\n');
   await writeFile(path.join(destination, 'index.html'), html);
   await writeFile(path.join(destination, 'pwa-shell.html'), html);
-  const files = ['/pwa-shell.html', appPath, stylesPath, ...initialChunks, '/manifest.webmanifest',
+  const files = ['/pwa-shell.html', '/theme.js', appPath, stylesPath, ...initialChunks, '/manifest.webmanifest',
     '/assets/fonts/inter-latin-wght-normal.woff2', '/assets/brand/repuestos-felix.jpg', ...icons.map(file => '/icons/' + file)];
   const template = await readFile(new URL('../public/sw.js', import.meta.url), 'utf8');
   const digest = createHash('sha256').update(template);

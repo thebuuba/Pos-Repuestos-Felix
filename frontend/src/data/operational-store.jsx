@@ -86,10 +86,30 @@ function presentation(snapshot) {
     .map(c => ({ id: c.id, version: c.version, databaseId, document: c.supplierInvoice,
       partyId: c.supplierId, partyName: c.supplierName, date: c.date, dueDate: c.dueDate,
       amount: c.total, paid: c.paid, payments: c.payments }));
+  const saleLabels = new Map(sales.map(s => [s.id, `${s.ncf || s.number} · ${s.customerName}`]));
+  const purchaseLabels = new Map(purchases.map(c => [c.id, `${c.supplierInvoice || c.number} · ${c.supplierName}`]));
+  const cashAbonoMoves = (state?.abonos ?? [])
+    .filter(a => a.cajaId != null && a.metodoPago === 'efectivo')
+    .map(a => {
+      const target = a.tipo === 'cobro'
+        ? (saleLabels.get(a.ventaId) ?? `Factura #${a.ventaId}`)
+        : (purchaseLabels.get(a.compraId) ?? `Compra #${a.compraId}`);
+      const detail = [a.referencia, a.nota].filter(Boolean).join(' · ');
+      return {
+        id: 'abono-' + a.id,
+        sessionId: a.cajaId,
+        type: a.tipo,
+        amount: a.monto,
+        description: detail ? `${target} (${detail})` : target,
+        date: a.creadoEn,
+      };
+    });
+  const cashMovements = [...(state?.caja?.movements ?? []), ...cashAbonoMoves]
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)));
   return {
     cashSession: state?.caja?.session ?? { open: false, id: null, version: null, openedAt: '', cashier: '' },
     cashSummary: state?.caja?.summary ?? {},
-    cashMovements: state?.caja?.movements ?? [],
+    cashMovements,
     closures: state?.caja?.closures ?? [],
     products: state?.productos.map(p => productFromSnapshot(p, databaseId)) ?? [],
     categories: catalogCategories(state),
@@ -192,7 +212,7 @@ export function OperationalStoreProvider({ client, children }) {
     const refreshVisible = event => {
       if (document.hidden) return;
       const current = client.getState();
-      if (!event && (current.busy || current.inFlightOperationId)) return;
+      if (current.inFlightOperationId || (!event && current.busy)) return;
       client.reload({ background: true, recover: true, resumeRecovery: !!event }).catch(() => {});
     };
     reload();
@@ -220,7 +240,7 @@ export function OperationalStoreProvider({ client, children }) {
       })
       .catch(() => {});
     return () => { active = false; };
-  }, [state.snapshot?.databaseId, state.authenticationRequired]);
+  }, [state.snapshot?.databaseId, state.authenticationRequired, state.connection]);
   const { snapshot } = state;
   const data = useMemo(() => presentation(snapshot), [snapshot]);
   const role = normalizeRole(account.role);

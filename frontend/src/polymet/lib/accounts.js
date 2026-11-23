@@ -22,10 +22,25 @@ var AGING_BUCKETS = [
   },
 ];
 var DAY = 86400000;
+const BUSINESS_ZONE = "America/Santo_Domingo";
+const businessIsoFmt = new Intl.DateTimeFormat("en-CA", {
+  timeZone: BUSINESS_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+function businessTodayIso(now = new Date()) {
+  return businessIsoFmt.format(now);
+}
 function balanceOf(doc) {
   return Math.max(0, Math.round((doc.amount - doc.paid) * 100) / 100);
 }
 function daysOverdue(doc, now = new Date()) {
+  const due = documentaryDate(doc.dueDate);
+  if (due) {
+    const today = documentaryDate(businessTodayIso(now));
+    return Math.round((today.getTime() - due.getTime()) / DAY);
+  }
   return Math.floor((now.getTime() - new Date(doc.dueDate).getTime()) / DAY);
 }
 function agingBucket(doc) {
@@ -47,7 +62,6 @@ function agingSummary(docs) {
   for (const d of docs) out[agingBucket(d)] += balanceOf(d);
   return out;
 }
-const BUSINESS_ZONE = "America/Santo_Domingo";
 const dateParts = { day: "2-digit", month: "short" };
 const timeParts = { hour: "numeric", minute: "2-digit" };
 const documentDateFmt = new Intl.DateTimeFormat("es-DO", {

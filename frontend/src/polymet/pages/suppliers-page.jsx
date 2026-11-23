@@ -18,15 +18,20 @@ import { Phone } from "lucide-react";
 import { Mail } from "lucide-react";
 import { Calculator } from "lucide-react";
 import { formatDate } from "../lib/accounts.js";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { PartyFormSheet } from "../components/party-form-sheet.jsx";
 import { newId } from "../../data/new-id.js";
 import { ConfirmDialog } from "../components/confirm-dialog.jsx";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 function SuppliersPage() {
   const { runtime, suppliers, formulas, purchases, saveSupplier, deleteSupplier } =
     usePosStore();
-  const [query, setQuery] = useState("");
+  const [params] = useSearchParams();
+  const urlQuery = params.get("buscar") ?? "";
+  const [query, setQuery] = useState(urlQuery);
+  useEffect(() => {
+    if (urlQuery) setQuery(urlQuery);
+  }, [urlQuery]);
   const [formOpen, setFormOpen] = useState(false);
   const [creationDatabaseId, setCreationDatabaseId] = useState(null);
   const [editing, setEditing] = useState(null);

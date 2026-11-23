@@ -122,10 +122,14 @@ export function SaleDraftProvider({ children }) {
     setReceived("");
     setFailure(null);
   }
-  function showReceipt(snapshot) {
+  function showReceipt(snapshot, cashReceived) {
     const config = snapshot.state.configuracion;
+    const baseSale = receiptFromConfirmation(snapshot);
+    const sale = Number.isFinite(cashReceived) && baseSale.paymentLabel === "Efectivo"
+      ? { ...baseSale, received: cashReceived }
+      : baseSale;
     setReceipt({
-      sale: receiptFromConfirmation(snapshot),
+      sale,
       footer: config.pieTicket,
       printFormat: config.formatoImpresion ?? "Térmica 80 mm",
       business: { name: config.empresa, rnc: config.rnc, address: config.direccion, phone: config.tel },
@@ -198,7 +202,26 @@ export function SaleDraftProvider({ children }) {
         skipped.push(live.name + " (" + error.message + ")");
       }
     }
-    const nextHeld = heldSales.filter((h) => h.id !== holdId);
+    const hadActiveCart = itemsRef.current.length > 0;
+    let nextHeld = heldSales.filter((h) => h.id !== holdId);
+    if (hadActiveCart) {
+      const stashed = {
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString(),
+        customerId,
+        customerName: customer?.name ?? "Cliente Contado",
+        comprobante,
+        condition,
+        paymentMethod,
+        discountMode,
+        discountValue,
+        discountPercent,
+        total: totals.total,
+        itemCount: totals.items,
+        items: itemsRef.current.map((item) => ({ productId: item.product.id, priceLevel: item.priceLevel, quantity: item.quantity })),
+      };
+      nextHeld = [stashed, ...nextHeld].slice(0, 20);
+    }
     setHeldSales(nextHeld);
     writeHeldSales(runtime.databaseId, nextHeld);
     itemsRef.current = restored;
@@ -217,6 +240,7 @@ export function SaleDraftProvider({ children }) {
     setReceived("");
     setFailure(null);
     if (skipped.length) ue.warning("Venta retomada con ajustes", { description: skipped.join("; ") });
+    else if (hadActiveCart) ue.success("Venta retomada", { description: "Tu carrito anterior se guardó automáticamente en espera." });
     else ue.success("Venta retomada");
     return true;
   }
@@ -271,7 +295,8 @@ export function SaleDraftProvider({ children }) {
           );
       if (requestDatabase !== currentDatabase.current) return;
       resolved.current = snapshot.confirmation.operationId;
-      showReceipt(snapshot);
+      const cashReceived = condition === "contado" && paymentMethod === "efectivo" && received !== "" ? Number(received) : undefined;
+      showReceipt(snapshot, cashReceived);
       clearSale();
     } catch (error) {
       if (requestDatabase !== currentDatabase.current) return;

@@ -11,7 +11,8 @@ import { Ban } from "lucide-react";
 import { Dialog2, DialogContent2, DialogHeader, DialogTitle2, DialogDescription2, DialogFooter } from "../../components/ui/dialog.jsx";
 import { Field, inputClass } from "./form-field.jsx";
 import { toast as ue } from "sonner";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { paymentLabel } from "../lib/sales-analytics.js";
 var STATUS_UI = {
   pagada: "border-emerald-600/40 text-emerald-700 dark:text-emerald-400",
@@ -19,12 +20,18 @@ var STATUS_UI = {
   anulada: "border-primary/50 text-primary line-through",
 };
 function SalesReportTable({ sales, onVoid, operational = false }) {
-  const [query, setQuery] = useState("");
+  const [params] = useSearchParams();
+  const urlQuery = params.get("buscar") ?? "";
+  const [query, setQuery] = useState(urlQuery);
   const [limit, setLimit] = useState(15);
+  useEffect(() => {
+    if (urlQuery) { setQuery(urlQuery); setLimit(15); }
+  }, [urlQuery]);
   const [toVoid, setToVoid] = useState(null);
   const [reason, setReason] = useState("");
   const [voiding, setVoiding] = useState(false);
   const [voidError, setVoidError] = useState(null);
+  const [voidRetry, setVoidRetry] = useState(null);
   const q = query.trim().toLowerCase();
   const filtered = sales.filter(
     (s) =>
@@ -165,6 +172,7 @@ function SalesReportTable({ sales, onVoid, operational = false }) {
             setToVoid(null);
             setReason("");
             setVoidError(null);
+            setVoidRetry(null);
           }
         }}
       >
@@ -183,7 +191,7 @@ function SalesReportTable({ sales, onVoid, operational = false }) {
             <Input
               id="void-sale-reason"
               value={reason}
-              disabled={voiding}
+              disabled={voiding || Boolean(voidRetry)}
               onChange={(e) => setReason(e.target.value)}
               placeholder="Ej. Error en artículo o precio"
               className={inputClass}
@@ -205,6 +213,7 @@ function SalesReportTable({ sales, onVoid, operational = false }) {
                 setToVoid(null);
                 setReason("");
                 setVoidError(null);
+                setVoidRetry(null);
               }}
             >
               {"Cancelar"}
@@ -212,28 +221,35 @@ function SalesReportTable({ sales, onVoid, operational = false }) {
             <Button
               type="button"
               className="rounded-xl bg-primary text-primary-foreground hover:bg-primary/90"
-              disabled={voiding || (operational && !reason.trim())}
+              disabled={voiding || (!voidRetry && operational && !reason.trim())}
               onClick={async () => {
                 if (!toVoid || voiding) return;
-                if (operational && !reason.trim()) {
+                if (!voidRetry && operational && !reason.trim()) {
                   setVoidError("Indica el motivo de la anulación.");
                   return;
                 }
                 setVoiding(true);
                 setVoidError(null);
                 try {
-                  await onVoid(toVoid, reason.trim() || "Anulada por el usuario");
+                  if (voidRetry) await voidRetry();
+                  else await onVoid(toVoid, reason.trim() || "Anulada por el usuario");
                   ue.success(`Factura ${toVoid.number} anulada`);
                   setToVoid(null);
                   setReason("");
+                  setVoidRetry(null);
                 } catch (cause) {
                   setVoidError(cause?.message || "No se pudo anular la factura.");
+                  if (cause?.uncertain && typeof cause.retry === "function") {
+                    setVoidRetry(() => cause.retry);
+                  } else if (cause?.definitive) {
+                    setVoidRetry(null);
+                  }
                 } finally {
                   setVoiding(false);
                 }
               }}
             >
-              {voiding ? "Anulando…" : "Anular factura"}
+              {voiding ? "Anulando…" : voidRetry ? "Reintentar anulación" : "Anular factura"}
             </Button>
           </DialogFooter>
         </DialogContent2>

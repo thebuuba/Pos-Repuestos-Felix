@@ -124,8 +124,10 @@ export function desktopServer(engine, remote, assetsDirectory) {
               ledger.set('remoteCookie', previousProtectedCookie);
               throw error('Sincroniza primero con la cuenta que registró las operaciones pendientes.', 409);
             }
+            const nextRole = normalizeRole(identity.role);
             if (!engine.pool) await engine.adopt(await remote.request('/api/sync/bootstrap'));
-            ledger.set('profile', { id: identity.id, username: identity.username, name: identity.username, role: normalizeRole(identity.role), generation: randomUUID(),
+            else if (profile && normalizeRole(profile.role) !== nextRole) ledger.set('needsRefresh', true);
+            ledger.set('profile', { id: identity.id, username: identity.username, name: identity.username, role: nextRole, generation: randomUUID(),
               ...passwordRecord(path === '/cuenta/clave' ? body.newPassword : body.password), onlineAt: Date.now(), allowOffline: true });
             engine.connection = 'online';
           } catch (cause) {
@@ -160,9 +162,28 @@ export function desktopServer(engine, remote, assetsDirectory) {
       }
       if (path === '/api/account') {
         return await engine.serial(async () => {
-          requireAccess();
+          const profile = requireAccess();
           try {
-            if (request.method === 'GET') return send(200, await remote.request(path));
+            if (request.method === 'GET') {
+              try {
+                const remoteAccount = await remote.request(path);
+                if (remoteAccount?.id === profile.id && remoteAccount.role) {
+                  const nextRole = normalizeRole(remoteAccount.role);
+                  if (profile.role !== nextRole) ledger.set('profile', { ...profile, role: nextRole });
+                }
+                return send(200, remoteAccount);
+              } catch (cause) {
+                if (cause.status === 401) throw cause;
+                return send(200, {
+                  id: profile.id,
+                  username: profile.username,
+                  role: normalizeRole(profile.role),
+                  canChangeUsername: false,
+                  canChangePassword: false,
+                  offline: true,
+                });
+              }
+            }
             if (request.method !== 'PUT') throw error('Método no permitido.', 405);
             if (ledger.pending().length) throw error('Sincroniza las operaciones pendientes antes de cambiar tu cuenta.', 409);
             const result = await remote.request(path, { method: 'PUT', body });
@@ -224,9 +245,11 @@ export function desktopServer(engine, remote, assetsDirectory) {
         const profile = requireAccess();
         const role = normalizeRole(profile.role);
         if (!allowedOperation(role, request.method, path)) throw error('Tu cuenta de cajero no tiene permiso para esta operación.', 403);
+        const rawDelta = request.headers['x-felix-delta'];
+        const deltaBaseRevision = typeof rawDelta === 'string' && /^\d+$/.test(rawDelta) && Number.isSafeInteger(Number(rawDelta)) ? Number(rawDelta) : null;
         const result = await engine.write(request.method, path, body, request.headers['idempotency-key'], () => {
           const current = requireAccess(); return { id: current.id, name: current.username, role: normalizeRole(current.role), generation: current.generation };
-        });
+        }, deltaBaseRevision !== null ? { deltaBaseRevision } : {});
         send(200, redactSnapshotForRole(result, role), { ETag: stateTag({ ...result, role }) }); synchronize().catch(() => {}); return;
       }
       if (!['GET', 'HEAD'].includes(request.method)) throw error('Método no permitido.', 405);

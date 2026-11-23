@@ -24,12 +24,10 @@ import { SheetHeader } from "../../components/ui/sheet.jsx";
 import { SheetTitle } from "../../components/ui/sheet.jsx";
 import { SheetDescription } from "../../components/ui/sheet.jsx";
 import { Phone } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { formatDate } from "../lib/accounts.js";
 import { ConfirmDialog } from "../components/confirm-dialog.jsx";
-import { Fragment } from "react";
-import { useMemo } from "react";
-import { useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 var FIELDS = [
   {
     key: "name",
@@ -80,8 +78,13 @@ function initials(name) {
 function CustomersPage() {
   const { runtime, customers, sales, receivables, saveCustomer, deleteCustomer } =
     usePosStore();
-  const [query, setQuery] = useState("");
+  const [params] = useSearchParams();
+  const urlQuery = params.get("buscar") ?? "";
+  const [query, setQuery] = useState(urlQuery);
   const [page, setPage] = useState(0);
+  useEffect(() => {
+    if (urlQuery) { setQuery(urlQuery); setPage(0); }
+  }, [urlQuery]);
   const [formOpen, setFormOpen] = useState(false);
   const [creationDatabaseId, setCreationDatabaseId] = useState(null);
   const [editing, setEditing] = useState(null);
