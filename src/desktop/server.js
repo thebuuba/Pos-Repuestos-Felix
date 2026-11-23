@@ -196,7 +196,14 @@ export function desktopServer(engine, remote, assetsDirectory) {
           } catch (cause) { if (cause.status === 401) revokeAccess(); throw cause; }
         });
       }
-      if (path === '/api/desktop/status' && request.method === 'GET') return send(200, engine.status());
+      if (path === '/api/desktop/status' && request.method === 'GET') {
+        const status = engine.status();
+        if (syncing && status.connection === 'offline' && !status.reconciling && !status.conflict) {
+          status.connection = 'checking';
+          status.error = null;
+        }
+        return send(200, status);
+      }
       if (path === '/api/desktop/sync' && request.method === 'POST') return send(200, await synchronize(true));
       if (path === '/api/desktop/pending' && request.method === 'GET') return send(200, pendingRows());
       if (path === '/api/desktop/reconciliation' && request.method === 'GET') {
@@ -282,6 +289,7 @@ export function desktopServer(engine, remote, assetsDirectory) {
       response.end(request.method === 'HEAD' ? undefined : data);
     } catch (cause) { send(cause.status || 503, { error: cause.status ? cause.message : 'No se confirmó la operación. Los datos guardados permanecen en este equipo.', ...(cause.rejection && { rejection: cause.rejection }) }); }
   });
+  server.once('listening', () => { synchronize().catch(() => {}); });
   server.on('close', () => { stopped = true; clearInterval(timer); });
   return server;
 }

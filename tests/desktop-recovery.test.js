@@ -49,6 +49,103 @@ async function assertDurableProjection(engine) {
   assert.deepEqual((await readSnapshot(engine.pool, 'Prueba', true)).tables, durable);
 }
 
+test('Windows comprueba al arrancar y recupera la sincronización sin adelantar la hora ante un fallo', { timeout: 60_000 }, async t => {
+  const { engine, actor, remote, directory } = await fixture(t);
+  const lastSync = '2026-11-22T12:30:00.000Z';
+  engine.ledger.set('lastSync', lastSync);
+  engine.ledger.set('profile', { ...actor, allowOffline: true, onlineAt: Date.now() });
+  engine.ledger.set('remoteCookie', 'sesion-sintetica');
+  engine.ledger.database.prepare('INSERT INTO sessions VALUES(?,?,?)').run(tokenHash('sesion-arranque'), actor.id, Date.now() + 60_000);
+  const requests = [];
+  const releases = [Promise.withResolvers(), Promise.withResolvers()];
+  const bootstrap = Promise.withResolvers();
+  let attempt = 0;
+  t.mock.timers.enable({ apis: ['setInterval'] });
+  const server = desktopServer(engine, { async request(path, options) {
+    requests.push(path);
+    if (path === '/api/account') {
+      const current = attempt++;
+      await releases[current].promise;
+      if (current === 0) throw Object.assign(new Error('Red temporalmente no disponible'), { status: 503 });
+      return actor;
+    }
+    bootstrap.resolve();
+    const result = await remote(path, options);
+    assert.equal(result.notModified, true, 'La hora también debe avanzar cuando el servidor confirma que no hay cambios.');
+    return result;
+  }, clear() {} }, directory);
+  const readStatus = async () => {
+    const response = await fetch('http://127.0.0.1:' + server.address().port + '/api/desktop/status', { headers: { Cookie: 'felix-desktop=sesion-arranque' } });
+    assert.equal(response.status, 200);
+    return response.json();
+  };
+  try {
+    await new Promise(done => server.listen(0, '127.0.0.1', done));
+    assert.deepEqual(requests, ['/api/account'], 'La comprobación debe comenzar al abrir, sin esperar 30 segundos.');
+    assert.equal((await readStatus()).connection, 'checking');
+    assert.equal(engine.status().lastSync, lastSync);
+    await engine.snapshot();
+    t.mock.timers.tick(30_000);
+    assert.equal(requests.length, 1, 'El sondeo no debe duplicar una comprobación en curso.');
+    releases[0].resolve();
+    assert.equal((await readStatus()).connection, 'offline');
+    assert.equal(engine.status().lastSync, lastSync, 'Un fallo no puede anunciar una sincronización nueva.');
+    t.mock.timers.tick(30_000);
+    const checking = await readStatus();
+    assert.equal(checking.connection, 'checking');
+    assert.equal(checking.error, null);
+    releases[1].resolve();
+    await bootstrap.promise;
+    await engine.syncFlight;
+    assert.equal(engine.status().connection, 'online');
+    assert.ok(engine.status().lastSync > lastSync);
+    assert.equal(engine.status().pending, 0);
+    assert.deepEqual(requests, ['/api/account', '/api/account', '/api/sync/bootstrap']);
+  } finally {
+    releases.forEach(gate => gate.resolve());
+    server.closeAllConnections();
+    await new Promise(done => server.close(done));
+    await engine.syncFlight;
+    t.mock.timers.reset();
+  }
+});
+
+test('el arranque con una revisión pendiente conserva su estado y termina la comprobación remota', { timeout: 60_000 }, async t => {
+  const { engine, actor, directory } = await fixture(t);
+  engine.ledger.set('profile', { ...actor, allowOffline: true, onlineAt: Date.now() });
+  engine.ledger.set('remoteCookie', 'sesion-sintetica');
+  engine.ledger.set('reconciliation', { id: randomUUID(), actorId: actor.id });
+  engine.ledger.database.prepare('INSERT INTO sessions VALUES(?,?,?)').run(tokenHash('sesion-revision'), actor.id, Date.now() + 60_000);
+  engine.lastError = 'Reanuda la revisión pendiente.';
+  const lastSync = engine.status().lastSync;
+  const release = Promise.withResolvers();
+  let calls = 0;
+  const server = desktopServer(engine, { async request(path) {
+    calls++;
+    assert.equal(path, '/api/account');
+    await release.promise;
+    return actor;
+  }, clear() {} }, directory);
+  try {
+    await new Promise(done => server.listen(0, '127.0.0.1', done));
+    const status = await (await fetch('http://127.0.0.1:' + server.address().port + '/api/desktop/status', { headers: { Cookie: 'felix-desktop=sesion-revision' } })).json();
+    assert.equal(status.reconciling, true);
+    assert.equal(status.connection, 'offline');
+    assert.equal(status.error, 'Reanuda la revisión pendiente.');
+    release.resolve();
+    for (let i = 0; i < 20; i++) await new Promise(done => setImmediate(done));
+    assert.equal(calls, 1);
+    assert.equal(engine.status().reconciling, true);
+    assert.equal(engine.status().connection, 'offline');
+    assert.equal(engine.status().error, 'Reanuda la revisión pendiente.');
+    assert.equal(engine.status().lastSync, lastSync);
+  } finally {
+    release.resolve();
+    server.closeAllConnections();
+    await new Promise(done => server.close(done));
+  }
+});
+
 test('una descarga lenta no bloquea las escrituras y nunca reemplaza pendientes nuevos', { timeout: 60_000 }, async t => {
   const { engine, write, remote } = await fixture(t);
   const entered = Promise.withResolvers(); const release = Promise.withResolvers();
@@ -246,9 +343,13 @@ test('el gateway valida identidad para renovar acceso y sirve estado condicional
   const token = 'token-sintetico';
   engine.ledger.database.prepare('INSERT INTO sessions VALUES(?,?,?)').run(tokenHash(token), actor.id, Date.now() + 86400000);
   let identity = actor;
-  const server = desktopServer(engine, { request: (path, options) => path === '/api/account' ? Promise.resolve(identity) : remote(path, options), clear() {} }, directory);
+  const identityResponse = Promise.withResolvers();
+  const server = desktopServer(engine, { request: async (path, options) => {
+    if (path === '/api/account') { await identityResponse.promise; return identity; }
+    return remote(path, options);
+  }, clear() {} }, directory);
   await new Promise(done => server.listen(0, '127.0.0.1', done));
-  t.after(async () => { server.closeAllConnections(); await new Promise(done => server.close(done)); });
+  t.after(async () => { server.closeAllConnections(); await new Promise(done => server.close(done)); identityResponse.resolve(); });
   const origin = 'http://127.0.0.1:' + server.address().port;
   const call = (path, options = {}) => fetch(origin + path, { ...options, headers: { Cookie: 'felix-desktop=' + token, Origin: origin, 'Content-Type': 'application/json', ...options.headers } });
   const initial = await call('/api/state');
@@ -267,6 +368,7 @@ test('el gateway valida identidad para renovar acceso y sirve estado condicional
   assert.match(renewed.headers.get('set-cookie') || '', /Max-Age=2592000/);
   assert.ok(engine.ledger.database.prepare('SELECT expires FROM sessions WHERE token_hash=?').get(tokenHash(token)).expires > Date.now() + 29 * 86400000);
   assert.equal(engine.ledger.get('profile').onlineAt, onlineAt, 'El uso offline no renueva la identidad del servidor');
+  identityResponse.resolve();
   assert.equal((await call('/api/desktop/sync', { method: 'POST', body: '{}' })).status, 200);
   assert.ok(engine.ledger.get('profile').onlineAt > onlineAt);
   const local = await call('/api/clientes', { method: 'POST', headers: { 'Idempotency-Key': randomUUID() }, body: JSON.stringify({ databaseId: engine.ledger.get('databaseId'), nombre: 'Para revisar desde gateway', rnc: '', tel: '' }) });

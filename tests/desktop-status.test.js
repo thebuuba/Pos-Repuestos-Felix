@@ -88,6 +88,34 @@ test('sin internet el control indica pendientes y abre la antigüedad de los dat
   assert.match(details, /se conservan en este equipo/);
 });
 
+test('la comprobación inicial conserva la última hora y el sondeo muestra la confirmación sin pulsar sincronizar', async t => {
+  const { page, state, packets } = await setup(t, true, { ...initial, connection: 'checking', pending: 0 });
+  const trigger = page.getByRole('button', { name: 'Sincronización: Comprobando…', exact: true });
+  await trigger.waitFor();
+  assert.match(await trigger.locator('svg').getAttribute('class'), /animate-spin/);
+  assert.match(await trigger.getAttribute('title'), /22\/11\/26|22\/11\/2026/);
+  await trigger.click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByText('Comprobando…', { exact: true }).waitFor();
+  if (process.env.FELIX_DESKTOP_EVIDENCE_DIR) {
+    await mkdir(process.env.FELIX_DESKTOP_EVIDENCE_DIR, { recursive: true });
+    for (const width of [320, 390, 768, 1440]) {
+      await page.setViewportSize({ width, height: width <= 390 ? 844 : 1000 });
+      for (const dark of [false, true]) {
+        await page.evaluate(dark => document.documentElement.classList.toggle('dark', dark), dark);
+        assert.ok(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth + 1));
+        await dialog.screenshot({ path: path.join(process.env.FELIX_DESKTOP_EVIDENCE_DIR, `checking-${width}-${dark ? 'dark' : 'light'}.png`), animations: 'disabled' });
+      }
+    }
+  }
+  state.status = { ...state.status, connection: 'online', lastSync: '2026-11-23T17:22:00.000Z' };
+  await page.clock.runFor(15_100);
+  await dialog.getByText('Al día', { exact: true }).waitFor();
+  assert.match(await dialog.getByText(/Última sincronización/).innerText(), /23\/11\/26.*1:22/);
+  assert.equal(packets.some(packet => packet.method !== 'GET'), false);
+  assert.equal(await page.evaluate(() => window.catalogRefreshes), 1);
+});
+
 test('sincronizar envía una solicitud y espera un estado confirmado antes de quitar pendientes', async t => {
   const { page, state } = await setup(t);
   const gate = Promise.withResolvers();

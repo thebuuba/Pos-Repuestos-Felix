@@ -7,7 +7,7 @@ import { formatMoney } from './lib/format.js';
 import { formatBusinessDateTime } from './lib/dates.js';
 
 const dateLabel = value => formatBusinessDateTime(value);
-const connectionLabels = { offline: 'Sin conexión', online: 'Al día', conflict: 'Revisar sincronización', authentication: 'Iniciar sesión' };
+const connectionLabels = { checking: 'Comprobando…', offline: 'Sin conexión', online: 'Al día', conflict: 'Revisar sincronización', authentication: 'Iniciar sesión' };
 
 function validStatus(value) {
   return value && typeof value.initialized === 'boolean' && Object.hasOwn(connectionLabels, value.connection) &&
@@ -127,7 +127,8 @@ function DesktopStatus({ onSync }) {
   const label = syncing ? 'Sincronizando…' : needsReview ? (status?.connection === 'authentication' ? 'Iniciar sesión' : 'Revisar sincronización') :
     !status ? 'Comprobando…' : !status.initialized ? 'Preparar equipo' : status.connection === 'online' && status.pending ? 'Pendientes' : connectionLabels[status.connection];
   const pendingLabel = status?.pending ? `${status.pending} ${status.pending === 1 ? 'operación pendiente' : 'operaciones pendientes'}` : 'Sin operaciones pendientes';
-  const Icon = syncing || !status ? RefreshCw : needsReview ? CloudAlert : status.connection === 'offline' ? CloudOff : status.pending ? CloudUpload : CircleCheck;
+  const checking = syncing || !status || status.connection === 'checking';
+  const Icon = checking ? RefreshCw : needsReview ? CloudAlert : status.connection === 'offline' ? CloudOff : status.pending ? CloudUpload : CircleCheck;
   const stale = status && (status.connection !== 'online' || status.pending > 0 || needsReview);
   const summary = `${label}${status ? `. ${pendingLabel}. Última sincronización: ${dateLabel(status.lastSync)}.${stale ? ' Inventario y saldos sin actualizar.' : ''}` : ''}`;
 
@@ -136,7 +137,7 @@ function DesktopStatus({ onSync }) {
     <DialogTrigger asChild>
       <Button variant="outline" className={cn('h-10 rounded-xl bg-card', needsReview ? 'text-destructive' : stale ? 'text-amber-700 dark:text-amber-400' : status && 'text-emerald-700 dark:text-emerald-400')}
         aria-label={`Sincronización: ${label}${status?.pending ? `, ${pendingLabel}` : ''}`} title={summary}>
-        <Icon className={cn(syncing && 'animate-spin')} />
+        <Icon className={cn(checking && 'animate-spin')} />
         <span className="hidden lg:inline">{label}</span>
         {status?.pending > 0 && <span className="rounded-full bg-muted px-1.5 text-xs font-semibold tabular-nums">{status.pending}</span>}
       </Button>
