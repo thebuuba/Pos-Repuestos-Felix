@@ -10,7 +10,9 @@ import { Calculator } from "lucide-react";
 import { FileBadge } from "lucide-react";
 import { Printer } from "lucide-react";
 import { UserRound } from "lucide-react";
+import { Users } from "lucide-react";
 import { AccountSettings } from "../components/pos/account-settings.jsx";
+import { UsersSettings } from "../components/pos/users-settings.jsx";
 import { TabsContent } from "../components/ui/tabs.jsx";
 import { SectionCard } from "../components/pos/section-card.jsx";
 import { Field } from "../components/pos/form-field.jsx";
@@ -30,7 +32,7 @@ import { Textarea } from "../components/ui/textarea.jsx";
 import { Switch } from "../components/ui/switch.jsx";
 import { useRef, useState } from "react";
 var TAB_CLASS =
-  "gap-2 rounded-lg px-3.5 data-[state=active]:bg-card data-[state=active]:shadow-sm";
+  "settings-tab gap-2 rounded-full px-4";
 var OPERATIONAL_NCF_TYPES = [
   { type: "B01", label: "Crédito Fiscal" },
   { type: "B02", label: "Consumo" },
@@ -131,7 +133,7 @@ function SettingsPage() {
       />
       {error && <p role="alert" className="text-sm text-primary">{error}</p>}
       <Tabs defaultValue={isOwner ? "negocio" : "cuenta"} key={isOwner ? "owner" : "cashier"} className="space-y-6">
-        <TabsList className="mobile-touch-controls h-auto flex-wrap justify-start gap-1 rounded-xl bg-muted p-1">
+        <TabsList className="settings-tabs mobile-touch-controls h-auto flex-wrap justify-start gap-1 rounded-full p-1">
           {isOwner && (
             <>
               <TabsTrigger value="negocio" className={TAB_CLASS}>
@@ -150,12 +152,19 @@ function SettingsPage() {
                 <Printer className="h-4 w-4" />
                 {"Facturación"}
               </TabsTrigger>
+              {runtime && (
+                <TabsTrigger value="usuarios" className={TAB_CLASS}>
+                  <Users className="h-4 w-4" />
+                  {"Usuarios"}
+                </TabsTrigger>
+              )}
             </>
           )}
           {runtime && <TabsTrigger value="cuenta" className={TAB_CLASS}>
             <UserRound className="h-4 w-4" />Mi cuenta
           </TabsTrigger>}
         </TabsList>
+        {runtime && isOwner && <TabsContent value="usuarios" className="mt-0"><UsersSettings /></TabsContent>}
         {runtime && <TabsContent value="cuenta" className="mt-0"><AccountSettings /></TabsContent>}
         <TabsContent value="negocio" className="mt-0">
           <SectionCard

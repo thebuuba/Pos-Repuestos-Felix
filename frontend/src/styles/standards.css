@@ -81,6 +81,106 @@ label {
   .pos-sale .sale-layout { grid-template-columns: minmax(0, 1fr); }
 }
 
+/* Desktop side-by-side: compact Datos de la factura to the left of Agregar productos. */
+@media (min-width: 1024px) and (max-width: 1279px), (min-width: 1360px) {
+  .pos-sale .sale-items {
+    display: grid;
+    grid-template-columns: 252px minmax(0, 1fr);
+    gap: 16px;
+    align-items: stretch;
+  }
+  .pos-sale .sale-items > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0;
+  }
+  .pos-sale .sale-invoice-wrap {
+    grid-column: 1;
+    grid-row: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  .pos-sale .sale-invoice-wrap .sale-details,
+  .pos-sale .sale-invoice-wrap .sale-details-content {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .pos-sale .sale-invoice-wrap .sale-invoice-card {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    padding: 16px;
+  }
+  .pos-sale .sale-invoice-wrap .sale-invoice-header {
+    margin-bottom: 10px;
+  }
+  .pos-sale .sale-invoice-wrap .sale-invoice-header h2 {
+    font-size: 14px;
+    line-height: 20px;
+  }
+  .pos-sale .sale-invoice-wrap .sale-invoice-fields {
+    grid-template-columns: minmax(0, 1fr) 88px;
+    gap: 8px 6px;
+  }
+  .pos-sale .sale-invoice-wrap .sale-invoice-customer {
+    grid-column: 1 / -1;
+  }
+  .pos-sale .sale-invoice-wrap .sale-invoice-trigger {
+    height: 38px;
+    padding-inline: 10px;
+    font-size: 12.5px;
+  }
+  .pos-sale .sale-invoice-wrap .sale-invoice-meta {
+    margin-top: auto;
+    padding-top: 8px;
+  }
+  .pos-sale .sale-selection {
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
+    padding: 16px;
+  }
+  .pos-sale .sale-selection-heading {
+    gap: 8px;
+  }
+  .pos-sale .sale-selection-actions {
+    gap: 6px;
+  }
+  .pos-sale .sale-selection-actions button {
+    height: 36px;
+    padding-inline: 10px;
+    font-size: 12.5px;
+    gap: 6px;
+  }
+  .pos-sale .sale-product-search {
+    grid-template-columns: 104px minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 12px;
+  }
+  .pos-sale .sale-product-search > button {
+    padding-inline: 14px;
+  }
+  .pos-sale .sale-cart,
+  .pos-sale .sale-product-catalog {
+    grid-column: 1 / -1;
+  }
+}
+@media (min-width: 1536px) {
+  .pos-sale .sale-items {
+    grid-template-columns: 280px minmax(0, 1fr);
+    gap: 20px;
+  }
+  .pos-sale .sale-invoice-wrap .sale-invoice-fields {
+    grid-template-columns: minmax(0, 1fr) 98px;
+    gap: 10px 8px;
+  }
+  .pos-sale .sale-product-search {
+    grid-template-columns: 124px minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 14px;
+  }
+}
+
 /* Phone-only changes requested by the business; desktop keeps Polymet's layout. */
 .sale-mobile-only { display: none; }
 .sale-payment-content { display: contents; }
@@ -346,5 +446,42 @@ label {
   }
   .mobile-more-panel {
     padding-top: calc(64px + env(safe-area-inset-top));
+  }
+}
+
+.settings-tabs {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: 9999px;
+  padding: 5px;
+  gap: 4px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+}
+.settings-tab {
+  min-height: 40px;
+  padding: 8px 16px;
+  gap: 8px;
+  border-radius: 9999px;
+  color: hsl(var(--muted-foreground));
+  transition: background-color 150ms ease, color 150ms ease;
+}
+.settings-tab:hover:not([data-state="active"]) {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+.settings-tab[data-state="active"] {
+  background: hsl(var(--foreground));
+  color: hsl(var(--background));
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+}
+@media (max-width: 1023px) {
+  .settings-tabs {
+    border-radius: 20px;
+    padding: 6px;
+    gap: 6px;
+  }
+  .settings-tab {
+    min-height: 44px;
+    padding: 10px 14px;
   }
 }

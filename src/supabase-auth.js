@@ -53,9 +53,58 @@ function permitted(user) {
 }
 
 function validatePassword(next, current) {
-  if (typeof next !== 'string' || [...next].length < 6 || Buffer.byteLength(next) > 72 || next === current) {
-    throw Object.assign(new Error('Elige otra contraseña de al menos 6 caracteres y hasta 72 bytes. No se exige combinar letras, números ni símbolos.'), { status: 400 });
+  if (typeof next !== 'string' || [...next].length < 6 || Buffer.byteLength(next) > 72 || (current !== undefined && next === current)) {
+    throw Object.assign(new Error(current !== undefined
+      ? 'Elige otra contraseña de al menos 6 caracteres y hasta 72 bytes. No se exige combinar letras, números ni símbolos.'
+      : 'La contraseña debe tener al menos 6 caracteres y hasta 72 bytes. No se exige combinar letras, números ni símbolos.'), { status: 400 });
   }
+}
+
+function isPosAccount(user) {
+  return typeof user?.id === 'string' && user.app_metadata?.acceso_pos === true && !user.is_anonymous &&
+    typeof user.email === 'string' && accountEmail(user.email.split('@')[0]) === user.email;
+}
+
+function presentPosUser(user, currentUserId) {
+  const username = user.email.split('@')[0].toLowerCase();
+  const rawName = typeof user.user_metadata?.nombre_visible === 'string'
+    ? user.user_metadata.nombre_visible.trim()
+    : '';
+  return {
+    id: user.id,
+    username,
+    displayName: rawName,
+    role: user.app_metadata?.rol === 'cajero' ? 'cajero' : 'dueno',
+    active: !(Date.parse(user.banned_until) > Date.now()),
+    createdAt: typeof user.created_at === 'string' ? user.created_at : null,
+    lastSignInAt: typeof user.last_sign_in_at === 'string' ? user.last_sign_in_at : null,
+    isSelf: user.id === currentUserId,
+  };
+}
+
+function sortPosUsers(users) {
+  return [...users].sort((a, b) => {
+    if (a.active !== b.active) return a.active ? -1 : 1;
+    if (a.role !== b.role) return a.role === 'dueno' ? -1 : 1;
+    return a.username.localeCompare(b.username, 'es');
+  });
+}
+
+async function fetchAllPosUsers(auth) {
+  if (!auth.adminKey) {
+    throw Object.assign(new Error('La administración de usuarios requiere configurar SUPABASE_SECRET_KEY en el servidor.'), { status: 503 });
+  }
+  const adminAuth = { ...auth, key: auth.adminKey };
+  const collected = [];
+  for (let page = 1; page <= 5; page += 1) {
+    const response = await authRequest(adminAuth, `admin/users?page=${page}&per_page=200`, { method: 'GET' });
+    if (!response) throw serviceError();
+    const batch = Array.isArray(response) ? response : Array.isArray(response.users) ? response.users : null;
+    if (!batch) throw serviceError();
+    collected.push(...batch.filter(isPosAccount));
+    if (batch.length < 200) break;
+  }
+  return collected;
 }
 
 const rememberedSeconds = 365 * 86400;
@@ -184,6 +233,133 @@ export function accountSession(hosting, request) {
         if (error.status !== 503 && error.status !== 429) throw error;
         return false;
       } finally { clear(); }
+    },
+    async listUsers() {
+      if (!session || !permitted(user) || user.id !== session.id) {
+        throw Object.assign(new Error('Inicia sesión para administrar usuarios.'), { status: 401 });
+      }
+      const rawUsers = await fetchAllPosUsers(auth);
+      return sortPosUsers(rawUsers.map(item => presentPosUser(item, user.id)));
+    },
+    async createUser(body) {
+      if (!session || !permitted(user) || user.id !== session.id) {
+        throw Object.assign(new Error('Inicia sesión para administrar usuarios.'), { status: 401 });
+      }
+      if (!auth.adminKey) {
+        throw Object.assign(new Error('La administración de usuarios requiere configurar SUPABASE_SECRET_KEY en el servidor.'), { status: 503 });
+      }
+      const invalid = message => Object.assign(new Error(message), { status: 400 });
+      if (!body || typeof body !== 'object' || Array.isArray(body) ||
+          Object.keys(body).some(key => !['username', 'displayName', 'password', 'role'].includes(key))) {
+        throw invalid('Los datos del nuevo usuario no son válidos.');
+      }
+      const email = accountEmail(body.username);
+      if (!email) throw invalid('Usa entre 2 y 40 letras sin tildes, números, puntos, guiones o guiones bajos para el usuario.');
+      const cleanUsername = email.split('@')[0];
+      const displayName = body.displayName === undefined ? '' : typeof body.displayName === 'string' ? body.displayName.trim() : null;
+      if (displayName === null || [...displayName].length > 80) throw invalid('El nombre visible debe tener hasta 80 caracteres.');
+      validatePassword(body.password);
+      if (body.role !== 'dueno' && body.role !== 'cajero') throw invalid('Elige un rol válido: Dueño o Cajero.');
+      const created = await authRequest({ ...auth, key: auth.adminKey }, 'admin/users', {
+        method: 'POST',
+        body: {
+          email,
+          password: body.password,
+          email_confirm: true,
+          user_metadata: { nombre_usuario: cleanUsername, ...(displayName ? { nombre_visible: displayName } : {}) },
+          app_metadata: { acceso_pos: true, rol: body.role },
+        },
+      });
+      if (!created) throw invalid('No se pudo crear el usuario. Ese nombre puede estar ocupado.');
+      if (!isPosAccount(created)) throw serviceError();
+      return presentPosUser(created, user.id);
+    },
+    async updateUser(targetId, body) {
+      if (!session || !permitted(user) || user.id !== session.id) {
+        throw Object.assign(new Error('Inicia sesión para administrar usuarios.'), { status: 401 });
+      }
+      if (!auth.adminKey) {
+        throw Object.assign(new Error('La administración de usuarios requiere configurar SUPABASE_SECRET_KEY en el servidor.'), { status: 503 });
+      }
+      const invalid = message => Object.assign(new Error(message), { status: 400 });
+      if (typeof targetId !== 'string' || !targetId || targetId.length > 128 || /[/?#\\]/.test(targetId)) {
+        throw invalid('Identificador de usuario inválido.');
+      }
+      if (!body || typeof body !== 'object' || Array.isArray(body) ||
+          Object.keys(body).some(key => !['displayName', 'role', 'active', 'newPassword'].includes(key))) {
+        throw invalid('La solicitud de actualización de usuario no es válida.');
+      }
+      const { displayName, role, active, newPassword } = body;
+      if (displayName === undefined && role === undefined && active === undefined && newPassword === undefined) {
+        throw invalid('Indica al menos un cambio para guardar.');
+      }
+      let cleanDisplayName;
+      if (displayName !== undefined) {
+        if (typeof displayName !== 'string' || [...displayName.trim()].length > 80) {
+          throw invalid('El nombre visible debe tener hasta 80 caracteres.');
+        }
+        cleanDisplayName = displayName.trim();
+      }
+      if (role !== undefined && role !== 'dueno' && role !== 'cajero') {
+        throw invalid('Elige un rol válido: Dueño o Cajero.');
+      }
+      if (active !== undefined && typeof active !== 'boolean') {
+        throw invalid('El estado del usuario no es válido.');
+      }
+      if (newPassword !== undefined) validatePassword(newPassword);
+
+      const rawUsers = await fetchAllPosUsers(auth);
+      const rawTarget = rawUsers.find(item => item.id === targetId);
+      if (!rawTarget) throw Object.assign(new Error('Usuario no encontrado.'), { status: 404 });
+      const currentTarget = presentPosUser(rawTarget, user.id);
+
+      if (currentTarget.isSelf && active === false) {
+        throw invalid('No puedes desactivar tu propia cuenta.');
+      }
+      if (currentTarget.isSelf && role === 'cajero') {
+        throw invalid('No puedes cambiar tu propio rol a cajero.');
+      }
+      const nextRole = role ?? currentTarget.role;
+      const nextActive = active ?? currentTarget.active;
+      if (currentTarget.role === 'dueno' && currentTarget.active && (nextRole !== 'dueno' || !nextActive)) {
+        const otherActiveOwners = rawUsers.filter(item => {
+          const mapped = presentPosUser(item, user.id);
+          return mapped.id !== currentTarget.id && mapped.role === 'dueno' && mapped.active;
+        });
+        if (otherActiveOwners.length === 0) {
+          throw invalid('Debe quedar al menos un dueño activo en el sistema.');
+        }
+      }
+
+      const payload = {};
+      if (cleanDisplayName !== undefined) {
+        payload.user_metadata = {
+          ...(rawTarget.user_metadata && typeof rawTarget.user_metadata === 'object' ? rawTarget.user_metadata : {}),
+          nombre_usuario: currentTarget.username,
+          nombre_visible: cleanDisplayName,
+        };
+      }
+      if (role !== undefined) {
+        payload.app_metadata = {
+          ...(rawTarget.app_metadata && typeof rawTarget.app_metadata === 'object' ? rawTarget.app_metadata : {}),
+          acceso_pos: true,
+          rol: role,
+        };
+      }
+      if (active !== undefined) {
+        payload.ban_duration = active ? 'none' : '876000h';
+      }
+      if (newPassword !== undefined) {
+        payload.password = newPassword;
+      }
+
+      const updated = await authRequest({ ...auth, key: auth.adminKey }, 'admin/users/' + encodeURIComponent(targetId), {
+        method: 'PUT',
+        body: payload,
+      });
+      if (!updated) throw invalid('No se pudo actualizar el usuario. Revisa los datos e inténtalo de nuevo.');
+      if (!isPosAccount(updated)) throw serviceError();
+      return presentPosUser(updated, user.id);
     },
   };
 }

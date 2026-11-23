@@ -56,7 +56,7 @@ function SaleLayout({ invoice, selection, selectionActions, cart, catalog, summa
           {selection}
         </section>
         {cart}
-        {catalog && invoice}
+        {catalog && <div className="sale-invoice-wrap min-w-0">{invoice}</div>}
         {catalog}
       </div>
       <div className="lg:sticky lg:top-24">{summary}</div>

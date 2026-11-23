@@ -145,6 +145,29 @@ async function route(request, { pool, hosting, databaseLabel = 'PostgreSQL', rea
         await account.update(await readBody(request, 8192));
         return json(200, { redirect: '/login' });
       }
+      const userAdminMatch = pathname === '/api/usuarios' ? null : /^\/api\/usuarios\/([^/]+)$/.exec(pathname);
+      if (pathname === '/api/usuarios' || userAdminMatch) {
+        if (role !== 'dueno') return json(403, { error: 'Tu cuenta de cajero no tiene permiso para esta operación.' });
+        if (pathname === '/api/usuarios' && request.method === 'GET') {
+          if (!account) return json(200, { available: false, reason: 'Esta instalación utiliza acceso local. Configura Supabase Auth para administrar usuarios.', users: [] });
+          if (!hosting.auth?.adminKey) return json(200, { available: false, reason: 'La administración de usuarios requiere configurar SUPABASE_SECRET_KEY en el servidor.', users: [] });
+          return json(200, { available: true, users: await account.listUsers() });
+        }
+        const allowedWrite = (pathname === '/api/usuarios' && request.method === 'POST') || (Boolean(userAdminMatch) && request.method === 'PUT');
+        if (!allowedWrite) return json(405, { error: 'Método no permitido.' });
+        if (request.headers.get('origin') !== (hosting.origin || url.origin) || request.headers.get('sec-fetch-site') === 'cross-site') {
+          return json(403, { error: 'Origen no permitido.' });
+        }
+        if (!account) return json(400, { error: 'Esta instalación utiliza acceso local. Configura Supabase Auth para administrar usuarios.' });
+        if (!hosting.auth?.adminKey) return json(503, { error: 'La administración de usuarios requiere configurar SUPABASE_SECRET_KEY en el servidor.' });
+        if (request.headers.get('content-type')?.split(';')[0].trim() !== 'application/json') return json(415, { error: 'Se requiere application/json.' });
+        const body = await readBody(request, 8192);
+        if (pathname === '/api/usuarios') return json(201, { user: await account.createUser(body) });
+        let targetId;
+        try { targetId = decodeURIComponent(userAdminMatch[1]); }
+        catch { return json(400, { error: 'Identificador de usuario inválido.' }); }
+        return json(200, { user: await account.updateUser(targetId, body) });
+      }
       if (pathname === '/api/state' && request.method === 'PUT') {
         return json(410, { error: 'La escritura global fue retirada. Cierra y vuelve a abrir la aplicación para actualizarla.' });
       }

@@ -196,6 +196,32 @@ export function desktopServer(engine, remote, assetsDirectory) {
           } catch (cause) { if (cause.status === 401) revokeAccess(); throw cause; }
         });
       }
+      if (path === '/api/usuarios' || /^\/api\/usuarios\/[^/]+$/.test(path)) {
+        const profile = requireAccess();
+        if (normalizeRole(profile.role) !== 'dueno') {
+          throw error('Tu cuenta de cajero no tiene permiso para esta operación.', 403);
+        }
+        const allowedMethod = path === '/api/usuarios' ? ['GET', 'POST'].includes(request.method) : request.method === 'PUT';
+        if (!allowedMethod) throw error('Método no permitido.', 405);
+        try {
+          const result = await remote.request(path, request.method === 'GET' ? {} : { method: request.method, body });
+          return send(request.method === 'POST' ? 201 : 200, result);
+        } catch (cause) {
+          if (cause.status === 401) { revokeAccess(profile); throw cause; }
+          if (!cause.status || cause.status >= 500) {
+            if (request.method === 'GET') {
+              return send(200, {
+                available: false,
+                offline: true,
+                reason: 'Sin conexión al servidor. Conéctate a internet para administrar usuarios.',
+                users: [],
+              });
+            }
+            throw error('Sin conexión al servidor. Conéctate a internet para administrar usuarios.', 503);
+          }
+          throw cause;
+        }
+      }
       if (path === '/api/desktop/status' && request.method === 'GET') {
         const status = engine.status();
         if (syncing && status.connection === 'offline' && !status.reconciling && !status.conflict) {

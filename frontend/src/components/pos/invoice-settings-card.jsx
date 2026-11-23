@@ -29,18 +29,18 @@ const InvoiceSettingsCard = memo(function InvoiceSettingsCard({
   const creditBlocked = condition === "credito" && !customer?.creditLimit;
   const available = customer ? customer.creditLimit - customer.balance : 0;
   return (
-    <section className="rounded-2xl border border-border bg-card p-5">
-      <div className="mb-4 flex items-center gap-2">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-primary">
+    <section className="sale-invoice-card rounded-2xl border border-border bg-card p-5">
+      <div className="sale-invoice-header mb-4 flex items-center gap-2">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent text-primary">
           <FileText className="h-4 w-4" />
         </div>
         <h2 className="text-base font-semibold">{"Datos de la factura"}</h2>
       </div>
-      <div className="grid gap-4 md:grid-cols-3">
-        <div className="space-y-1.5">
+      <div className="sale-invoice-fields grid gap-4 md:grid-cols-3">
+        <div className="sale-invoice-customer min-w-0 space-y-1.5">
           <Label className="text-xs text-muted-foreground">{"Cliente"}</Label>
           <Select value={customer ? String(customer.id) : ""} onValueChange={value => onCustomerChange(operational ? Number(value) : value)}>
-            <SelectTrigger aria-label="Cliente" className="h-11 rounded-xl bg-card">
+            <SelectTrigger aria-label="Cliente" className="sale-invoice-trigger h-11 rounded-xl bg-card">
               <SelectValue placeholder="Selecciona un cliente" />
             </SelectTrigger>
             <SelectContent>
@@ -52,12 +52,12 @@ const InvoiceSettingsCard = memo(function InvoiceSettingsCard({
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-1.5">
+        <div className="sale-invoice-comprobante min-w-0 space-y-1.5">
           <Label className="text-xs text-muted-foreground">
             {"Tipo de comprobante"}
           </Label>
           <Select value={comprobante} onValueChange={onComprobanteChange}>
-            <SelectTrigger aria-label="Tipo de comprobante" className="h-11 rounded-xl bg-card">
+            <SelectTrigger aria-label="Tipo de comprobante" className="sale-invoice-trigger h-11 rounded-xl bg-card">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -69,7 +69,7 @@ const InvoiceSettingsCard = memo(function InvoiceSettingsCard({
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-1.5">
+        <div className="sale-invoice-condition min-w-0 space-y-1.5">
           <Label className="text-xs text-muted-foreground">
             {"Condición"}
           </Label>
@@ -77,7 +77,7 @@ const InvoiceSettingsCard = memo(function InvoiceSettingsCard({
             value={condition}
             onValueChange={(v) => onConditionChange(v)}
           >
-            <SelectTrigger aria-label="Condición" className="h-11 rounded-xl bg-card">
+            <SelectTrigger aria-label="Condición" className="sale-invoice-trigger h-11 rounded-xl bg-card">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -90,7 +90,7 @@ const InvoiceSettingsCard = memo(function InvoiceSettingsCard({
           </Select>
         </div>
       </div>
-      <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
+      <div className="sale-invoice-meta mt-4 flex flex-wrap items-center gap-2 text-xs">
         {customer && !customer.isCashCustomer && customer.id !== "c-000" && (
           <span className="inline-flex items-center gap-1.5 rounded-lg bg-muted px-2.5 py-1.5 text-muted-foreground">
             <User className="h-3.5 w-3.5" />
