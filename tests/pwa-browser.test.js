@@ -65,18 +65,26 @@ test('PWA operativa instala recursos públicos, conserva navegación y espera pa
       assert.equal(`${png.readUInt32BE(16)}x${png.readUInt32BE(20)}`, icon.sizes);
     }
     await page.getByRole('button', { name: 'Instalar app', exact: true }).click();
-    await page.getByRole('dialog').getByText(/Android/).waitFor();
-    await page.getByRole('dialog').getByText(/iPhone/).waitFor();
+    await page.getByRole('dialog').getByRole('heading', { name: 'Instalar Repuestos Félix', exact: true }).waitFor();
     const evidence = resolve('dist/verification/pwa');
     await mkdir(evidence, { recursive: true });
     assert.ok((await page.getByRole('dialog').boundingBox()).height <= 844 * 0.91);
-    await page.screenshot({ path: join(evidence, 'instalacion-390-claro.png'), animations: 'disabled' });
     await page.evaluate(() => {
       const event = new Event('beforeinstallprompt', { cancelable: true });
       event.prompt = async () => { window.installRequested = true; };
       event.userChoice = Promise.resolve({ outcome: 'dismissed' });
       window.dispatchEvent(event);
     });
+    await page.getByRole('button', { name: 'Instalar ahora', exact: true }).waitFor();
+    for (const width of [320, 390, 768, 1440]) {
+      await page.setViewportSize({ width, height: width <= 390 ? 844 : 1000 });
+      for (const dark of [false, true]) {
+        await page.evaluate(dark => document.documentElement.classList.toggle('dark', dark), dark);
+        await page.getByRole('dialog').screenshot({ path: join(evidence, `instalacion-${width}-${dark ? 'oscuro' : 'claro'}.png`), animations: 'disabled' });
+      }
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.evaluate(() => document.documentElement.classList.remove('dark'));
     await page.getByRole('button', { name: 'Instalar ahora', exact: true }).click();
     assert.equal(await page.evaluate(() => window.installRequested), true);
     assert.equal(await page.getByRole('button', { name: 'Instalar ahora', exact: true }).count(), 0, 'El evento de instalación se usa una sola vez');

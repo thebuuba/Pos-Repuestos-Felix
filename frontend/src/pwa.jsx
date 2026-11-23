@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { Button } from './components/ui/button.jsx';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './components/ui/dialog.jsx';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './components/ui/dialog.jsx';
 
 const PwaContext = createContext(null);
 export const usePwa = () => useContext(PwaContext);
@@ -69,24 +69,17 @@ export function PwaProvider({ enabled, children }) {
       await event.prompt();
       // Only appinstalled/display-mode confirms installation; accepting the dialog alone does not.
       await event.userChoice;
-    } catch { setError('El navegador no pudo abrir la instalación. Usa las instrucciones siguientes.'); }
+    } catch { setError('El navegador no pudo abrir la instalación.'); }
   };
   return <PwaContext.Provider value={available ? { installed, waiting, error, openHelp: () => setHelp(true) } : null}>
     {children}
     {available && <Dialog open={help} onOpenChange={setHelp}>
-      <DialogContent className="pwa-install-dialog">
+      <DialogContent className="pwa-install-dialog" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>Instalar Repuestos Félix</DialogTitle>
-          <DialogDescription>La misma aplicación, con todos sus módulos, desde la pantalla de inicio.</DialogDescription>
         </DialogHeader>
         {error && <p role="status" className="text-sm text-destructive">{error}</p>}
         {prompt && <Button onClick={install}>Instalar ahora</Button>}
-        <div className="space-y-3 text-sm">
-          <p><strong>Android · Chrome:</strong> abre el menú del navegador y elige «Añadir a pantalla de inicio» o «Instalar aplicación».</p>
-          <p><strong>iPhone o iPad · Safari:</strong> toca Compartir y «Añadir a pantalla de inicio». Comprueba el icono rojo y el nombre «Félix POS», activa «Abrir como app web» si aparece y toca «Añadir». Después abre Félix POS desde su icono en la pantalla de inicio.</p>
-          <p><strong>Windows · Edge o Chrome:</strong> usa el icono de instalación de la barra de direcciones o la opción de instalar en el menú del navegador.</p>
-          <p className="text-muted-foreground">En la web y la PWA, las ventas, compras, caja y demás cambios requieren conexión y confirmación del servidor. Sin conexión puedes abrir la interfaz; los datos y las operaciones no se guardan para trabajar sin internet.</p>
-        </div>
       </DialogContent>
     </Dialog>}
   </PwaContext.Provider>;
