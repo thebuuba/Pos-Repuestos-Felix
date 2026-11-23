@@ -1,6 +1,7 @@
 import { normalizeFormula } from '../../../src/domain/pricing.js';
-import { OperationError, costUnits, quantityUnits } from '../../../src/pos/operation-fields.js';
+import { costUnits, quantityUnits } from '../../../src/pos/operation-fields.js';
 import { archiveJournal, journalArchives, journalTransaction } from './operation-journal.js';
+import { clearCachedSnapshot, readCachedSnapshot, writeCachedSnapshot } from './state-cache.js';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const changedDatabase = 'La base cambió. Revisa la solicitud y los datos antes de continuar.';
@@ -15,15 +16,24 @@ function sameVersionTag(first, second) {
 
 const id = value => Number.isSafeInteger(value) && value > 0;
 const integerQuantity = value => Number.isInteger(value) && value >= 0 && value <= 2147483647;
-function inventoryDecimal(parse) {
-  return value => {
-    try { parse(value, 'el campo decimal'); return true; }
-    catch (error) { if (error instanceof OperationError) return false; throw error; }
-  };
+const qtyPattern = /^(\d{1,10})(?:\.(\d{1,2}))?$/;
+const costPattern = /^(\d{1,12})(?:\.(\d{1,4}))?$/;
+function decimalQuantity(value) {
+  if (typeof value !== 'number' && typeof value !== 'string') return false;
+  const s = typeof value === 'string' ? value : String(value);
+  const m = qtyPattern.exec(s);
+  if (!m) return false;
+  const whole = Number(m[1]);
+  return whole < 2147483647 || (whole === 2147483647 && (!m[2] || Number(m[2]) === 0));
 }
-const decimalQuantity = inventoryDecimal(quantityUnits);
 const quantity = value => typeof value === 'number' && decimalQuantity(value);
-const cost = inventoryDecimal(costUnits);
+function cost(value) {
+  if (typeof value !== 'number' && typeof value !== 'string') return false;
+  const s = typeof value === 'string' ? value : String(value);
+  const m = costPattern.exec(s);
+  if (!m) return false;
+  return m[1] !== '999999999999' || !m[2] || Number(m[2].padEnd(4, '0')) <= 9900;
+}
 const bool = value => typeof value === 'boolean';
 const text = value => typeof value === 'string' && value.length <= 2000;
 const name = value => text(value) && value.trim().length > 0;
@@ -239,14 +249,57 @@ function validCash(cash) {
     records(cash.closures, row => complete(row, { openedAt: instant, closedAt: instant, cashier: name, opening: money, expected: money, counted: money, sales: money }));
 }
 
+function expandCompactSnapshot(raw) {
+  if (raw?.compact !== 1 || !raw.state || !Array.isArray(raw.state.productos)) return raw;
+  const productos = raw.state.productos.map(row => {
+    if (!Array.isArray(row)) return row;
+    const [
+      pid, version, codigo, nombre, marca, categoria, ubicacion,
+      gravado, stock, stockMinimo, notificarMinimo,
+      costoExacto, p1, p2, p3, altCodes,
+    ] = row;
+    return {
+      id: pid,
+      version,
+      codigo,
+      codigosAlternativos: altCodes || [],
+      nombre,
+      marca: marca || '',
+      categoria: categoria || '',
+      ubicacion: ubicacion || '',
+      gravado: gravado === 1 ? true : gravado === 0 ? false : gravado,
+      activo: true,
+      stock,
+      stockMinimo,
+      notificarMinimo: notificarMinimo === 1 ? true : notificarMinimo === 0 ? false : notificarMinimo,
+      costo: Number(costoExacto),
+      costoExacto,
+      preciosExactos: { p1, p2, p3 },
+      precio1: Number(p1),
+      precio2: Number(p2),
+      precio3: Number(p3),
+    };
+  });
+  const { compact: _compact, ...rest } = raw;
+  return { ...rest, state: { ...raw.state, productos } };
+}
+
 function checkSnapshot(snapshot) {
   const products = snapshot?.state?.productos;
   if (typeof snapshot?.databaseId !== 'string' || !uuid.test(snapshot.databaseId) || !Number.isSafeInteger(snapshot.revision) ||
       snapshot.revision < 0 || typeof snapshot.databaseLabel !== 'string' ||
-      !Array.isArray(products) || !products.every(validProduct) || !validOperationalState(snapshot.state) ||
-      new Set(products.map(p => p.id)).size !== products.length ||
-      new Set(products.map(p => p.codigo)).size !== products.length) {
+      !Array.isArray(products) || !products.every(validProduct) || !validOperationalState(snapshot.state)) {
     throw new Error('El servicio devolvió datos de catálogo no válidos.');
+  }
+  const seenIds = new Set();
+  const seenCodes = new Set();
+  for (let i = 0; i < products.length; i++) {
+    const p = products[i];
+    if (seenIds.has(p.id) || seenCodes.has(p.codigo)) {
+      throw new Error('El servicio devolvió datos de catálogo no válidos.');
+    }
+    seenIds.add(p.id);
+    seenCodes.add(p.codigo);
   }
   return snapshot;
 }
@@ -449,6 +502,8 @@ export function createPosClient() {
   const changes = new BroadcastChannel('repuestos-felix-operaciones');
   let active = 0, issued = 0, latestConfirmed = 0, etag = null, disposed = false;
   let reading = null;
+  let skipInitialCache = typeof performance !== 'undefined' &&
+    performance.getEntriesByType?.('navigation')?.[0]?.type === 'reload';
   let operationError = null;
   let recoveryEnabled = false, retryTimer = null;
   const awaiting = new Map(), attempts = new Map(), stopped = new Set();
@@ -516,6 +571,7 @@ export function createPosClient() {
   function lockSession() {
     etag = null;
     operationError = null;
+    clearCachedSnapshot().catch(() => {});
     try { sessionStorage.removeItem('repuestos-felix-venta-pendiente'); } catch { /* Optional receipt ownership. */ }
     set({ authenticationRequired: true, snapshot: null, resolution: null, saleOperationId: null, lastSync: null, connection: 'unavailable' });
   }
@@ -531,7 +587,7 @@ export function createPosClient() {
     return pending;
   }
 
-  function apply(snapshot, tag, request) {
+  function apply(snapshot, tag, request, { skipCacheWrite = false } = {}) {
     if (state.authenticationRequired) return;
     const current = state.snapshot;
     if (current?.databaseId === snapshot.databaseId) {
@@ -542,6 +598,7 @@ export function createPosClient() {
     }
     latestConfirmed = Math.max(latestConfirmed, request);
     etag = tag;
+    if (tag && !skipCacheWrite) writeCachedSnapshot(snapshot, tag);
     set({ snapshot, connection: 'connected', authenticationRequired: false, readErrorRetryable: false, error: operationError, lastSync: new Date().toISOString() });
   }
 
@@ -575,21 +632,32 @@ export function createPosClient() {
     if (reading && !fresh) return reading;
     const sequence = ++issued;
     const job = working(async () => {
-      await readPending();
-      const previousTag = etag;
-      const previous = state.snapshot;
+      const bypassCache = fresh || skipInitialCache;
+      skipInitialCache = false;
+      const [_, cached] = await Promise.all([
+        readPending(),
+        !bypassCache && !state.snapshot && !etag ? readCachedSnapshot() : Promise.resolve(null),
+      ]);
+      const previousTag = bypassCache ? null : (etag || cached?.etag || null);
+      const previous = bypassCache ? null : (state.snapshot || cached?.snapshot || null);
+      const fromCache = !bypassCache && !state.snapshot && Boolean(cached?.snapshot);
       const timeout = deadline();
       let response;
       try {
         response = await fetch('/api/state', {
           credentials: 'same-origin', mode: 'same-origin', redirect: 'error', cache: 'no-store',
-          headers: previousTag ? { 'If-None-Match': previousTag } : {},
+          headers: {
+            'X-Felix-Compact': '1',
+            ...(previousTag ? { 'If-None-Match': previousTag } : {}),
+          },
           signal: timeout.signal,
         });
         if (response.status === 304) {
           if (!previous || !previousTag) throw new Error('No hay una copia confirmada del catálogo.');
           if (!sameVersionTag(response.headers.get('ETag'), previousTag)) throw new Error('El servicio no confirmó la versión del catálogo.');
-          if (previous === state.snapshot && previousTag === etag) {
+          if (fromCache) {
+            apply(previous, previousTag, sequence, { skipCacheWrite: true });
+          } else if (previous === state.snapshot && previousTag === etag) {
             latestConfirmed = Math.max(latestConfirmed, sequence);
             set({ connection: 'connected', authenticationRequired: false, readErrorRetryable: false, error: operationError, lastSync: new Date().toISOString() });
           }
@@ -597,7 +665,7 @@ export function createPosClient() {
         }
         if (response.status === 401 && sequence >= latestConfirmed) lockSession();
         if (response.status !== 200) throw new Error((await serviceError(response))?.error || 'El servicio no confirmó la lectura del catálogo.');
-        const observed = checkSnapshot(await response.json());
+        const observed = checkSnapshot(expandCompactSnapshot(await response.json()));
         apply(observed, response.headers.get('ETag'), sequence);
         return observed;
       } catch (error) {

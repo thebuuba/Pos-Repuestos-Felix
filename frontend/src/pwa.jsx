@@ -37,16 +37,23 @@ export function PwaProvider({ enabled, children }) {
     window.addEventListener('online', checkUpdate);
     document.addEventListener('visibilitychange', checkUpdate);
     display.addEventListener('change', onDisplay);
+    let warmTimer = null;
     if (window.isSecureContext && 'serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' }).then(result => {
         if (disposed) return;
         registration = result;
         registration.addEventListener('updatefound', onUpdate);
         onUpdate();
+        if (navigator.serviceWorker.controller) {
+          warmTimer = window.setTimeout(() => {
+            if (!disposed && !document.hidden) navigator.serviceWorker.controller?.postMessage({ type: 'WARM_OPTIONAL' });
+          }, 2500);
+        }
       }).catch(() => { if (!disposed) setError('No se pudo preparar la aplicación para abrir su interfaz sin conexión. Reintenta al volver a abrirla con internet.'); });
     } else setError('La instalación requiere HTTPS y un navegador compatible.');
     return () => {
       disposed = true;
+      if (warmTimer !== null) window.clearTimeout(warmTimer);
       window.removeEventListener('beforeinstallprompt', onInstall);
       window.removeEventListener('appinstalled', onInstalled);
       window.removeEventListener('online', checkUpdate);

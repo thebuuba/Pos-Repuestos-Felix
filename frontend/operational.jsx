@@ -24,8 +24,9 @@ const modules = {
 };
 const pages = Object.fromEntries(Object.entries(modules).map(([path, load]) => [path, lazy(load)]));
 pages['/ventas'] = OperationalPointOfSalePage;
-// Fetch the current module while its data is loading, rather than afterwards.
+// Fetch the current module and initial state in parallel with React's first render.
 modules[location.pathname]?.().catch(() => {});
+client.reload({ recover: true, resumeRecovery: true }).catch(() => {});
 createRoot(document.getElementById('root')).render(
   <OperationalStoreProvider client={client}>
     <PosShell pages={pages} />

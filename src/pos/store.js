@@ -116,7 +116,26 @@ export async function snapshotVersion(client, databaseLabel) {
   if (!system) fail('Ejecuta las migraciones de la base antes de iniciar.', 503);
   return { databaseId: system.database_id, revision: number(system.revision), databaseLabel };
 }
-export async function snapshot(client, databaseLabel) {
+export async function snapshot(client, databaseLabel, { compact = false } = {}) {
+  const productExpr = compact
+    ? `json_build_array(
+        p.id, p.version, p.codigo, p.nombre, p.marca, p.categoria, p.ubicacion,
+        CASE WHEN p.gravado THEN 1 ELSE 0 END,
+        p.stock::double precision, p.stock_minimo::double precision,
+        CASE WHEN p.notificar_minimo THEN 1 ELSE 0 END,
+        p.costo::text, p.precio1::text, p.precio2::text, p.precio3::text, ac.codigos
+      )`
+    : `json_build_object(
+        'id', p.id, 'version', p.version, 'codigo', p.codigo,
+        'codigosAlternativos', COALESCE(ac.codigos, '[]'::json),
+        'nombre', p.nombre, 'marca', p.marca, 'categoria', p.categoria, 'ubicacion', p.ubicacion,
+        'gravado', p.gravado, 'activo', p.activo,
+        'stock', p.stock::double precision, 'stockMinimo', p.stock_minimo::double precision,
+        'notificarMinimo', p.notificar_minimo,
+        'costo', p.costo::double precision, 'costoExacto', p.costo::text,
+        'preciosExactos', json_build_object('p1', p.precio1::text, 'p2', p.precio2::text, 'p3', p.precio3::text),
+        'precio1', p.precio1::double precision, 'precio2', p.precio2::double precision, 'precio3', p.precio3::double precision
+      )`;
   const row = (await client.query(`
     WITH alt_codes AS (
       SELECT producto_id, json_agg(codigo ORDER BY id) AS codigos
@@ -174,17 +193,7 @@ export async function snapshot(client, databaseLabel) {
         'factorCosto', factor_costo::double precision, 'recargo1', recargo1::double precision,
         'recargo2', recargo2::double precision, 'recargo3', recargo3::double precision
       ) ORDER BY id) FROM public.formulas_precios WHERE activo), '[]'::json),
-      'productos', COALESCE((SELECT json_agg(json_build_object(
-        'id', p.id, 'version', p.version, 'codigo', p.codigo,
-        'codigosAlternativos', COALESCE(ac.codigos, '[]'::json),
-        'nombre', p.nombre, 'marca', p.marca, 'categoria', p.categoria, 'ubicacion', p.ubicacion,
-        'gravado', p.gravado, 'activo', p.activo,
-        'stock', p.stock::double precision, 'stockMinimo', p.stock_minimo::double precision,
-        'notificarMinimo', p.notificar_minimo,
-        'costo', p.costo::double precision, 'costoExacto', p.costo::text,
-        'preciosExactos', json_build_object('p1', p.precio1::text, 'p2', p.precio2::text, 'p3', p.precio3::text),
-        'precio1', p.precio1::double precision, 'precio2', p.precio2::double precision, 'precio3', p.precio3::double precision
-      ) ORDER BY p.id) FROM public.productos p LEFT JOIN alt_codes ac ON ac.producto_id=p.id WHERE p.activo), '[]'::json),
+      'productos', COALESCE((SELECT json_agg(${productExpr} ORDER BY p.id) FROM public.productos p LEFT JOIN alt_codes ac ON ac.producto_id=p.id WHERE p.activo), '[]'::json),
       'clientes', COALESCE((SELECT json_agg(json_build_object(
         'id', c.id, 'version', c.version, 'nombre', c.nombre, 'rnc', c.rnc, 'tel', c.tel,
         'correo', c.correo, 'direccion', c.direccion,
@@ -239,6 +248,7 @@ export async function snapshot(client, databaseLabel) {
   if (!row) fail('Ejecuta las migraciones de la base antes de iniciar.', 503);
   if (!row.configuracion) fail('La configuración de la base está incompleta.', 503);
   return {
+    ...(compact ? { compact: 1 } : {}),
     databaseId: row.databaseId,
     revision: number(row.revision),
     databaseLabel,
@@ -470,7 +480,7 @@ async function rollbackFailure(client) {
   try { await client.query('ROLLBACK'); }
   catch (error) { return error; }
 }
-export async function readSnapshot(pool, databaseLabel, backup = false, matchesVersion) {
+export async function readSnapshot(pool, databaseLabel, backup = false, matchesVersion, options = {}) {
   const client = await pool.connect();
   let discardReason;
   try {
@@ -483,7 +493,7 @@ export async function readSnapshot(pool, databaseLabel, backup = false, matchesV
     try {
       await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
       await client.query('SELECT pg_advisory_xact_lock_shared($1)', [maintenanceLock]);
-      const result = backup ? await exportBackup(client) : await snapshot(client, databaseLabel);
+      const result = backup ? await exportBackup(client) : await snapshot(client, databaseLabel, options);
       await client.query('COMMIT'); return result;
     } catch (error) { discardReason = await rollbackFailure(client); throw error; }
   } finally { client.release(discardReason); }

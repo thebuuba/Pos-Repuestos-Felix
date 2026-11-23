@@ -25,6 +25,22 @@ self.addEventListener('activate', (event) => {
   })());
 });
 
+self.addEventListener('message', (event) => {
+  if (event.data?.type !== 'WARM_OPTIONAL' || !OPTIONAL.length) return;
+  event.waitUntil((async () => {
+    if (!(await caches.keys()).includes(CACHE)) return;
+    const cache = await caches.open(CACHE);
+    for (const pathname of OPTIONAL) {
+      if (await cache.match(pathname)) continue;
+      if (!(await caches.keys()).includes(CACHE)) return;
+      try {
+        const response = await fetch(new Request(pathname, { credentials: 'omit' }));
+        if (response.ok) await cache.put(pathname, response);
+      } catch { /* Precarga opcional en segundo plano. */ }
+    }
+  })());
+});
+
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   const url = new URL(request.url);

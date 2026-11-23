@@ -170,7 +170,8 @@ async function route(request, { pool, hosting, databaseLabel = 'PostgreSQL', rea
       }
       if (isStateRead) {
         const condition = request.headers.get('if-none-match');
-        const state = await readSnapshot(pool, databaseLabel, false, condition ? version => matchesStateTag(condition, stateTag({ ...version, role })) : undefined);
+        const compact = request.headers.get('x-felix-compact') === '1';
+        const state = await readSnapshot(pool, databaseLabel, false, condition ? version => matchesStateTag(condition, stateTag({ ...version, role })) : undefined, { compact });
         const headers = { ETag: stateTag({ ...(state.notModified ?? state), role }) };
         if (state.notModified) return new Response(null, { status: 304, headers: { ...securityHeaders, ...headers, 'Content-Type': 'application/json; charset=utf-8' } });
         return json(200, redactSnapshotForRole(state, role), headers);

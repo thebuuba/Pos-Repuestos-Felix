@@ -1,11 +1,12 @@
 import { build } from 'esbuild';
-import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export async function buildOperational(outdir = 'dist/operational') {
   const destination = path.resolve(outdir);
+  await rm(path.join(destination, 'assets', 'pwa'), { recursive: true, force: true });
   await mkdir(destination, { recursive: true });
   const result = await build({
     absWorkingDir: fileURLToPath(new URL('../', import.meta.url)),

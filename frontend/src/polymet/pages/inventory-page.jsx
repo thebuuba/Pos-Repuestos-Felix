@@ -32,8 +32,10 @@ function InventoryPage() {
     for (const product of products) {
       const quantity = quantityUnits(product.stock, "las existencias");
       stockHundredths += quantity;
-      costMillionths += quantity * costUnits(product.costExact ?? product.cost, "el costo");
-      retailMillionths += quantity * costUnits(product.pricesExact?.p1 ?? product.prices.p1, "el precio");
+      if (isOwner) {
+        costMillionths += quantity * costUnits(product.costExact ?? product.cost, "el costo");
+        retailMillionths += quantity * costUnits(product.pricesExact?.p1 ?? product.prices.p1, "el precio");
+      }
       const state = stockState(product);
       if (state === "out") outCount++;
       if (state === "low") lowCount++;
@@ -42,7 +44,7 @@ function InventoryPage() {
     lowStock.sort((a, b) => a.stock / (a.minStock || 1) - b.stock / (b.minStock || 1));
     return { totalUnits: decimalUnits(stockHundredths, 2), stockValue: roundedValue(costMillionths),
       retailValue: roundedValue(retailMillionths), lowStock, lowCount, outCount };
-  }, [products]);
+  }, [products, isOwner]);
   const openProduct = useCallback((product = null) => {
     setDraft({
       product,

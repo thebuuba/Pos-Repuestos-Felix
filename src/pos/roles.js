@@ -56,7 +56,9 @@ export function redactSnapshotForRole(snapshot, role) {
     ...snapshot,
     state: {
       ...snapshot.state,
-      productos: snapshot.state.productos.map(p => ({ ...p, costo: 0, costoExacto: '0.0000' })),
+      productos: snapshot.state.productos.map(p => Array.isArray(p)
+        ? Object.assign([...p], { 11: '0.0000' })
+        : ({ ...p, costo: 0, costoExacto: '0.0000' })),
       suplidores: (snapshot.state.suplidores || []).map(s => ({ ...s, deuda: 0 })),
       compras: [],
       abonos: (snapshot.state.abonos || []).filter(a => a.tipo !== 'pago'),

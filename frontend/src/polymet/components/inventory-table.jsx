@@ -9,8 +9,9 @@ import { SelectItem2 } from "../../components/ui/select.jsx";
 import { cn } from "../../lib/utils.js";
 import { formatNumber, formatUnitMoney } from "../lib/format.js";
 import { Button } from "../../components/ui/button.jsx";
-import { memo, useMemo, useState } from "react";
+import { memo, useDeferredValue, useMemo, useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
+import { indexedProducts, matchesIndexed } from "../../data/product-search.js";
 const PAGE_SIZE = 50;
 const STOCK_FILTERS = [
   ["all", "Todos"],
@@ -56,21 +57,22 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
   const stock = restock || STOCK_FILTERS.some(([value]) => value === selectedStock) ? selectedStock : "all";
   const [filters, setFilters] = useState({ query: urlQuery, category: "", page: 0, stock, restockKey: key, urlQuery });
   const { query } = filters;
+  const deferredQuery = useDeferredValue(query);
   const category = categories.includes(filters.category) ? filters.category : "";
   const rows = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return products.filter((p) => {
-      if (category && p.category !== category) return false;
-      if (restock ? !needsRestock(p) : stock !== "all" && stockState(p) !== stock) return false;
-      if (!q) return true;
-      return (
-        p.code.toLowerCase().includes(q) ||
-        p.altCodes?.some((c) => c.toLowerCase().includes(q)) ||
-        p.name.toLowerCase().includes(q) ||
-        p.brand.toLowerCase().includes(q)
-      );
-    });
-  }, [products, query, category, stock, restock]);
+    const q = deferredQuery.trim().toLowerCase();
+    const index = indexedProducts(products);
+    const out = [];
+    for (let i = 0; i < index.length; i++) {
+      const entry = index[i];
+      const p = entry.p;
+      if (category && p.category !== category) continue;
+      if (restock ? !needsRestock(p) : stock !== "all" && stockState(p) !== stock) continue;
+      if (q && !matchesIndexed(entry, q)) continue;
+      out.push(p);
+    }
+    return out;
+  }, [products, deferredQuery, category, stock, restock]);
   const lastPage = Math.max(0, Math.ceil(rows.length / PAGE_SIZE) - 1);
   const resetPage = stock !== filters.stock || category !== filters.category;
   const page = resetPage ? 0 : Math.min(filters.page, lastPage);

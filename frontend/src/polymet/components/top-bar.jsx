@@ -9,12 +9,13 @@ import { cn } from "../../lib/utils.js";
 import { Tooltip2, TooltipTrigger2, TooltipContent2 } from "../../components/ui/tooltip.jsx";
 import { Dialog2, DialogContent2, DialogHeader, DialogTitle2, DialogDescription2 } from "../../components/ui/dialog.jsx";
 import { toast } from "sonner";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { usePosStore } from "../../data/pos-context.jsx";
 import { usePwa } from "../../pwa.jsx";
 import { DesktopSyncStatus } from "../../desktop-status.jsx";
 import { SalesScanner } from './sales-scanner.jsx';
 import { formatMoney } from "../lib/format.js";
+import { searchTopProducts } from "../../data/product-search.js";
 
 var dateFormatter = new Intl.DateTimeFormat("es-DO", {
   timeZone: "America/Santo_Domingo",
@@ -28,14 +29,32 @@ var timeFormatter = new Intl.DateTimeFormat("es-DO", {
   minute: "2-digit",
 });
 
+function TopBarClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 30000);
+    return () => window.clearInterval(id);
+  }, []);
+  return (
+    <div className="text-right leading-tight">
+      <p className="text-sm font-semibold tabular-nums text-foreground">
+        {timeFormatter.format(now)}
+      </p>
+      <p className="text-[11px] capitalize text-muted-foreground">
+        {dateFormatter.format(now)}
+      </p>
+    </div>
+  );
+}
+
 function TopBar({ onBrandClick } = {}) {
   const { runtime, products = [], customers = [], suppliers = [], sales = [], settings, cashSession } = usePosStore();
   const navigate = useNavigate();
   const pwa = usePwa();
-  const [now, setNow] = useState(() => new Date());
   const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'));
   const [demoSyncing, setSyncing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const [searchOpen, setSearchOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const searchRef = useRef(null);
@@ -46,10 +65,6 @@ function TopBar({ onBrandClick } = {}) {
   const isOwner = !runtime || runtime.isOwner !== false;
   const serviceStatus = connected ? "Conectado" : runtime.connection === "checking" ? "Verificando…" : "Sin conexión al servicio";
 
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(new Date()), 30000);
-    return () => window.clearInterval(id);
-  }, []);
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
     document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
@@ -77,15 +92,11 @@ function TopBar({ onBrandClick } = {}) {
   }, [searchOpen]);
 
   const searchResults = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const q = deferredSearchQuery.trim().toLowerCase();
     if (!q) return [];
     const items = [];
-    for (const p of products) {
-      if (p.code.toLowerCase().includes(q) || (p.altCodes || []).some(c => c.toLowerCase().includes(q)) ||
-          p.name.toLowerCase().includes(q) || (p.brand || "").toLowerCase().includes(q)) {
-        items.push({ kind: "Producto", icon: Box, title: p.name, subtitle: `${p.code} · Stock ${p.stock} · ${formatMoney(p.prices.p1)}`, to: `/inventario?buscar=${encodeURIComponent(p.code)}` });
-        if (items.length >= 5) break;
-      }
+    for (const p of searchTopProducts(products, deferredSearchQuery, 5)) {
+      items.push({ kind: "Producto", icon: Box, title: p.name, subtitle: `${p.code} · Stock ${p.stock} · ${formatMoney(p.prices.p1)}`, to: `/inventario?buscar=${encodeURIComponent(p.code)}` });
     }
     let count = 0;
     for (const c of customers) {
@@ -112,7 +123,33 @@ function TopBar({ onBrandClick } = {}) {
       }
     }
     return items;
-  }, [searchQuery, products, customers, suppliers, sales, isOwner]);
+  }, [deferredSearchQuery, products, customers, suppliers, sales, isOwner]);
+
+  const stockAlerts = useMemo(() => {
+    const outNames = [];
+    let outCount = 0;
+    let lowCount = 0;
+    for (let i = 0; i < products.length; i++) {
+      const p = products[i];
+      if (p.notifyMinStock === false || p.stock > p.minStock) continue;
+      if (p.stock <= 0) {
+        outCount++;
+        if (outNames.length < 3) outNames.push(p.name);
+      } else {
+        lowCount++;
+      }
+    }
+    const list = [];
+    if (outCount) {
+      list.push({ id: 'out', tone: 'primary', title: `${outCount} ${outCount === 1 ? 'artículo agotado' : 'artículos agotados'}`,
+        description: outNames.join(', '), to: '/inventario?existencia=out' });
+    }
+    if (lowCount) {
+      list.push({ id: 'low', tone: 'warning', title: `${lowCount} ${lowCount === 1 ? 'artículo bajo mínimo' : 'artículos bajo mínimo'}`,
+        description: 'Revisa las alertas de reposición en Inventario.', to: '/inventario?existencia=low' });
+    }
+    return list;
+  }, [products]);
 
   const notifications = useMemo(() => {
     const list = [];
@@ -120,18 +157,8 @@ function TopBar({ onBrandClick } = {}) {
       list.push({ id: 'cash-closed', tone: 'warning', title: 'Caja cerrada',
         description: 'Abre la caja para registrar ventas y cobros en efectivo.', to: '/caja' });
     }
-    const lowStock = products.filter(p => p.notifyMinStock !== false && p.stock <= p.minStock);
-    const outOfStock = lowStock.filter(p => p.stock <= 0);
-    if (outOfStock.length) {
-      list.push({ id: 'out', tone: 'primary', title: `${outOfStock.length} ${outOfStock.length === 1 ? 'artículo agotado' : 'artículos agotados'}`,
-        description: outOfStock.slice(0, 3).map(p => p.name).join(', '), to: '/inventario?existencia=out' });
-    }
-    if (lowStock.length > outOfStock.length) {
-      const n = lowStock.length - outOfStock.length;
-      list.push({ id: 'low', tone: 'warning', title: `${n} ${n === 1 ? 'artículo bajo mínimo' : 'artículos bajo mínimo'}`,
-        description: 'Revisa las alertas de reposición en Inventario.', to: '/inventario?existencia=low' });
-    }
-    const todayIso = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santo_Domingo' }).format(now);
+    list.push(...stockAlerts);
+    const todayIso = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santo_Domingo' }).format(new Date());
     for (const seq of (settings?.ncf || [])) {
       if (!seq.active) continue;
       const remaining = seq.end - seq.current;
@@ -149,7 +176,7 @@ function TopBar({ onBrandClick } = {}) {
         description: 'Revisa el aviso en la parte superior para confirmar o archivar.', to: '/ventas' });
     }
     return list;
-  }, [products, settings?.ncf, runtime?.pending, runtime?.inFlightOperationId, runtime, cashSession?.open, now]);
+  }, [stockAlerts, settings?.ncf, runtime?.pending, runtime?.inFlightOperationId, runtime, cashSession?.open]);
 
   const handleSync = () => {
     if (runtime) {
@@ -223,14 +250,7 @@ function TopBar({ onBrandClick } = {}) {
               </span>
               {serviceStatus}
             </span>}
-            <div className="text-right leading-tight">
-              <p className="text-sm font-semibold tabular-nums text-foreground">
-                {timeFormatter.format(now)}
-              </p>
-              <p className="text-[11px] capitalize text-muted-foreground">
-                {dateFormatter.format(now)}
-              </p>
-            </div>
+            <TopBarClock />
           </div>
           {desktop ? <DesktopSyncStatus onSync={() => runtime?.reload?.({ background: true })} /> : <Button
             variant="outline"

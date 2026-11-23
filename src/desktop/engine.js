@@ -78,9 +78,9 @@ export class DesktopEngine {
       error: this.lastError, deviceId: this.ledger.get('deviceId'), reconciling: Boolean(this.ledger.get('reconciliation')),
       archived: this.ledger.database.prepare("SELECT count(*) AS count FROM operations WHERE status='archived'").get().count };
   }
-  async snapshot() {
+  async snapshot(options = {}) {
     if (!this.pool) throw failure('Conecta este equipo e inicia sesión una vez para descargar los datos del negocio.', 503);
-    return { ...await readSnapshot(this.pool, label), desktop: this.status() };
+    return { ...await readSnapshot(this.pool, label, false, undefined, options), desktop: this.status() };
   }
   snapshotTag() { return stateTag({ databaseId: this.ledger.get('databaseId'), revision: this.ledger.get('revision'), databaseLabel: label }); }
   async adopt(download) {

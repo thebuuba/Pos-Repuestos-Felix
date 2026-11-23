@@ -234,7 +234,8 @@ export function desktopServer(engine, remote, assetsDirectory) {
         const role = normalizeRole(profile.role);
         const tag = stateTag({ databaseId: ledger.get('databaseId'), revision: ledger.get('revision'), databaseLabel: 'Este equipo · almacenamiento local', role });
         if (engine.pool && matchesStateTag(request.headers['if-none-match'], tag)) return send(304, undefined, { ETag: tag });
-        return send(200, redactSnapshotForRole(await engine.snapshot(), role), { ETag: tag });
+        const compact = request.headers['x-felix-compact'] === '1';
+        return send(200, redactSnapshotForRole(await engine.snapshot({ compact }), role), { ETag: tag });
       });
       if (path === '/api/backup' && request.method === 'GET') {
         const profile = requireAccess();

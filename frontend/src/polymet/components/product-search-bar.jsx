@@ -22,6 +22,7 @@ import { useEffect } from "react";
 import { Camera } from "lucide-react";
 import { BarcodeCameraDialog } from "./barcode-camera-dialog.jsx";
 import { productForBarcode } from "../../data/barcode-scanner.js";
+import { searchTopProducts } from "../../data/product-search.js";
 import { useScanFeedback } from "../../data/use-scan-feedback.js";
 function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, operational = false, disabled = false }) {
   const [query, setQuery] = useState("");
@@ -39,25 +40,7 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, ope
     else inputRef.current?.focus();
   };
   useEffect(() => { if (disabled) setCameraOpen(false); }, [disabled]);
-  const results = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
-    const rank = product => {
-      if (product.code === query || (product.altCodes || []).includes(query)) return 0;
-      if (product.code.toLowerCase() === q || (product.altCodes || []).some(c => c.toLowerCase() === q)) return 1;
-      return 2;
-    };
-    return products
-      .filter(
-        (p) =>
-          p.code.toLowerCase().includes(q) ||
-          (p.altCodes || []).some((c) => c.toLowerCase().includes(q)) ||
-          p.name.toLowerCase().includes(q) ||
-          p.brand.toLowerCase().includes(q),
-      )
-      .sort((a, b) => rank(a) - rank(b))
-      .slice(0, 6);
-  }, [products, query]);
+  const results = useMemo(() => searchTopProducts(products, query, 6), [products, query]);
   const commit = (product) => {
     if (disabled) return false;
     const target = product ?? results[highlight] ?? results[0];
