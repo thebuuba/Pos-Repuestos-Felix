@@ -24,6 +24,7 @@ function ReceiptDialog({
   printFormat = "Térmica 80 mm",
   footer = "¡Gracias por su compra!",
   title = "Venta registrada",
+  description = null,
   isQuote = false,
 }) {
   return (
@@ -33,11 +34,23 @@ function ReceiptDialog({
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/10">
             <CircleCheck className="h-6 w-6 text-emerald-600" />
           </div>
-          <DialogTitle className="text-lg">{isQuote ? "Cotización" : sale?.localReference ? "Venta guardada en este equipo" : title}</DialogTitle>
+          <DialogTitle className="text-lg">
+            {title !== "Venta registrada"
+              ? title
+              : isQuote
+                ? "Cotización"
+                : sale?.localReference
+                  ? "Venta guardada en este equipo"
+                  : title}
+          </DialogTitle>
           <DialogDescription>
-            {isQuote ? "Cotización informativa. No descuenta inventario ni registra movimiento en caja."
-              : sale?.localReference ? "Registro local durable. Consulta las operaciones locales para verificar su confirmación en el servidor."
-              : <>La factura {sale?.invoiceNumber} se guardó correctamente.</>}
+            {description
+              ? description
+              : isQuote
+                ? "Cotización informativa. No descuenta inventario ni registra movimiento en caja."
+                : sale?.localReference
+                  ? "Registro local durable. Consulta las operaciones locales para verificar su confirmación en el servidor."
+                  : <>La factura {sale?.invoiceNumber} se guardó correctamente.</>}
           </DialogDescription>
         </DialogHeader>
         {sale && (
@@ -72,6 +85,18 @@ function ReceiptDialog({
                 <div className="flex justify-between">
                   <span>{"RNC"}</span>
                   <span>{sale.customerRnc}</span>
+                </div>
+              )}
+              {sale.mechanic && (
+                <div className="flex justify-between gap-3">
+                  <span>{"Mecánico"}</span>
+                  <span className="truncate text-right">{sale.mechanic}</span>
+                </div>
+              )}
+              {sale.vehicle && (
+                <div className="flex justify-between gap-3">
+                  <span>{"Vehículo"}</span>
+                  <span className="truncate text-right">{sale.vehicle}</span>
                 </div>
               )}
               <div className="flex justify-between">

@@ -139,6 +139,15 @@ export function SaleDraftProvider({ children }) {
       business: { name: config.empresa, rnc: config.rnc, address: config.direccion, phone: config.tel },
     });
   }
+  function showSaleDocument(saleObj, options = {}) {
+    setReceipt({
+      ...options,
+      sale: saleObj,
+      footer: settings.ticketFooter,
+      printFormat: settings.printer ?? "Térmica 80 mm",
+      business: { name: settings.business.name, rnc: settings.business.rnc, address: settings.business.address, phone: settings.business.phone },
+    });
+  }
   function openQuote() {
     if (!items.length || receipt) return;
     setReceipt({
@@ -344,6 +353,7 @@ export function SaleDraftProvider({ children }) {
     paymentMethod, setPaymentMethod, discountMode, setDiscountMode, discountValue, setDiscountValue, discountError,
     discountPercent, setDiscountPercent, received, setReceived, priceLevel, setPriceLevel,
     items, setItems, heldSales, holdCurrentSale, resumeHeldSale, removeHeldSale, openQuote,
+    showReceipt, showSaleDocument,
     receipt, failure, sending, customer, lines, totals, cartQuantities,
     locked, disabledReason, resetSale, editQuantity, checkout }}>
     {children}

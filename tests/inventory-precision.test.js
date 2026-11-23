@@ -118,7 +118,7 @@ test('fractional inventory survives catalog edits, sales, purchases and v5 backu
   // Restore that ledger from v5 and verify the legacy layout rejects its precision.
   const beforeRestore = await snapshot();
   const backup = JSON.parse(JSON.stringify(await snapshot(true)));
-  assert.equal(backup.version, 7);
+  assert.equal(backup.version, 8);
   const backedUpProduct = backup.tables.productos.find(p => p.codigo === 'caso');
   assert.deepEqual([backedUpProduct.stock, backedUpProduct.stock_minimo, backedUpProduct.costo, backedUpProduct.notificar_minimo],
     ['1.05', '0.50', '12.3456', false]);

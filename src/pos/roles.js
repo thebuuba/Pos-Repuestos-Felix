@@ -22,8 +22,10 @@ export function allowedOperation(role, method, path) {
   if (method === 'PUT' && path === '/api/account') return true;
   if (method === 'POST' && ['/api/ventas', '/api/caja/abrir', '/api/caja/cerrar',
     '/api/caja/movimiento', '/api/clientes', '/api/cuentas/cobros',
+    '/api/taller',
     '/api/sync/operations', '/api/sync/retire',
     '/api/desktop/sync', '/api/desktop/reconcile'].includes(path)) return true;
+  if (method === 'POST' && /^\/api\/taller\/[1-9]\d*\/(despachar|devolver|cancelar|facturar)$/.test(path)) return true;
   if (method === 'PUT' && /^\/api\/clientes\/[1-9]\d*$/.test(path)) return true;
   return false;
 }

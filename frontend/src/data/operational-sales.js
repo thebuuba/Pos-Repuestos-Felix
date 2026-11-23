@@ -116,8 +116,103 @@ export function saleRequest(items, settings, customerId, condition, comprobante,
       nivelPrecio: levels[priceLevel], cantidad: decimalUnits(quantityOf(quantity), 2) })) };
 }
 
+export function quoteWorkshopItems(items, percent, discount = 0) {
+  const rate = costUnits(percent, 'la tasa de ITBIS');
+  let count = 0n;
+  const computed = [];
+  const lines = items.map(item => {
+    const netQty = quantityUnits(item.netQuantity ?? 0, 'la cantidad neta');
+    if (netQty <= 0n) {
+      return { ...item, subtotal: 0, itbis: 0, base: 0 };
+    }
+    const unitPrice = item.priceExact ?? item.price;
+    const amounts = saleLineAmounts(costUnits(unitPrice, 'el precio'), netQty, item.taxable ? rate : 0n);
+    count += netQty;
+    computed.push({ ...amounts, taxable: Boolean(item.taxable) });
+    return {
+      ...item,
+      subtotal: Number(money(amounts.total)),
+      itbis: Number(money(amounts.tax)),
+      base: Number(money(amounts.base)),
+    };
+  });
+  const grossTotalCents = computed.reduce((sum, line) => sum + line.total, 0n);
+  const { mode, raw } = normalizeDiscount(discount);
+  let discountBps = 0n;
+  let discountAmountCents = null;
+  let discountError = null;
+  if (raw !== '') {
+    try {
+      const units = cents(raw, mode === 'amount' ? 'el monto de descuento' : 'el porcentaje de descuento');
+      if (mode === 'percent') {
+        if (units > 10000n) discountError = 'El descuento no puede superar el 100 %.';
+        else discountBps = units;
+      } else {
+        if (grossTotalCents > 0n && units > grossTotalCents) {
+          discountError = 'El descuento no puede superar el total de la cuenta.';
+        } else if (grossTotalCents > 0n) {
+          discountAmountCents = units;
+        }
+      }
+    } catch {
+      discountError = mode === 'amount'
+        ? 'Indica un monto de descuento válido (hasta dos decimales).'
+        : 'Indica un porcentaje entre 0 % y 100 % (hasta dos decimales).';
+    }
+  }
+  const doc = saleDocumentTotals(computed, discountBps, rate, discountAmountCents);
+  return {
+    lines,
+    discountError,
+    totals: {
+      items: Number(decimalUnits(count, 2)),
+      subtotal: Number(money(doc.base)),
+      grossTotal: Number(money(doc.grossTotal)),
+      discount: Number(money(doc.discount)),
+      discountPercent: Number(money(doc.discountBps)),
+      itbis: Number(money(doc.tax)),
+      total: Number(money(doc.total)),
+    },
+  };
+}
+
+export function workshopBillRequest(account, settings, customerId, condition, comprobante, cashSession, paymentMethod, discount = 0, dueDate = null) {
+  if (!account || account.databaseId !== settings.databaseId) {
+    throw new Error('La base cambió. Actualiza antes de cobrar la cuenta.');
+  }
+  if (!cashSession?.open || !Number.isSafeInteger(cashSession.id)) {
+    throw new Error('La caja está cerrada. Ábrela para cobrar esta cuenta.');
+  }
+  const { mode, raw } = normalizeDiscount(discount);
+  let discountField = {};
+  if (raw !== '') {
+    const units = cents(raw, mode === 'amount' ? 'el monto de descuento' : 'el porcentaje de descuento');
+    if (units > 0n) {
+      if (mode === 'amount') discountField = { descuentoMonto: Number(money(units)) };
+      else {
+        if (units > 10000n) throw new Error('El descuento no puede superar el 100 %.');
+        discountField = { descuentoPorcentaje: Number(money(units)) };
+      }
+    }
+  }
+  return {
+    databaseId: settings.databaseId,
+    accountId: account.id,
+    version: account.version,
+    clienteId: customerId,
+    cajaId: cashSession.id,
+    condicion: condition === 'credito' ? 'Credito' : 'Contado',
+    tipoComprobante: comprobante,
+    metodoPago: condition === 'credito' ? 'credito' : paymentMethod,
+    ...discountField,
+    ...(condition === 'credito' && dueDate ? { vencimiento: dueDate } : {}),
+    versionConfiguracion: settings.version,
+  };
+}
+
 export function receiptFromConfirmation(snapshot) {
-  const doc = snapshot.state.facturas.find(row => row.id === snapshot.result.id);
+  const saleId = snapshot.result?.ventaId ?? snapshot.result?.id;
+  const doc = snapshot.state.facturas.find(row => row.id === saleId);
   if (!doc) throw new Error('Falta la factura en la confirmación del servidor.');
   const localReference = typeof snapshot.localReceipt === 'string' ? snapshot.localReceipt : null;
   return { invoiceNumber: localReference ? 'Local ' + localReference.slice(0, 8) : 'Registro ' + doc.id,

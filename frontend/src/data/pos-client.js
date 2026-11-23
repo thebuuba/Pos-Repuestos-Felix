@@ -80,6 +80,9 @@ function checkTarget(method, path) {
   if (method === 'PUT' && path === '/api/ncf') return { resource: 'ncf', target: null };
   const voidMatch = typeof path === 'string' && /^\/api\/ventas\/([1-9]\d*)\/anular$/.exec(path);
   if (method === 'POST' && voidMatch && id(Number(voidMatch[1]))) return { resource: 'ventas/anular', target: Number(voidMatch[1]) };
+  if (method === 'POST' && path === '/api/taller') return { resource: 'taller', target: null };
+  const workshopMatch = typeof path === 'string' && /^\/api\/taller\/([1-9]\d*)\/(despachar|devolver|cancelar|facturar)$/.exec(path);
+  if (method === 'POST' && workshopMatch && id(Number(workshopMatch[1]))) return { resource: 'taller/' + workshopMatch[2], target: Number(workshopMatch[1]) };
   if (method === 'POST' && ['/api/ventas', '/api/compras'].includes(path)) return { resource: path.slice(5), target: null };
   if (method === 'PUT' && path === '/api/configuracion') return { resource: 'configuracion', target: 1 };
   const match = typeof path === 'string' && /^\/api\/(productos|clientes|suplidores|formulas)(?:\/([1-9]\d*))?$/.exec(path);
@@ -96,6 +99,60 @@ function checkPayload(method, resource, payload) {
   if (resource === 'ventas/anular') {
     const fields = { version: id, motivo: name };
     if (Object.keys(payload).length !== 2 || !complete(payload, fields)) invalid();
+    return;
+  }
+  if (resource === 'taller') {
+    const allowed = {
+      clienteId: id, clienteNombre: text, mecanico: text, vehiculo: text, nota: text, retiradoPor: text,
+      items: value => Array.isArray(value) && value.length <= 1000,
+    };
+    if (!id(payload.clienteId) || Object.entries(payload).some(([key, value]) => !allowed[key] || !allowed[key](value))) invalid();
+    const itemFields = { productoId: id, cantidad: v => decimalQuantity(v) && Number(v) > 0, nivelPrecio: oneOf('precio1', 'precio2', 'precio3'), versionProducto: id };
+    for (const row of payload.items || []) {
+      if (!row || typeof row !== 'object' || Array.isArray(row) ||
+          Object.entries(row).some(([key, value]) => !itemFields[key] || !itemFields[key](value)) ||
+          ['productoId', 'cantidad', 'nivelPrecio'].some(key => !Object.hasOwn(row, key))) invalid();
+    }
+    return;
+  }
+  if (resource === 'taller/despachar') {
+    const allowed = { version: id, retiradoPor: text, items: value => Array.isArray(value) && value.length >= 1 && value.length <= 1000 };
+    if (!id(payload.version) || !allowed.items(payload.items) ||
+        Object.entries(payload).some(([key, value]) => !allowed[key] || !allowed[key](value))) invalid();
+    const itemFields = { productoId: id, cantidad: v => decimalQuantity(v) && Number(v) > 0, nivelPrecio: oneOf('precio1', 'precio2', 'precio3'), versionProducto: id };
+    for (const row of payload.items) {
+      if (!row || typeof row !== 'object' || Array.isArray(row) ||
+          Object.entries(row).some(([key, value]) => !itemFields[key] || !itemFields[key](value)) ||
+          ['productoId', 'cantidad', 'nivelPrecio'].some(key => !Object.hasOwn(row, key))) invalid();
+    }
+    return;
+  }
+  if (resource === 'taller/devolver') {
+    const allowed = { version: id, itemId: id, cantidad: v => decimalQuantity(v) && Number(v) > 0, motivo: text };
+    if (!id(payload.version) || !id(payload.itemId) || !allowed.cantidad(payload.cantidad) ||
+        Object.entries(payload).some(([key, value]) => !allowed[key] || !allowed[key](value))) invalid();
+    return;
+  }
+  if (resource === 'taller/cancelar') {
+    const allowed = { version: id, motivo: text };
+    if (!id(payload.version) || Object.entries(payload).some(([key, value]) => !allowed[key] || !allowed[key](value))) invalid();
+    return;
+  }
+  if (resource === 'taller/facturar') {
+    const allowed = {
+      version: id, clienteId: id, cajaId: id,
+      condicion: oneOf('Contado', 'Credito'),
+      tipoComprobante: oneOf('B01', 'B02', 'B14'),
+      metodoPago: oneOf('efectivo', 'tarjeta', 'transferencia', 'credito'),
+      versionConfiguracion: id,
+      descuentoPorcentaje: value => amount(value) && Number(value) <= 100,
+      descuentoMonto: amount,
+      vencimiento: nullable(documentDate),
+    };
+    const req = ['version', 'cajaId', 'condicion', 'tipoComprobante', 'metodoPago'];
+    if (Object.entries(payload).some(([key, value]) => !allowed[key] || !allowed[key](value)) ||
+        req.some(key => !Object.hasOwn(payload, key)) ||
+        (payload.condicion === 'Credito') !== (payload.metodoPago === 'credito')) invalid();
     return;
   }
   if (resource === 'cuentas/cobros' || resource === 'cuentas/pagos') {
@@ -221,8 +278,24 @@ function validDocument(row, sale) {
       ? money(line.base) && money(line.itbis) && validUnit(line.precio,line.precioExacto)
       : validUnit(line.costo,line.costoExacto) && validPrices(line,['p1','p2','p3'])));
 }
+function validWorkshopAccount(row) {
+  const instant = value => typeof value === 'string' && Number.isFinite(Date.parse(value));
+  return complete(row, {
+    id, version: id, clienteId: id, cliente: name, mecanico: text, vehiculo: text, nota: text,
+    estado: oneOf('abierta', 'facturada', 'cancelada'),
+    ventaId: nullable(id), abiertaPor: name, abiertaEn: instant, cerradaEn: nullable(instant),
+  }) && records(row.items, item => complete(item, {
+    productoId: id, codigo: name, nombre: name, gravado: bool,
+    nivelPrecio: oneOf('precio1', 'precio2', 'precio3'),
+    cantidad: value => quantity(value) && value > 0,
+    cantidadDevuelta: quantity,
+    cantidadNeta: quantity,
+    despachadoPor: name, retiradoPor: text, creadoEn: instant,
+  }) && validUnit(item.precio, item.precioExacto));
+}
 function validOperationalState(state) {
   if (state.caja !== undefined && !validCash(state.caja)) return false;
+  if (state.cuentasTaller !== undefined && !records(state.cuentasTaller, validWorkshopAccount)) return false;
   const config = state.configuracion;
   if (!complete(config, settingsRequiredFields) || !id(config.version) || typeof config.itbisPorcentaje !== 'number' ||
       (Object.hasOwn(config, 'metaDiaria') && !nullable(money)(config.metaDiaria)) ||
@@ -422,6 +495,10 @@ function mergeDelta(current, body) {
     if (!Array.isArray(c.movimientosUpsert)) invalid();
     next.movimientos = upsertById(next.movimientos ?? [], c.movimientosUpsert).slice(-100);
   }
+  if (Object.hasOwn(c, 'cuentasTallerUpsert')) {
+    if (!records(c.cuentasTallerUpsert, validWorkshopAccount)) invalid();
+    next.cuentasTaller = upsertById(next.cuentasTaller ?? [], c.cuentasTallerUpsert);
+  }
   return {
     databaseId: body.databaseId,
     revision: body.revision,
@@ -457,6 +534,22 @@ function checkConfirmation(snapshot, packet, resource, expected, payload) {
     if (!proof.replayed) {
       const row = snapshot.state.facturas.find(item => item.id === target);
       if (!row || row.estado !== 'anulada') throw new Error(unconfirmed);
+    }
+    return;
+  }
+  if (resource === 'taller' || resource.startsWith('taller/')) {
+    if (resource === 'taller/facturar') {
+      const saleId = snapshot.result?.ventaId;
+      if (!id(saleId)) throw new Error(unconfirmed);
+      if (!snapshot.state.facturas.some(item => item.id === saleId)) throw new Error(unconfirmed);
+    }
+    if (!proof.replayed) {
+      const row = (snapshot.state.cuentasTaller || []).find(item => item.id === target);
+      if (!row) throw new Error(unconfirmed);
+      if (resource === 'taller' && row.version !== 1) throw new Error(unconfirmed);
+      if (resource !== 'taller' && row.version !== payload.version + 1) throw new Error(unconfirmed);
+      if (resource === 'taller/cancelar' && row.estado !== 'cancelada') throw new Error(unconfirmed);
+      if (resource === 'taller/facturar' && (row.estado !== 'facturada' || row.ventaId !== snapshot.result.ventaId)) throw new Error(unconfirmed);
     }
     return;
   }

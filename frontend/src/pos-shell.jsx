@@ -16,6 +16,8 @@ const dateLabel = value => formatBusinessDateTime(value);
 const operations = { ventas: 'Venta', 'ventas/anular': 'Anulación de venta', compras: 'Compra', productos: 'Artículo',
   clientes: 'Cliente', suplidores: 'Suplidor', formulas: 'Fórmula de precios', configuracion: 'Configuración',
   ncf: 'Secuencia NCF', 'cuentas/cobros': 'Cobro a cliente', 'cuentas/pagos': 'Pago a suplidor',
+  taller: 'Cuenta de taller', 'taller/despachar': 'Despacho de taller', 'taller/devolver': 'Devolución de taller',
+  'taller/cancelar': 'Cancelación de cuenta de taller', 'taller/facturar': 'Cobro de cuenta de taller',
   'caja/abrir': 'Apertura de caja', 'caja/cerrar': 'Cierre de caja', 'caja/movimiento': 'Movimiento de caja' };
 const OWNER_ONLY_ROUTES = new Set(['/compras', '/suplidores', '/reportes', '/cuentas-por-pagar']);
 
@@ -39,7 +41,7 @@ function PacketDetails({ packet }) {
     const parsed = JSON.parse(packet.body);
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) payload = parsed;
   } catch { /* Preserve a malformed legacy packet for manual review. */ }
-  const resource = packet.path?.slice(5).replace(/\/\d+$/, '');
+  const resource = packet.path?.slice(5).replace(/\/\d+(?=\/|$)/g, '');
   return <div className="space-y-2 text-sm" style={{ overflowWrap: 'anywhere' }}>
     <p className="font-semibold">{operations[resource] ?? 'Solicitud'}{packet.method === 'DELETE' ? ' · Eliminación' : packet.method === 'PUT' ? ' · Cambio' : ''}</p>
     <dl className="space-y-1">

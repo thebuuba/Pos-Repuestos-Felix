@@ -61,6 +61,8 @@ export const references = {
   movimientos_inventario: { producto_id: 'productos', venta_detalle_id: 'venta_detalles', compra_detalle_id: 'compra_detalles' },
   movimientos_caja: { caja_id: 'turnos_caja' },
   abonos_cuentas: { venta_id: 'ventas', compra_id: 'compras', caja_id: 'turnos_caja' },
+  cuentas_taller: { cliente_id: 'clientes', venta_id: 'ventas' },
+  cuentas_taller_items: { cuenta_id: 'cuentas_taller', producto_id: 'productos' },
 };
 const encoded = value => typeof value === 'boolean' ? Number(value) : value;
 
@@ -117,7 +119,7 @@ export class DesktopLedger {
       data[table] = this.database.prepare(`SELECT * FROM local_${table} ORDER BY CAST(id AS INTEGER)`).all().map(row =>
         Object.fromEntries(columns.map(column => [column, row[column] !== null && booleans.has(column) ? Boolean(row[column]) : row[column]])));
     }
-    return { version: 7, format: 'repuestos-felix-relacional', exportedAt: new Date().toISOString(), tables: data };
+    return { version: 8, format: 'repuestos-felix-relacional', exportedAt: new Date().toISOString(), tables: data };
   }
   // Fixed relational columns retain NUMERIC strings; no JSON snapshot is the business authority.
   tableIds() {

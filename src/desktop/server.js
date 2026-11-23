@@ -12,7 +12,7 @@ const security = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosni
   'Referrer-Policy': 'no-referrer', 'Permissions-Policy': 'camera=(self), microphone=(), geolocation=()',
   'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; media-src 'self' blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'none'" };
 const error = (message, status = 400) => Object.assign(new Error(message), { status });
-const labels = { productos: 'Producto', clientes: 'Cliente', suplidores: 'Suplidor', formulas: 'Fórmula', configuracion: 'Configuración', ventas: 'Venta', compras: 'Compra', caja: 'Caja', cuentas: 'Abono', ncf: 'Comprobante NCF' };
+const labels = { productos: 'Producto', clientes: 'Cliente', suplidores: 'Suplidor', formulas: 'Fórmula', configuracion: 'Configuración', ventas: 'Venta', compras: 'Compra', caja: 'Caja', cuentas: 'Abono', ncf: 'Comprobante NCF', taller: 'Cuenta taller' };
 
 export function desktopServer(engine, remote, assetsDirectory) {
   const ledger = engine.ledger;

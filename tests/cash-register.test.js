@@ -59,7 +59,7 @@ test('caja persists, separates payment methods, rejects stale closes and restore
   await pool.end(); pool = new pg.Pool({ connectionString: database.connectionString, options: '-c role=pos_app' });
   assert.equal((await read()).state.caja.closures.length, 1);
   const backup = JSON.parse(JSON.stringify(await readSnapshot(pool, 'Prueba', true)));
-  assert.equal(backup.version, 7);
+  assert.equal(backup.version, 8);
   const invalid = structuredClone(backup); invalid.tables.turnos_caja[0].esperado = '100.29';
   await assert.rejects(write('restore', { backup: invalid, revision: (await read()).revision }), { status: 400 });
   const restored = await write('restore', { backup, revision: (await read()).revision });
@@ -148,6 +148,8 @@ test('a v5 backup restores business records without creating cash turns or payme
   delete backup.tables.secuencias_ncf;
   delete backup.tables.productos_codigos;
   delete backup.tables.abonos_cuentas;
+  delete backup.tables.cuentas_taller;
+  delete backup.tables.cuentas_taller_items;
   for (const row of backup.tables.configuracion) delete row.meta_diaria;
   for (const sale of backup.tables.ventas) {
     for (const col of ['caja_id', 'metodo_pago', 'descuento_porcentaje', 'descuento', 'estado', 'anulada_en', 'anulada_por', 'motivo_anulacion', 'vencimiento', 'version']) delete sale[col];
@@ -162,7 +164,7 @@ test('a v5 backup restores business records without creating cash turns or payme
   assert.deepEqual(restored.caja.closures, []);
   assert.deepEqual(restored.caja.movements, []);
   const current = await exportCashBackup();
-  assert.equal(current.version, 7);
+  assert.equal(current.version, 8);
   assert.deepEqual(current.tables.turnos_caja, []);
   assert.deepEqual(current.tables.movimientos_caja, []);
   assert.ok(current.tables.ventas.every(sale => sale.caja_id === null && sale.metodo_pago === null));

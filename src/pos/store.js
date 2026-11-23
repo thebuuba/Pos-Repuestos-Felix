@@ -6,6 +6,10 @@ import { contactOperation, settingsOperation } from './contact-operations.js';
 import { backupLayout, exportBackup, rows, tables } from './relational-backup.js';
 import { cashOperation, cashPresentation, lockCash, validateCashRestore } from './cash-operations.js';
 import { accountPayment, addDaysIso, ncfSequenceOperation, nextNcfIfActive, voidSale } from './account-operations.js';
+import {
+  billWorkshopAccount, cancelWorkshopAccount, dispatchWorkshopItems,
+  openWorkshopAccount, presentWorkshopAccount, returnWorkshopItem,
+} from './workshop-operations.js';
 export { fail } from './operation-fields.js';
 
 export const maintenanceLock = 74198232;
@@ -181,6 +185,15 @@ export async function snapshot(client, databaseLabel, { compact = false } = {}) 
         'p1', precio1::double precision, 'p2', precio2::double precision, 'p3', precio3::double precision
       ) ORDER BY id) AS items
       FROM public.compra_detalles GROUP BY compra_id
+    ),
+    workshop_lines AS (
+      SELECT cuenta_id, json_agg(json_build_object(
+        'id', id, 'producto_id', producto_id, 'codigo', codigo, 'nombre', nombre,
+        'gravado', gravado, 'nivel_precio', nivel_precio, 'precio', precio::text,
+        'cantidad', cantidad::text, 'cantidad_devuelta', cantidad_devuelta::text,
+        'despachado_por', despachado_por, 'retirado_por', retirado_por, 'creado_en', creado_en
+      ) ORDER BY id) AS items
+      FROM public.cuentas_taller_items GROUP BY cuenta_id
     )
     SELECT json_build_object(
       'databaseId', s.database_id,
@@ -241,7 +254,13 @@ export async function snapshot(client, databaseLabel, { compact = false } = {}) 
         'cantidad', m.cantidad::double precision, 'existencia_posterior', m.existencia_posterior::double precision,
         'tipo', m.tipo, 'venta_detalle_id', m.venta_detalle_id, 'compra_detalle_id', m.compra_detalle_id,
         'motivo', m.motivo, 'creado_en', m.creado_en
-      ) ORDER BY m.id) FROM (SELECT * FROM public.movimientos_inventario ORDER BY id DESC LIMIT 100) m), '[]'::json)
+      ) ORDER BY m.id) FROM (SELECT * FROM public.movimientos_inventario ORDER BY id DESC LIMIT 100) m), '[]'::json),
+      'cuentas_taller', COALESCE((SELECT json_agg(json_build_object(
+        'id', ct.id, 'version', ct.version, 'cliente_id', ct.cliente_id, 'cliente_nombre', ct.cliente_nombre,
+        'mecanico', ct.mecanico, 'vehiculo', ct.vehiculo, 'nota', ct.nota, 'estado', ct.estado,
+        'venta_id', ct.venta_id, 'abierta_por', ct.abierta_por, 'abierta_en', ct.abierta_en,
+        'cerrada_en', ct.cerrada_en, 'items', COALESCE(wl.items, '[]'::json)
+      ) ORDER BY ct.id) FROM public.cuentas_taller ct LEFT JOIN workshop_lines wl ON wl.cuenta_id=ct.id), '[]'::json)
     ) AS payload
     FROM pos_privado.sistema s WHERE s.id = 1
   `)).rows[0]?.payload;
@@ -265,6 +284,7 @@ export async function snapshot(client, databaseLabel, { compact = false } = {}) 
       compras: row.compras.map(c => presentPurchase(c, c.items)),
       abonos: row.abonos_cuentas.map(presentAbono),
       movimientos: row.movimientos.map(m => ({ ...m, creado_en: iso(m.creado_en) })),
+      cuentasTaller: (row.cuentas_taller || []).map(a => presentWorkshopAccount(a, a.items)),
     },
   };
 }
@@ -399,6 +419,25 @@ async function fetchMovementsSince(client, afterId) {
   return list.map(m => ({ ...m, creado_en: iso(m.creado_en) }));
 }
 
+async function fetchWorkshopSlice(client, ids) {
+  if (!ids.length) return [];
+  const list = (await client.query(`
+    SELECT COALESCE(json_agg(json_build_object(
+      'id', ct.id, 'version', ct.version, 'cliente_id', ct.cliente_id, 'cliente_nombre', ct.cliente_nombre,
+      'mecanico', ct.mecanico, 'vehiculo', ct.vehiculo, 'nota', ct.nota, 'estado', ct.estado,
+      'venta_id', ct.venta_id, 'abierta_por', ct.abierta_por, 'abierta_en', ct.abierta_en, 'cerrada_en', ct.cerrada_en,
+      'items', COALESCE((SELECT json_agg(json_build_object(
+        'id', i.id, 'producto_id', i.producto_id, 'codigo', i.codigo, 'nombre', i.nombre,
+        'gravado', i.gravado, 'nivel_precio', i.nivel_precio, 'precio', i.precio::text,
+        'cantidad', i.cantidad::text, 'cantidad_devuelta', i.cantidad_devuelta::text,
+        'despachado_por', i.despachado_por, 'retirado_por', i.retirado_por, 'creado_en', i.creado_en
+      ) ORDER BY i.id) FROM public.cuentas_taller_items i WHERE i.cuenta_id=ct.id), '[]'::json)
+    ) ORDER BY ct.id), '[]'::json) AS rows
+    FROM public.cuentas_taller ct WHERE ct.id = ANY($1::bigint[])
+  `, [ids])).rows[0].rows;
+  return list.map(a => presentWorkshopAccount(a, a.items));
+}
+
 async function buildDelta(client, method, path, body, result, databaseLabel, baseRevision, priorMovementId = null) {
   const version = await snapshotVersion(client, databaseLabel);
   const changes = {};
@@ -471,6 +510,24 @@ async function buildDelta(client, method, path, body, result, databaseLabel, bas
     Object.assign(changes, presentConfig(cfg));
   } else if (method === 'PUT' && path === '/api/ncf') {
     changes.secuenciasNcf = presentNcf((await client.query('SELECT id,tipo,prefijo,inicio,fin,actual,vencimiento::text AS vencimiento,activa,version FROM public.secuencias_ncf ORDER BY id')).rows);
+  } else if (method === 'POST' && (path === '/api/taller' || /^\/api\/taller\/\d+\/(despachar|devolver|cancelar|facturar)$/.test(path))) {
+    const [accountRow] = await fetchWorkshopSlice(client, [result.id]);
+    if (accountRow) changes.cuentasTallerUpsert = [accountRow];
+    if (path.endsWith('/facturar')) {
+      changes.caja = await fetchCashSlice(client);
+      if (result.ventaId) {
+        const [saleRow] = await fetchSalesSlice(client, [result.ventaId]);
+        if (saleRow) {
+          changes.facturasUpsert = [saleRow];
+          changes.clientesUpsert = await fetchCustomersSlice(client, [saleRow.clienteId]);
+        }
+      }
+      changes.secuenciasNcf = presentNcf((await client.query('SELECT id,tipo,prefijo,inicio,fin,actual,vencimiento::text AS vencimiento,activa,version FROM public.secuencias_ncf ORDER BY id')).rows);
+    } else {
+      const productIds = [...new Set((accountRow?.items ?? []).map(i => Number(i.productoId)))];
+      if (productIds.length) changes.productosUpsert = await fetchProductsSlice(client, productIds);
+      if (priorMovementId !== null) changes.movimientosUpsert = await fetchMovementsSince(client, priorMovementId);
+    }
   } else {
     return null;
   }
@@ -792,6 +849,15 @@ async function execute(client, method, path, body, actor, occurredAt, context) {
   if (method === 'POST' && ['/api/caja/abrir','/api/caja/cerrar','/api/caja/movimiento'].includes(path)) return cashOperation(client, path, body, actor, occurredAt);
   const voidMatch = path.match(/^\/api\/ventas\/(\d+)\/anular$/);
   if (method === 'POST' && voidMatch) return voidSale(client, id(Number(voidMatch[1]), 'la factura'), body, actor, occurredAt);
+  if (method === 'POST' && path === '/api/taller') return openWorkshopAccount(client, body, actor, occurredAt);
+  const workshopMatch = path.match(/^\/api\/taller\/(\d+)\/(despachar|devolver|cancelar|facturar)$/);
+  if (method === 'POST' && workshopMatch) {
+    const accountId = id(Number(workshopMatch[1]), 'la cuenta de taller');
+    if (workshopMatch[2] === 'despachar') return dispatchWorkshopItems(client, accountId, body, actor, occurredAt);
+    if (workshopMatch[2] === 'devolver') return returnWorkshopItem(client, accountId, body, actor, occurredAt);
+    if (workshopMatch[2] === 'cancelar') return cancelWorkshopAccount(client, accountId, body, actor, occurredAt);
+    return billWorkshopAccount(client, accountId, body, actor, occurredAt, context.allowNcf !== false);
+  }
   if (method === 'POST' && path === '/api/cuentas/cobros') return accountPayment(client, 'cobro', body, actor, occurredAt);
   if (method === 'POST' && path === '/api/cuentas/pagos') return accountPayment(client, 'pago', body, actor, occurredAt);
   if (method === 'PUT' && path === '/api/ncf') return ncfSequenceOperation(client, body);
@@ -835,7 +901,8 @@ export async function writeOperation(pool, method, path, body, key, databaseLabe
     } else {
       if (body.databaseId !== system.database_id) fail('La base cambió. Actualiza los datos antes de guardar.', 409);
       if (Number.isSafeInteger(context.deltaBaseRevision) && !context.versionOnly && !context.represent &&
-          (path === '/api/ventas' || path === '/api/compras' || /^\/api\/ventas\/\d+\/anular$/.test(path) || /^\/api\/productos(?:\/\d+)?$/.test(path))) {
+          (path === '/api/ventas' || path === '/api/compras' || /^\/api\/ventas\/\d+\/anular$/.test(path) || /^\/api\/productos(?:\/\d+)?$/.test(path) ||
+           path === '/api/taller' || /^\/api\/taller\/\d+\/(despachar|devolver|cancelar)$/.test(path))) {
         priorMovementId = Number((await client.query('SELECT COALESCE(max(id),0) AS id FROM public.movimientos_inventario')).rows[0].id);
       }
       // Only this call can reject a new operation after the guarded key miss.

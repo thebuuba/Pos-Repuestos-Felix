@@ -148,8 +148,8 @@ test('v5 restores inactive records, references and cash identity while archiving
   const supplierId = (await confirmed('suplidores', { nombre: 'Archivado', formulaId })).result.id;
   await confirmed('suplidores/' + supplierId, { version: 1 }, 'DELETE');
   const backup = await get('backup');
-  assert.equal(backup.version, 7);
-  assert.deepEqual(Object.keys(backup.tables), ['turnos_caja', 'configuracion', 'secuencias_ncf', 'clientes', 'formulas_precios', 'suplidores', 'productos', 'productos_codigos', 'ventas', 'venta_detalles', 'compras', 'compra_detalles', 'movimientos_inventario', 'movimientos_caja', 'abonos_cuentas']);
+  assert.equal(backup.version, 8);
+  assert.deepEqual(Object.keys(backup.tables), ['turnos_caja', 'configuracion', 'secuencias_ncf', 'clientes', 'formulas_precios', 'suplidores', 'productos', 'productos_codigos', 'ventas', 'venta_detalles', 'compras', 'compra_detalles', 'movimientos_inventario', 'movimientos_caja', 'abonos_cuentas', 'cuentas_taller', 'cuentas_taller_items']);
   const marked = backup.tables.clientes.find(c => c.es_contado);
   marked.id = '8500';
   backup.tables.clientes.sort((a, b) => Number(a.id) - Number(b.id));
@@ -158,7 +158,7 @@ test('v5 restores inactive records, references and cash identity while archiving
   assert.notEqual(restored.databaseId, original.databaseId);
   assert.deepEqual((await get('backup')).tables, backup.tables);
   const archived = (await pool.query("SELECT datos FROM pos_privado.respaldos WHERE motivo='Antes de restaurar' ORDER BY id DESC LIMIT 1")).rows[0].datos;
-  assert.equal(archived.version, 7);
+  assert.equal(archived.version, 8);
   assert.notEqual(archived.tables.clientes.find(c => c.es_contado).id, '8500');
   for (const method of ['PUT', 'DELETE'])
     await rejected(409, 'clientes/8500', method === 'PUT' ? { nombre: 'Cambio', version: 1 } : { version: 1 }, method);

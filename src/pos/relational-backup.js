@@ -30,8 +30,7 @@ const v6 = {
   ventas: [...v5.ventas, 'caja_id', 'metodo_pago'],
   movimientos_caja: ['id','caja_id','tipo','monto','concepto','usuario','creado_en'],
 };
-// Parent rows precede children; reverse order is safe for transactional restore.
-export const tables = {
+const v7 = {
   turnos_caja: v6.turnos_caja,
   configuracion: [...v6.configuracion, 'meta_diaria'],
   secuencias_ncf: ['id','tipo','prefijo','inicio','fin','actual','vencimiento','activa','version','actualizado_en'],
@@ -48,6 +47,12 @@ export const tables = {
   movimientos_caja: v6.movimientos_caja,
   abonos_cuentas: ['id','tipo','venta_id','compra_id','caja_id','metodo_pago','monto','referencia','nota','usuario','creado_en'],
 };
+// Parent rows precede children; reverse order is safe for transactional restore.
+export const tables = {
+  ...v7,
+  cuentas_taller: ['id','cliente_id','cliente_nombre','mecanico','vehiculo','nota','estado','venta_id','abierta_por','abierta_en','cerrada_en','version'],
+  cuentas_taller_items: ['id','cuenta_id','producto_id','codigo','nombre','gravado','nivel_precio','precio','cantidad','cantidad_devuelta','despachado_por','retirado_por','creado_en'],
+};
 function exactKeys(value, keys) {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
@@ -61,7 +66,7 @@ function validIsoDate(value, label = 'Fecha documental inválida.') {
 const preferenceFields = { redondeo: 'redondeo', nivel_precio_predeterminado: 'nivelPrecioPredeterminado',
   formato_impresion: 'formatoImpresion', permitir_stock_negativo: 'permitirStockNegativo' };
 const moneyColumns = new Set(['costo', 'precio', 'precio1', 'precio2', 'precio3', 'base', 'itbis', 'total','fondo','esperado','contado','ventas','monto','descuento']);
-const optionalTextColumns = new Set(['rnc', 'tel', 'cliente_rnc', 'motivo', 'correo', 'direccion', 'contacto', 'pie_ticket', 'marca', 'categoria', 'ubicacion', 'referencia', 'nota']);
+const optionalTextColumns = new Set(['rnc', 'tel', 'cliente_rnc', 'motivo', 'correo', 'direccion', 'contacto', 'pie_ticket', 'marca', 'categoria', 'ubicacion', 'referencia', 'nota', 'mecanico', 'vehiculo', 'retirado_por']);
 function validateBackupRow(table, row, columns, version) {
   if (!exactKeys(row, columns)) fail(`Fila inválida en ${table}.`);
   if (table === 'formulas_precios') formulaValues(row.factor_costo, row.recargo1, row.recargo2, row.recargo3);
@@ -71,7 +76,8 @@ function validateBackupRow(table, row, columns, version) {
       (table === 'ventas' && ['caja_id','metodo_pago','anulada_en','anulada_por','motivo_anulacion','vencimiento'].includes(key)) ||
       (table === 'compras' && key === 'vencimiento') ||
       (table === 'configuracion' && key === 'meta_diaria') ||
-      (table === 'abonos_cuentas' && ['venta_id','compra_id','caja_id'].includes(key)))) continue;
+      (table === 'abonos_cuentas' && ['venta_id','compra_id','caja_id'].includes(key)) ||
+      (table === 'cuentas_taller' && ['venta_id','cerrada_en'].includes(key)))) continue;
     if (key === 'id' || key === 'version' || key.endsWith('_id')) {
       if (value === null && ['venta_detalle_id', 'compra_detalle_id', 'formula_id'].includes(key)) continue;
       if (!['number', 'string'].includes(typeof value) || !/^[1-9]\d*$/.test(String(value)) || !Number.isSafeInteger(Number(value))) fail(`Identificador inválido en ${table}.`);
@@ -93,7 +99,7 @@ function validateBackupRow(table, row, columns, version) {
       cents(String(value).replace(/^-/, ''), key);
     } else if (key === 'tasa_itbis') {
       if (!['string', 'number'].includes(typeof value) || !/^(?:0(?:\.\d{1,6})?|1(?:\.0{1,6})?)$/.test(String(value))) fail('Tasa ITBIS inválida.');
-    } else if (['stock', 'cantidad', 'existencia_posterior', 'stock_minimo'].includes(key)) {
+    } else if (['stock', 'cantidad', 'cantidad_devuelta', 'existencia_posterior', 'stock_minimo'].includes(key)) {
       if (version >= 5) {
         const signed = table === 'movimientos_inventario' && key === 'cantidad';
         const raw = signed && ['string', 'number'].includes(typeof value) ? String(value).replace(/^-/, '') : value;
@@ -120,12 +126,12 @@ export async function rows(client, table, preciseDates = false, filter) {
 export async function exportBackup(client) {
   const data = {};
   for (const table of Object.keys(tables)) data[table] = await rows(client, table, true);
-  return { version: 7, format: 'repuestos-felix-relacional', exportedAt: new Date().toISOString(), tables: data };
+  return { version: 8, format: 'repuestos-felix-relacional', exportedAt: new Date().toISOString(), tables: data };
 }
 
 // INSERT usa los valores predeterminados de SQL para las columnas ausentes.
 export function backupLayout(backup) {
-  const layout = backup.version === 7 ? tables : backup.version === 6 ? v6 : backup.version === 5 ? v5 : backup.version === 4 ? v4 : backup.version === 3 ? v3 : backup.version === 2 ? v2 : null;
+  const layout = backup.version === 8 ? tables : backup.version === 7 ? v7 : backup.version === 6 ? v6 : backup.version === 5 ? v5 : backup.version === 4 ? v4 : backup.version === 3 ? v3 : backup.version === 2 ? v2 : null;
   if (!layout || backup.format !== 'repuestos-felix-relacional' || !exactKeys(backup.tables, Object.keys(layout)))
     fail('Formato de respaldo inválido.');
   for (const [table, columns] of Object.entries(layout)) {

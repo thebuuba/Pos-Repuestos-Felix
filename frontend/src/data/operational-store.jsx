@@ -191,6 +191,21 @@ function actions(client) {
     saveFormula: record('formulas', f => ({ nombre: f.name, factorCosto: f.costFactor,
       recargo1: f.margins.p1, recargo2: f.margins.p2, recargo3: f.margins.p3 })), deleteFormula: record('formulas'),
     updateSettings: durableAction(client, settingsOperation),
+    openWorkshopAccount: durableAction(client, ({ databaseId, ...payload }) => ({
+      databaseId, method: 'POST', path: '/api/taller', payload,
+    })),
+    dispatchWorkshopItems: durableAction(client, ({ databaseId, accountId, ...payload }) => ({
+      databaseId, method: 'POST', path: '/api/taller/' + accountId + '/despachar', payload,
+    })),
+    returnWorkshopItem: durableAction(client, ({ databaseId, accountId, ...payload }) => ({
+      databaseId, method: 'POST', path: '/api/taller/' + accountId + '/devolver', payload,
+    })),
+    cancelWorkshopAccount: durableAction(client, ({ databaseId, accountId, ...payload }) => ({
+      databaseId, method: 'POST', path: '/api/taller/' + accountId + '/cancelar', payload,
+    })),
+    billWorkshopAccount: durableAction(client, ({ databaseId, accountId, ...payload }) => ({
+      databaseId, method: 'POST', path: '/api/taller/' + accountId + '/facturar', payload,
+    })),
   };
 }
 
@@ -266,6 +281,40 @@ export function OperationalStoreProvider({ client, children }) {
   const docsAndCash = useMemo(() => presentationDocsAndCash(rawState, databaseId), [
     rawState?.facturas, rawState?.compras, rawState?.abonos, rawState?.caja, databaseId,
   ]);
+  const workshopAccounts = useMemo(() => {
+    const order = { abierta: 0, facturada: 1, cancelada: 2 };
+    return (rawState?.cuentasTaller ?? []).map(a => ({
+      id: a.id,
+      version: a.version,
+      databaseId,
+      customerId: a.clienteId,
+      customerName: a.cliente,
+      mechanic: a.mecanico ?? '',
+      vehicle: a.vehiculo ?? '',
+      note: a.nota ?? '',
+      status: a.estado,
+      saleId: a.ventaId ?? null,
+      openedBy: a.abiertaPor,
+      openedAt: a.abiertaEn,
+      closedAt: a.cerradaEn ?? null,
+      items: (a.items ?? []).map(item => ({
+        id: item.id,
+        productId: item.productoId,
+        code: item.codigo,
+        name: item.nombre,
+        taxable: item.gravado,
+        priceLevel: item.nivelPrecio,
+        price: item.precio,
+        priceExact: item.precioExacto ?? item.precio.toFixed(4),
+        quantity: item.cantidad,
+        returnedQuantity: item.cantidadDevuelta,
+        netQuantity: item.cantidadNeta,
+        dispatchedBy: item.despachadoPor,
+        withdrawnBy: item.retiradoPor ?? '',
+        createdAt: item.creadoEn,
+      })),
+    })).sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9) || b.id - a.id);
+  }, [rawState?.cuentasTaller, databaseId]);
   const role = normalizeRole(account.role);
   const runtime = useMemo(() => ({
     ...state, mode: 'online', databaseId, revision: snapshot?.revision ?? null,
@@ -274,8 +323,8 @@ export function OperationalStoreProvider({ client, children }) {
     readArchives: client.readArchives, archivePending: client.archivePending, logout: client.logout,
   }), [state, databaseId, snapshot?.revision, role, account, client]);
   const value = useMemo(() => ({
-    runtime, products, categories, customers, suppliers, formulas, settings, ...docsAndCash, ...writes,
-  }), [runtime, products, categories, customers, suppliers, formulas, settings, docsAndCash, writes]);
+    runtime, products, categories, customers, suppliers, formulas, settings, workshopAccounts, ...docsAndCash, ...writes,
+  }), [runtime, products, categories, customers, suppliers, formulas, settings, workshopAccounts, docsAndCash, writes]);
   return <PosStoreContext.Provider value={value}>
     {children}
   </PosStoreContext.Provider>;

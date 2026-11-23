@@ -45,7 +45,7 @@ label {
 }
 .scan-confirmation [data-description] { overflow-wrap: anywhere; }
 .pos-sale .sale-selection-heading { flex-wrap: wrap; }
-.sale-selection-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.sale-selection-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; }
 .pos-sale .sale-product-search { grid-template-columns: 140px minmax(0, 1fr) auto; }
 .sale-search-row { grid-column: 1 / -1; display: flex; align-items: flex-start; gap: 8px; }
 .sale-search-row .sale-search-input { flex: 1; min-width: 0; }

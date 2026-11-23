@@ -8,9 +8,10 @@ import { CONDITIONS } from "../data/sales-options.js";
 import { PAYMENT_METHODS } from "../data/sales-options.js";
 import { PageHeader } from "../components/pos/page-header.jsx";
 import { Button } from "../components/ui/button.jsx";
-import { CirclePause, RotateCcw, Lock, ChevronDown, LayoutGrid, Play, Trash2 } from "lucide-react";
+import { CirclePause, RotateCcw, Lock, ChevronDown, LayoutGrid, Play, Trash2, Wrench } from "lucide-react";
 import { Link } from "react-router-dom";
 import { InvoiceSettingsCard } from "../components/pos/invoice-settings-card.jsx";
+import { WorkshopAccountsDialog } from "../components/pos/workshop-accounts-dialog.jsx";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../components/ui/dialog.jsx";
 import { formatMoney } from "../lib/format.js";
 import { businessTodayIso } from "../lib/dates.js";
@@ -374,14 +375,21 @@ export { PointOfSalePage };
 const EMPTY_CATEGORIES = [];
 
 export function OperationalPointOfSalePage() {
+  const { workshopAccounts = [] } = usePosStore();
   const { products, customers, settings, cashSession, runtime, cashCustomer,
     customerId, setCustomerId, comprobante, setComprobante, condition, setCondition,
     paymentMethod, setPaymentMethod, discountMode, setDiscountMode, discountValue, setDiscountValue, discountError,
     discountPercent, setDiscountPercent, received, setReceived, priceLevel, setPriceLevel,
     items, setItems, heldSales, holdCurrentSale, resumeHeldSale, removeHeldSale, openQuote,
+    showReceipt, showSaleDocument,
     receipt, failure, sending, customer, lines, totals, cartQuantities,
     locked, disabledReason, resetSale, editQuantity, checkout } = useSaleDraft();
   const [heldOpen, setHeldOpen] = useState(false);
+  const [workshopOpen, setWorkshopOpen] = useState(false);
+  const openWorkshopCount = useMemo(
+    () => workshopAccounts.filter((a) => a.status === "abierta").length,
+    [workshopAccounts],
+  );
   const recoveryIssue = runtime.recoveryIssue?.operationId === failure?.operationId ? runtime.recoveryIssue : null;
   const todayIso = businessTodayIso();
   const configuredNcf = !window.__FELIX_DESKTOP__ && (settings.ncf || []).find(s => s.type === comprobante && s.active);
@@ -435,6 +443,20 @@ export function OperationalPointOfSalePage() {
       <SaleLayout
         locked={locked}
         selectionActions={<>
+          <Button
+            disabled={locked}
+            variant="outline"
+            className="h-11 rounded-xl bg-card"
+            onClick={() => setWorkshopOpen(true)}
+          >
+            <Wrench />
+            <span className="sale-desktop-only">Cuentas taller</span><span className="sale-mobile-only">Taller</span>
+            {openWorkshopCount > 0 && (
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground tabular-nums">
+                {openWorkshopCount}
+              </span>
+            )}
+          </Button>
           <Button
             disabled={locked || (!items.length && !heldSales.length)}
             variant="outline"
@@ -601,6 +623,23 @@ export function OperationalPointOfSalePage() {
           )}
         </DialogContent>
       </Dialog>
+      <WorkshopAccountsDialog
+        open={workshopOpen}
+        onOpenChange={setWorkshopOpen}
+        cartItems={items}
+        defaultCustomerId={customerId}
+        onCartDispatched={resetSale}
+        onBilled={(snapshot, cashReceived) => showReceipt(snapshot, cashReceived)}
+        onShowStatement={(doc) => showSaleDocument(doc, {
+          isQuote: true,
+          title: "Estado de cuenta de taller",
+          description: "Cuenta abierta en taller. No es factura fiscal.",
+        })}
+        onShowSale={(doc) => showSaleDocument(doc, {
+          title: "Factura de taller",
+          description: `Factura consolidada ${doc.invoiceNumber}.`,
+        })}
+      />
 
     </div>
   );

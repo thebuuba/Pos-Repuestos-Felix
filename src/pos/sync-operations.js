@@ -10,15 +10,21 @@ const sameId = (a, b) => String(a) === String(b);
 export const isCashSyncOperation = (path, body) =>
   path === '/api/ventas' || path.startsWith('/api/caja/') ||
   /^\/api\/ventas\/\d+\/anular$/.test(path) ||
+  /^\/api\/taller\/\d+\/facturar$/.test(path) ||
   (['/api/cuentas/cobros', '/api/cuentas/pagos'].includes(path) && body?.metodoPago === 'efectivo');
 const tableFor = resource => ({
   formulas: 'formulas_precios', 'caja/abrir': 'turnos_caja',
   'caja/cerrar': 'turnos_caja', 'caja/movimiento': 'movimientos_caja',
   'ventas/anular': 'ventas', 'cuentas/cobros': 'abonos_cuentas',
   'cuentas/pagos': 'abonos_cuentas', ncf: 'secuencias_ncf',
+  taller: 'cuentas_taller', 'taller/despachar': 'cuentas_taller',
+  'taller/devolver': 'cuentas_taller', 'taller/cancelar': 'cuentas_taller',
+  'taller/facturar': 'cuentas_taller',
 })[resource] ?? resource;
 function resourceFor(path) {
   if (/^\/api\/ventas\/\d+\/anular$/.test(path)) return 'ventas/anular';
+  const workshopMatch = path.match(/^\/api\/taller\/\d+\/(despachar|devolver|cancelar|facturar)$/);
+  if (workshopMatch) return `taller/${workshopMatch[1]}`;
   return path.slice('/api/'.length).replace(/\/\d+$/, '');
 }
 
@@ -29,7 +35,7 @@ export function operationEffect(method, path, body, result, backup) {
   const table = tableFor(resource);
   const row = backup.tables[table]?.find(row => sameId(row.id, result.id));
   if (!row) fail('No se encontró el resultado durable de la operación.', 503);
-  const immutable = ['ventas', 'compras', 'turnos_caja', 'movimientos_caja', 'abonos_cuentas'].includes(table);
+  const immutable = ['ventas', 'compras', 'turnos_caja', 'movimientos_caja', 'abonos_cuentas', 'cuentas_taller'].includes(table);
   const values = (source, dates) => Object.fromEntries(Object.entries(source)
     .filter(([key]) => key !== 'id' && key !== 'version' && !key.endsWith('_id') &&
       (dates || !key.endsWith('_en')))
@@ -39,6 +45,18 @@ export function operationEffect(method, path, body, result, backup) {
     const sale = resource === 'ventas';
     effect.items = backup.tables[sale ? 'venta_detalles' : 'compra_detalles']
       .filter(line => sameId(line[sale ? 'venta_id' : 'compra_id'], result.id)).map(line => values(line, true));
+  }
+  if (resource === 'taller' || resource.startsWith('taller/')) {
+    effect.items = (backup.tables.cuentas_taller_items || [])
+      .filter(line => sameId(line.cuenta_id, result.id)).map(line => values(line, true));
+    if (resource === 'taller/facturar') {
+      const saleRow = (backup.tables.ventas || []).find(v => sameId(v.id, result.ventaId));
+      if (!saleRow) fail('No se encontró la factura generada para la cuenta de taller.', 503);
+      effect.venta = values(saleRow, true);
+      effect.ventaItems = (backup.tables.venta_detalles || [])
+        .filter(line => sameId(line.venta_id, result.ventaId)).map(line => values(line, true));
+      effect.total = saleRow.total;
+    }
   }
   if (resource === 'productos' && backup.tables.productos_codigos) {
     effect.altCodes = backup.tables.productos_codigos
@@ -93,8 +111,9 @@ function validateEnvelope(envelope) {
   id(envelope.sequence, 'la secuencia del equipo');
   const { method, path, body, occurredAt, expected } = envelope;
   const validRoute = method === 'POST' && (
-      /^\/api\/(productos|clientes|suplidores|formulas|ventas|compras|caja\/(abrir|cerrar|movimiento)|cuentas\/(cobros|pagos))$/.test(path) ||
-      /^\/api\/ventas\/[1-9]\d*\/anular$/.test(path)
+      /^\/api\/(productos|clientes|suplidores|formulas|ventas|compras|taller|caja\/(abrir|cerrar|movimiento)|cuentas\/(cobros|pagos))$/.test(path) ||
+      /^\/api\/ventas\/[1-9]\d*\/anular$/.test(path) ||
+      /^\/api\/taller\/[1-9]\d*\/(despachar|devolver|cancelar|facturar)$/.test(path)
     ) ||
     ['PUT', 'DELETE'].includes(method) && /^\/api\/(productos|clientes|suplidores|formulas)\/[1-9]\d*$/.test(path) ||
     method === 'PUT' && ['/api/configuracion', '/api/ncf'].includes(path);
@@ -116,6 +135,17 @@ function validateEnvelope(envelope) {
     id(body.versionConfiguracion, 'la versión de configuración');
     if (!Array.isArray(body.items)) fail('Faltan las líneas de venta.');
     body.items.forEach(line => id(line.versionProducto, 'la versión del artículo'));
+  }
+  if (path === '/api/taller' && body.items !== undefined) {
+    if (!Array.isArray(body.items)) fail('Las líneas de despacho no son válidas.');
+    body.items.forEach(line => id(line.versionProducto, 'la versión del artículo'));
+  }
+  if (/^\/api\/taller\/[1-9]\d*\/despachar$/.test(path)) {
+    if (!Array.isArray(body.items)) fail('Faltan las líneas de despacho.');
+    body.items.forEach(line => id(line.versionProducto, 'la versión del artículo'));
+  }
+  if (/^\/api\/taller\/[1-9]\d*\/facturar$/.test(path)) {
+    id(body.versionConfiguracion, 'la versión de configuración');
   }
   if (path === '/api/compras') {
     if (!Array.isArray(body.items)) fail('Faltan las líneas de compra.');
@@ -221,11 +251,23 @@ async function operationBackup(client, method, path, result, priorMovement, prio
     data.productos_codigos = await rows(client, 'productos_codigos', true, {
       sql: 'producto_id=$1', values: [result.id],
     });
+  } else if (resource === 'taller' || resource.startsWith('taller/')) {
+    data.cuentas_taller_items = await rows(client, 'cuentas_taller_items', true, {
+      sql: 'cuenta_id=$1', values: [result.id],
+    });
+    if (resource === 'taller/facturar') {
+      data.ventas = await rows(client, 'ventas', true, { sql: 'id=$1', values: [result.ventaId] });
+      data.venta_detalles = await rows(client, 'venta_detalles', true, { sql: 'venta_id=$1', values: [result.ventaId] });
+    } else {
+      data.movimientos_inventario = await rows(client, 'movimientos_inventario', true, {
+        sql: "id>$1 AND tipo IN ('despacho','devolucion_despacho')", values: [priorMovement],
+      });
+    }
   }
   return { tables: data };
 }
 
-function createdRows(method, path, body, result, backup, priorProducts, priorMovement, priorAltCode, hadNcf) {
+function createdRows(method, path, body, result, backup, priorProducts, priorMovement, priorAltCode, hadNcf, priorWorkshopItem = 0) {
   const resource = resourceFor(path), tbl = backup.tables;
   const created = {};
   const add = (table, list) => { if (list.length) created[table] = list.map(row => Number(row.id)); };
@@ -241,6 +283,22 @@ function createdRows(method, path, body, result, backup, priorProducts, priorMov
   if (resource === 'ncf' && !hadNcf) add('secuencias_ncf', selected('secuencias_ncf'));
   if (resource === 'ventas/anular') {
     add('movimientos_inventario', tbl.movimientos_inventario.filter(row => Number(row.id) > priorMovement && row.tipo === 'anulacion'));
+  }
+  if (resource === 'taller') {
+    add('cuentas_taller', selected('cuentas_taller'));
+    add('cuentas_taller_items', tbl.cuentas_taller_items.filter(row => sameId(row.cuenta_id, result.id)));
+    add('movimientos_inventario', tbl.movimientos_inventario.filter(row => Number(row.id) > priorMovement && row.tipo === 'despacho'));
+  }
+  if (resource === 'taller/despachar') {
+    add('cuentas_taller_items', tbl.cuentas_taller_items.filter(row => Number(row.id) > priorWorkshopItem && sameId(row.cuenta_id, result.id)));
+    add('movimientos_inventario', tbl.movimientos_inventario.filter(row => Number(row.id) > priorMovement && row.tipo === 'despacho'));
+  }
+  if (resource === 'taller/devolver' || resource === 'taller/cancelar') {
+    add('movimientos_inventario', tbl.movimientos_inventario.filter(row => Number(row.id) > priorMovement && row.tipo === 'devolucion_despacho'));
+  }
+  if (resource === 'taller/facturar') {
+    add('ventas', tbl.ventas.filter(row => sameId(row.id, result.ventaId)));
+    add('venta_detalles', tbl.venta_detalles.filter(row => sameId(row.venta_id, result.ventaId)));
   }
   if (resource === 'ventas' || resource === 'compras') {
     const sale = resource === 'ventas', detailTable = sale ? 'venta_detalles' : 'compra_detalles';
@@ -263,7 +321,7 @@ export async function writeSyncOperation(pool, envelope, databaseLabel, actor, {
   const executionBody = structuredClone(body);
   const retiredKey = streamKey('retired', actorId, deviceId, body.databaseId);
   const cursorKey = streamKey('cursor', actorId, deviceId, body.databaseId);
-  let priorProducts = new Set(), priorMovement = 0, priorAltCode = 0, hadNcf = false;
+  let priorProducts = new Set(), priorMovement = 0, priorAltCode = 0, hadNcf = false, priorWorkshopItem = 0;
   return writeOperation(pool, method, path, executionBody, operationId, databaseLabel, actor, {
     occurredAt, allowNcf: false, requestType: `sync:${actorId}:${method} ${path}`, fingerprintPayload: envelope, versionOnly: receiptOnly,
     async beforeExecute(client) {
@@ -278,6 +336,7 @@ export async function writeSyncOperation(pool, envelope, databaseLabel, actor, {
         ORDER BY (resultado->'metadata'->>'sequence')::bigint DESC LIMIT 1`, [deviceId, actorId, body.databaseId])).rows[0]?.metadata;
       if (sequence !== (previous ? previous.sequence + 1 : 1)) fail('La secuencia del equipo no coincide. Sincroniza primero la operación pendiente anterior.', 409);
       if (previous && occurredAt < previous.occurredAt) fail('La fecha del equipo retrocedió. La operación local se conserva para revisar.', 409);
+      const resource = resourceFor(path);
       if (isCashSyncOperation(path, body)) {
         const voidMatch = path.match(/^\/api\/ventas\/(\d+)\/anular$/);
         if (voidMatch) {
@@ -286,23 +345,26 @@ export async function writeSyncOperation(pool, envelope, databaseLabel, actor, {
             await verifyCashHead(client, expected.cashHead, occurredAt, { cajaId: Number(targetSale.caja_id) });
           }
         } else {
-          await verifyCashHead(client, expected.cashHead, occurredAt, path === '/api/ventas' ? body : null);
+          await verifyCashHead(client, expected.cashHead, occurredAt, (path === '/api/ventas' || resource === 'taller/facturar') ? body : null);
         }
       }
-      if (path === '/api/ventas') {
+      if (path === '/api/ventas' || ((resource === 'taller' || resource === 'taller/despachar') && Array.isArray(body.items) && body.items.length)) {
         const versions = new Map((await client.query('SELECT id,version FROM productos WHERE id=ANY($1::bigint[]) ORDER BY id FOR UPDATE',
           [body.items.map(line => line.productoId)])).rows.map(row => [Number(row.id), Number(row.version)]));
         executionBody.items.forEach(line => { if (versions.has(line.productoId)) line.versionProducto = versions.get(line.productoId); });
       }
       if (path === '/api/compras') priorProducts = new Set((await client.query('SELECT id FROM productos WHERE codigo=ANY($1::text[])',
         [body.items.map(line => line.codigo)])).rows.map(row => String(row.id)));
-      if (resourceFor(path) === 'productos' || resourceFor(path) === 'ventas/anular') {
+      if (['productos', 'ventas/anular', 'taller', 'taller/despachar', 'taller/devolver', 'taller/cancelar'].includes(resource)) {
         priorMovement = Number((await client.query('SELECT COALESCE(max(id),0) AS id FROM movimientos_inventario')).rows[0].id);
       }
-      if (resourceFor(path) === 'productos') {
+      if (resource === 'taller/despachar') {
+        priorWorkshopItem = Number((await client.query('SELECT COALESCE(max(id),0) AS id FROM cuentas_taller_items')).rows[0].id);
+      }
+      if (resource === 'productos') {
         priorAltCode = Number((await client.query('SELECT COALESCE(max(id),0) AS id FROM productos_codigos')).rows[0].id);
       }
-      if (resourceFor(path) === 'ncf') {
+      if (resource === 'ncf') {
         hadNcf = Boolean((await client.query('SELECT 1 FROM secuencias_ncf WHERE tipo=$1 LIMIT 1', [body.tipo])).rowCount);
       }
     },
@@ -311,7 +373,7 @@ export async function writeSyncOperation(pool, envelope, databaseLabel, actor, {
       const effect = operationEffect(method, path, body, result, backup);
       if (canonical(effect) !== canonical(expected.effect)) fail('Conflicto de sincronización: el resultado difiere del confirmado localmente. Revisa la operación conservada en el equipo.', 409);
       return { actorId, deviceId, sequence, operationId, occurredAt, result, effect,
-        created: createdRows(method, path, body, result, backup, priorProducts, priorMovement, priorAltCode, hadNcf) };
+        created: createdRows(method, path, body, result, backup, priorProducts, priorMovement, priorAltCode, hadNcf, priorWorkshopItem) };
     },
     async represent(client, observed, metadata, replayed) {
       const { result: _result, ...current } = observed;
