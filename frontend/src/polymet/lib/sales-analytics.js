@@ -76,7 +76,7 @@ export function reportData(sales, products, period, end, operational) {
     .map(type => [type, { type, count: 0, base: 0n, itbis: 0n }]));
   let net = 0n, tax = 0n, cost = 0n;
   for (const sale of valid) {
-    const base = cents(sale.subtotal) - cents(sale.discount ?? 0);
+    const base = sale.netBase !== undefined ? cents(sale.netBase) : cents(sale.subtotal) - cents(sale.discount ?? 0);
     const itbis = cents(sale.itbis);
     const amount = cents(sale.total);
     net += base;
@@ -134,7 +134,7 @@ export function salesCsv(sales) {
   };
   const header = ["Registro", "Fecha", "Cliente", "Tipo", "NCF", "Pago", "Base (RD$)", "ITBIS (RD$)", "Total (RD$)", "Estado"];
   const rows = sales.map(s => [s.number, businessDay(s.date), s.customerName, s.comprobante, s.ncf, paymentLabel(s),
-    money(cents(s.subtotal) - cents(s.discount ?? 0)), s.itbis.toFixed(2), s.total.toFixed(2), s.status ?? "Registrada"]);
+    s.netBase !== undefined ? money(cents(s.netBase)) : money(cents(s.subtotal) - cents(s.discount ?? 0)), s.itbis.toFixed(2), s.total.toFixed(2), s.status ?? "Registrada"]);
   return "\uFEFF" + [header, ...rows].map(row => row.map(cell).join(",")).join("\r\n");
 }
 

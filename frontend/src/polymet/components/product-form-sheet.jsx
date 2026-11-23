@@ -26,6 +26,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { costUnits, OperationError } from "../../../../src/pos/operation-fields.js";
 var EMPTY = {
   code: "",
+  altCodes: [],
   name: "",
   brand: "",
   category: "",
@@ -48,6 +49,7 @@ var LEVEL_LABEL2 = {
 function fromProduct(p) {
   return {
     code: p.code,
+    altCodes: [...(p.altCodes || [])],
     name: p.name,
     brand: p.brand,
     category: p.category,
@@ -91,6 +93,7 @@ function ProductFormSheet({
     ? [product.category, ...categories]
     : categories;
   const [form, setForm] = useState(EMPTY);
+  const [altDraft, setAltDraft] = useState("");
   const [formulaId, setFormulaId] = useState(String(formulas[0]?.id ?? ""));
   const [submitted, setSubmitted] = useState(false);
   const [sending, setSending] = useState(false);
@@ -104,6 +107,7 @@ function ProductFormSheet({
   useEffect(() => {
     if (open) {
       setForm(product ? fromProduct(product) : { ...EMPTY, category: defaultCategory });
+      setAltDraft("");
       setSubmitted(false);
       setError(null);
       setRetryPayload(null);
@@ -209,6 +213,7 @@ function ProductFormSheet({
         taxable: form.taxable,
         prices: { p1: Number(p1), p2: Number(p2), p3: Number(p3) },
         pricesExact: { p1, p2, p3 },
+        altCodes: [...(form.altCodes || []), ...(altDraft.trim() ? [altDraft] : [])].filter((c, i, arr) => arr.findIndex(x => x.toLowerCase() === c.toLowerCase()) === i),
       };
     }
     inFlight.current = true;
@@ -296,6 +301,69 @@ function ProductFormSheet({
                 placeholder="Ej. Bujía NGK C7HSA"
                 className={inputClass}
               />
+            </Field>
+            <Field
+              label="Códigos de barras alternativos"
+              htmlFor={fieldId("altCodes")}
+              className="col-span-2"
+              hint="Etiquetas adicionales del empaque; conserva ceros iniciales."
+            >
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <Input
+                    id={fieldId("altCodes")}
+                    disabled={locked || (form.altCodes?.length ?? 0) >= 20}
+                    value={altDraft}
+                    onChange={(e) => setAltDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const next = altDraft;
+                        if (!next.trim() || (form.altCodes || []).some(c => c.toLowerCase() === next.toLowerCase())) return;
+                        set("altCodes", [...(form.altCodes || []), next]);
+                        setAltDraft("");
+                      }
+                    }}
+                    placeholder="Escanea o escribe otro código y pulsa Agregar"
+                    className={cn(inputClass, "flex-1 font-mono")}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={locked || !altDraft.trim() || (form.altCodes?.length ?? 0) >= 20}
+                    className="h-10 rounded-xl bg-card"
+                    onClick={() => {
+                      const next = altDraft;
+                      if (!next.trim() || (form.altCodes || []).some(c => c.toLowerCase() === next.toLowerCase())) return;
+                      set("altCodes", [...(form.altCodes || []), next]);
+                      setAltDraft("");
+                    }}
+                  >
+                    {"Agregar"}
+                  </Button>
+                </div>
+                {(form.altCodes?.length ?? 0) > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {form.altCodes.map((code) => (
+                      <span key={code} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted px-2.5 py-1 font-mono text-xs">
+                        {code}
+                        <button
+                          type="button"
+                          disabled={locked}
+                          aria-label={`Quitar código ${code}`}
+                          className="text-muted-foreground hover:text-primary"
+                          onClick={() => set("altCodes", form.altCodes.filter(c => c !== code))}
+                        >
+                          {"×"}
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             </Field>
             <Field
               label="Categoría"

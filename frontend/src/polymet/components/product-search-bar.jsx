@@ -43,13 +43,15 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, ope
     const q = query.trim().toLowerCase();
     if (!q) return [];
     const rank = product => {
-      if (product.code === query) return 0;
-      return product.code.toLowerCase() === q ? 1 : 2;
+      if (product.code === query || (product.altCodes || []).includes(query)) return 0;
+      if (product.code.toLowerCase() === q || (product.altCodes || []).some(c => c.toLowerCase() === q)) return 1;
+      return 2;
     };
     return products
       .filter(
         (p) =>
           p.code.toLowerCase().includes(q) ||
+          (p.altCodes || []).some((c) => c.toLowerCase().includes(q)) ||
           p.name.toLowerCase().includes(q) ||
           p.brand.toLowerCase().includes(q),
       )

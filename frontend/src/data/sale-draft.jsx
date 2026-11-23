@@ -7,6 +7,18 @@ import { ReceiptDialog } from '../polymet/components/receipt-dialog.jsx';
 const SaleDraftContext = createContext(null);
 export const useSaleDraft = () => useContext(SaleDraftContext);
 
+function readHeldSales(databaseId) {
+  if (!databaseId) return [];
+  try {
+    const raw = JSON.parse(localStorage.getItem('felix-ventas-espera:' + databaseId) || '[]');
+    return Array.isArray(raw) ? raw.slice(0, 20) : [];
+  } catch { return []; }
+}
+function writeHeldSales(databaseId, list) {
+  if (!databaseId) return;
+  try { localStorage.setItem('felix-ventas-espera:' + databaseId, JSON.stringify(list.slice(0, 20))); } catch { /* Optional local storage. */ }
+}
+
 // The draft and its exact retry stay together above route boundaries. A session
 // loss unmounts this provider. A database change resets only the sale, preserving
 // other modules' open forms so their original versions can still be rejected.
@@ -21,6 +33,18 @@ export function SaleDraftProvider({ children }) {
   const [comprobante, setComprobante] = useState("B02");
   const [condition, setCondition] = useState("contado");
   const [paymentMethod, setPaymentMethod] = useState("efectivo");
+  const [discountMode, setDiscountMode] = useState("percent");
+  const [discountValue, setDiscountValue] = useState("");
+  const discount = useMemo(
+    () => ({ mode: discountMode, value: discountValue }),
+    [discountMode, discountValue],
+  );
+  const discountPercent = discountMode === "percent" ? Number(discountValue) || 0 : 0;
+  const setDiscountPercent = (value) => {
+    setDiscountMode("percent");
+    const num = Number(value);
+    setDiscountValue(!value || !Number.isFinite(num) || num <= 0 ? "" : String(value));
+  };
   const [received, setReceived] = useState("");
   const [priceLevel, setPriceLevel] = useState(
     settings.defaultPriceLevel ?? "p1",
@@ -28,6 +52,7 @@ export function SaleDraftProvider({ children }) {
   const [items, updateItems] = useState([]);
   const itemsRef = useRef(items);
   itemsRef.current = items;
+  const [heldSales, setHeldSales] = useState(() => readHeldSales(runtime.databaseId));
   const [receipt, setReceipt] = useState(null);
   const [failure, setFailure] = useState(null);
   const [sending, setSending] = useState(false);
@@ -39,9 +64,9 @@ export function SaleDraftProvider({ children }) {
     () => new Map(products.map((p) => [p.id, p])),
     [products],
   );
-  const { lines, totals } = useMemo(
-    () => quoteSale(items, settings.itbisRate),
-    [items, settings.itbisRate],
+  const { lines, totals, discountError } = useMemo(
+    () => quoteSale(items, settings.itbisRate, discount),
+    [items, settings.itbisRate, discount],
   );
   const cartQuantities = {};
   for (const item of items) {
@@ -76,6 +101,7 @@ export function SaleDraftProvider({ children }) {
     disabledReason = "La venta excede el crédito disponible del cliente.";
   else if (items.some((item) => item.product.databaseId !== runtime.databaseId))
     disabledReason = "La base cambió. Inicia una nueva venta.";
+  else if (discountError) disabledReason = discountError;
   else if (
     items.some(
       (item) => catalog.get(item.product.id)?.version !== item.product.version,
@@ -91,6 +117,8 @@ export function SaleDraftProvider({ children }) {
     setComprobante("B02");
     setCondition("contado");
     setPaymentMethod("efectivo");
+    setDiscountMode("percent");
+    setDiscountValue("");
     setReceived("");
     setFailure(null);
   }
@@ -103,6 +131,100 @@ export function SaleDraftProvider({ children }) {
       business: { name: config.empresa, rnc: config.rnc, address: config.direccion, phone: config.tel },
     });
   }
+  function openQuote() {
+    if (!items.length || receipt) return;
+    setReceipt({
+      isQuote: true,
+      sale: {
+        invoiceNumber: "Cotización",
+        dateOnly: new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santo_Domingo" }).format(new Date()),
+        customerName: customer?.name ?? "Cliente Contado",
+        customerRnc: customer?.rnc ?? "",
+        ncf: null,
+        comprobante,
+        itbisRate: settings.itbisRate,
+        conditionLabel: condition === "credito" ? "Crédito" : "Contado",
+        paymentLabel: "Cotización (no válida como factura)",
+        totals,
+        lines: lines.map((line) => ({
+          key: line.key,
+          product: { name: line.product.name },
+          quantity: line.quantity,
+          unitPrice: line.unitPrice,
+          subtotal: line.subtotal,
+        })),
+      },
+      footer: settings.ticketFooter,
+      printFormat: settings.printer ?? "Térmica 80 mm",
+      business: { name: settings.business.name, rnc: settings.business.rnc, address: settings.business.address, phone: settings.business.phone },
+    });
+  }
+  function holdCurrentSale() {
+    if (locked || inFlight.current || receipt || !items.length) return false;
+    const entry = {
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      customerId,
+      customerName: customer?.name ?? "Cliente Contado",
+      comprobante,
+      condition,
+      paymentMethod,
+      discountMode,
+      discountValue,
+      discountPercent,
+      total: totals.total,
+      itemCount: totals.items,
+      items: items.map((item) => ({ productId: item.product.id, priceLevel: item.priceLevel, quantity: item.quantity })),
+    };
+    const next = [entry, ...heldSales].slice(0, 20);
+    setHeldSales(next);
+    writeHeldSales(runtime.databaseId, next);
+    clearSale();
+    ue.success("Venta puesta en espera", { description: `${entry.customerName} · ${entry.items.length} líneas` });
+    return true;
+  }
+  function resumeHeldSale(holdId) {
+    if (locked || inFlight.current || receipt) return false;
+    const entry = heldSales.find((h) => h.id === holdId);
+    if (!entry) return false;
+    let restored = [];
+    const skipped = [];
+    for (const saved of entry.items) {
+      const live = catalog.get(saved.productId);
+      if (!live) { skipped.push("un artículo ya no está activo"); continue; }
+      try {
+        restored = updateSaleLine(restored, live, saved.priceLevel, saved.quantity, false);
+      } catch (error) {
+        skipped.push(live.name + " (" + error.message + ")");
+      }
+    }
+    const nextHeld = heldSales.filter((h) => h.id !== holdId);
+    setHeldSales(nextHeld);
+    writeHeldSales(runtime.databaseId, nextHeld);
+    itemsRef.current = restored;
+    updateItems(restored);
+    setCustomerId(customers.some((c) => c.id === entry.customerId) ? entry.customerId : cashCustomer?.id ?? null);
+    setComprobante(entry.comprobante || "B02");
+    setCondition(entry.condition || "contado");
+    setPaymentMethod(entry.paymentMethod || "efectivo");
+    if (entry.discountMode === "amount" || entry.discountMode === "percent") {
+      setDiscountMode(entry.discountMode);
+      setDiscountValue(entry.discountValue ?? "");
+    } else {
+      setDiscountMode("percent");
+      setDiscountValue(entry.discountPercent ? String(entry.discountPercent) : "");
+    }
+    setReceived("");
+    setFailure(null);
+    if (skipped.length) ue.warning("Venta retomada con ajustes", { description: skipped.join("; ") });
+    else ue.success("Venta retomada");
+    return true;
+  }
+  function removeHeldSale(holdId) {
+    const next = heldSales.filter((h) => h.id !== holdId);
+    setHeldSales(next);
+    writeHeldSales(runtime.databaseId, next);
+  }
   useEffect(() => {
     const result = runtime.resolution;
     if (!result || result.path !== '/api/ventas' || result.databaseId !== currentDatabase.current ||
@@ -113,8 +235,6 @@ export function SaleDraftProvider({ children }) {
     initialRecovery.current = null;
     if (result.snapshot) {
       showReceipt(result.snapshot);
-      // A reopened page can already contain a new draft. Only clear the draft
-      // whose exact operation was confirmed; never compare identical contents.
       if (ownDraft) clearSale();
     } else if (ownDraft) setFailure({ message: result.error, retry: null });
   }, [runtime.resolution, failure?.operationId]);
@@ -122,7 +242,7 @@ export function SaleDraftProvider({ children }) {
     if (locked || inFlight.current || receipt) return false;
     try {
       const updated = updateSaleLine(itemsRef.current, product, level, quantity, replace);
-      quoteSale(updated, settings.itbisRate);
+      quoteSale(updated, settings.itbisRate, discount);
       itemsRef.current = updated;
       setItems(updated);
       setFailure(null);
@@ -147,7 +267,7 @@ export function SaleDraftProvider({ children }) {
       const snapshot = retry
         ? await failure.retry()
         : await registerSale(
-            saleRequest(items, settings, customerId, condition, comprobante, cashSession, paymentMethod),
+            saleRequest(items, settings, customerId, condition, comprobante, cashSession, paymentMethod, discount),
           );
       if (requestDatabase !== currentDatabase.current) return;
       resolved.current = snapshot.confirmation.operationId;
@@ -155,8 +275,6 @@ export function SaleDraftProvider({ children }) {
       clearSale();
     } catch (error) {
       if (requestDatabase !== currentDatabase.current) return;
-      // An exact retry can fail before sending, for example on a database change.
-      // Keep its original operation while its outcome is uncertain.
       setFailure({
         message: error.message,
         operationId: error.operationId ?? (retry ? failure.operationId : null),
@@ -183,6 +301,7 @@ export function SaleDraftProvider({ children }) {
   }
   if (draftDatabase !== runtime.databaseId) {
     setDraftDatabase(runtime.databaseId);
+    setHeldSales(readHeldSales(runtime.databaseId));
     clearSale();
     setReceipt(null);
     initialRecovery.current = null;
@@ -193,8 +312,10 @@ export function SaleDraftProvider({ children }) {
   }
   return <SaleDraftContext.Provider value={{ products, customers, settings, cashSession, runtime, cashCustomer,
     customerId, setCustomerId, comprobante, setComprobante, condition, setCondition,
-    paymentMethod, setPaymentMethod, received, setReceived, priceLevel, setPriceLevel,
-    items, setItems, receipt, failure, sending, customer, lines, totals, cartQuantities,
+    paymentMethod, setPaymentMethod, discountMode, setDiscountMode, discountValue, setDiscountValue, discountError,
+    discountPercent, setDiscountPercent, received, setReceived, priceLevel, setPriceLevel,
+    items, setItems, heldSales, holdCurrentSale, resumeHeldSale, removeHeldSale, openQuote,
+    receipt, failure, sending, customer, lines, totals, cartQuantities,
     locked, disabledReason, resetSale, editQuantity, checkout }}>
     {children}
       {receipt && (

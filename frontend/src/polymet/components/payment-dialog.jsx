@@ -16,22 +16,27 @@ import { DialogFooter } from "../../components/ui/dialog.jsx";
 import { Button } from "../../components/ui/button.jsx";
 import { useEffect } from "react";
 import { useState } from "react";
-function PaymentDialog({ doc, partyName, verb, onOpenChange, onConfirm }) {
+function PaymentDialog({ doc, partyName, verb, operational = false, cashOpen = true, onOpenChange, onConfirm }) {
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("efectivo");
   const [note, setNote] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState(null);
   const balance = doc ? balanceOf(doc) : 0;
   useEffect(() => {
     if (doc) {
       setAmount(String(balanceOf(doc)));
-      setMethod("efectivo");
+      setMethod(operational && !cashOpen ? "transferencia" : "efectivo");
       setNote("");
+      setError(null);
+      setSending(false);
     }
-  }, [doc]);
+  }, [doc, operational, cashOpen]);
   const value = Number(amount) || 0;
-  const invalid = value <= 0 || value > balance + 0.001;
+  const cashBlocked = operational && method === "efectivo" && !cashOpen;
+  const invalid = value <= 0 || value > balance + 0.001 || cashBlocked;
   return (
-    <Dialog2 open={Boolean(doc)} onOpenChange={onOpenChange}>
+    <Dialog2 open={Boolean(doc)} onOpenChange={(o) => !sending && onOpenChange(o)}>
       <DialogContent2 className="max-w-md rounded-2xl">
         <DialogHeader>
           <DialogTitle2>
@@ -120,13 +125,34 @@ function PaymentDialog({ doc, partyName, verb, onOpenChange, onConfirm }) {
             className={inputClass}
           />
         </Field>
+        {cashBlocked && (
+          <p role="alert" className="text-xs font-medium text-primary">
+            {"Abre la caja para registrar un movimiento en efectivo, o elige tarjeta/transferencia."}
+          </p>
+        )}
+        {error && (
+          <p role="alert" className="text-sm text-primary">
+            {error}
+          </p>
+        )}
         <DialogFooter>
           <Button
             className="h-11 w-full rounded-xl font-semibold"
-            disabled={invalid}
-            onClick={() => onConfirm(value, method, note.trim() || undefined)}
+            disabled={invalid || sending}
+            onClick={async () => {
+              if (invalid || sending) return;
+              setSending(true);
+              setError(null);
+              try {
+                await onConfirm(value, method, note.trim() || undefined);
+              } catch (cause) {
+                setError(cause?.message || "No se pudo registrar el abono.");
+              } finally {
+                setSending(false);
+              }
+            }}
           >
-            {verb} {formatMoney(value)}
+            {sending ? "Confirmando…" : `${verb} ${formatMoney(value)}`}
           </Button>
         </DialogFooter>
       </DialogContent2>

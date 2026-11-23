@@ -117,7 +117,7 @@ function SuppliersPage() {
           icon={Receipt}
           tone="warning"
           label="Les debemos"
-          value={runtime ? "Pendiente de conciliar" : formatMoney(totalOwed)}
+          value={formatMoney(totalOwed)}
         />
         <MiniStat
           icon={PackagePlus}
@@ -171,7 +171,7 @@ function SuppliersPage() {
                     </p>
                   </div>
                 </div>
-                <div className="flex shrink-0 gap-1">
+                <div className="mobile-touch-controls flex shrink-0 gap-1">
                   <Button
                     variant="ghost"
                     size="icon"

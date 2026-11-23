@@ -2,6 +2,7 @@
 param(
     [Parameter(Mandatory = $true)][string] $Usuario,
     [Security.SecureString] $Clave,
+    [ValidateSet('dueno', 'cajero')][string] $Rol = 'dueno',
     [string] $Perfil = 'repuestos-felix'
 )
 
@@ -31,7 +32,7 @@ $body = @{
     password = $plain
     email_confirm = $true
     user_metadata = @{ nombre_usuario = $Usuario }
-    app_metadata = @{ acceso_pos = $true }
+    app_metadata = @{ acceso_pos = $true; rol = $Rol }
 } | ConvertTo-Json -Compress
 try {
     $headers = @{ apikey = $role }

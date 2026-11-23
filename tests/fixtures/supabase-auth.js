@@ -2,8 +2,12 @@ import { createServer } from 'node:http';
 import { once } from 'node:events';
 import assert from 'node:assert/strict';
 
-export async function testAuthService() {
-  const user = { id: 'fixture-user', email: 'felix@usuarios.repuestosfelix.invalid', app_metadata: { acceso_pos: true } };
+export async function testAuthService({ role } = {}) {
+  const user = {
+    id: 'fixture-user',
+    email: 'felix@usuarios.repuestosfelix.invalid',
+    app_metadata: { acceso_pos: true, ...(role ? { rol: role } : {}) },
+  };
   let password = 'clave-navegador-sintetica-12345';
   const server = createServer(async (req, res) => {
     const chunks = [];

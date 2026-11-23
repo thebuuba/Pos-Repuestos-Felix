@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readSnapshot, writeOperation } from '../pos/store.js';
 import { readSyncBootstrap, writeSyncOperation, retireSyncStream } from '../pos/sync-operations.js';
 import { stateTag, matchesStateTag, bootstrapTag } from '../pos/state-tag.js';
+import { allowedOperation, redactSnapshotForRole, userRole } from '../pos/roles.js';
 import { hostingConfig, authorized, validCredentials, sessionCookie, clearSessionCookie } from '../hosting.js';
 import { accountSession } from '../supabase-auth.js';
 
@@ -117,10 +118,11 @@ async function route(request, { pool, hosting, databaseLabel = 'PostgreSQL', rea
       return json(401, { error: 'Inicia sesión para acceder al sistema.' });
     }
     if (pathname.startsWith('/api/')) {
+      const role = account?.user ? userRole(account.user) : 'dueno';
       if (pathname === '/api/account') {
         if (request.method === 'GET') return json(200, {
           id: account?.user?.id || 'local', username: account?.user?.email.split('@')[0] || hosting.username || 'Usuario local',
-          canChangeUsername: !!hosting.auth?.adminKey, canChangePassword: !!account,
+          role, canChangeUsername: !!hosting.auth?.adminKey, canChangePassword: !!account,
         });
         if (request.method !== 'PUT') return json(405, { error: 'Método no permitido.' });
         if (request.headers.get('origin') !== (hosting.origin || url.origin) || request.headers.get('sec-fetch-site') === 'cross-site') {
@@ -133,6 +135,9 @@ async function route(request, { pool, hosting, databaseLabel = 'PostgreSQL', rea
       }
       if (pathname === '/api/state' && request.method === 'PUT') {
         return json(410, { error: 'La escritura global fue retirada. Cierra y vuelve a abrir la aplicación para actualizarla.' });
+      }
+      if (!allowedOperation(role, request.method, pathname)) {
+        return json(403, { error: 'Tu cuenta de cajero no tiene permiso para esta operación.' });
       }
       if (request.method === 'GET' && pathname === '/api/backup') {
         return json(200, await readSnapshot(pool, databaseLabel, true));
@@ -153,17 +158,17 @@ async function route(request, { pool, hosting, databaseLabel = 'PostgreSQL', rea
       }
       if (isStateRead) {
         const condition = request.headers.get('if-none-match');
-        const state = await readSnapshot(pool, databaseLabel, false, condition ? version => matchesStateTag(condition, stateTag(version)) : undefined);
-        const headers = { ETag: stateTag(state.notModified ?? state) };
+        const state = await readSnapshot(pool, databaseLabel, false, condition ? version => matchesStateTag(condition, stateTag({ ...version, role })) : undefined);
+        const headers = { ETag: stateTag({ ...(state.notModified ?? state), role }) };
         if (state.notModified) return new Response(null, { status: 304, headers: { ...securityHeaders, ...headers, 'Content-Type': 'application/json; charset=utf-8' } });
-        return json(200, state, headers);
+        return json(200, redactSnapshotForRole(state, role), headers);
       }
       if (request.headers.get('content-type')?.split(';')[0].trim() !== 'application/json') {
         return json(415, { error: 'Se requiere application/json.' });
       }
       const body = await readBody(request);
-      const actor = account?.user ? { id: account.user.id, name: account.user.email.split('@')[0] } :
-        { id: 'local', name: hosting.username || 'Usuario local' };
+      const actor = account?.user ? { id: account.user.id, name: account.user.email.split('@')[0], role } :
+        { id: 'local', name: hosting.username || 'Usuario local', role };
       if (pathname === '/api/sync/retire') {
         if (request.method !== 'POST') return json(405, { error: 'Método no permitido.' });
         return json(200, await retireSyncStream(pool, body, databaseLabel, actor));
@@ -171,11 +176,12 @@ async function route(request, { pool, hosting, databaseLabel = 'PostgreSQL', rea
       if (pathname === '/api/sync/operations') {
         if (request.method !== 'POST') return json(405, { error: 'Método no permitido.' });
         if (request.headers.get('idempotency-key') !== body?.operationId) return json(400, { error: 'La clave de envío no coincide con la operación local.' });
+        if (!allowedOperation(role, body?.method, body?.path)) return json(403, { error: 'Tu cuenta de cajero no tiene permiso para sincronizar esta operación.' });
         const result = await writeSyncOperation(pool, body, databaseLabel, actor, { receiptOnly: request.headers.get('prefer') === 'return=receipt' });
         return json(200, result, { ETag: stateTag(result.snapshot) });
       }
       const result = await writeOperation(pool, request.method, pathname, body, request.headers.get('idempotency-key'), databaseLabel, actor);
-      return json(200, result, { ETag: stateTag(result) });
+      return json(200, redactSnapshotForRole(result, role), { ETag: stateTag({ ...result, role }) });
     }
     const immutableAsset = /^\/assets\/pwa\/(app-[a-f0-9]{16}\.js|styles-[a-f0-9]{16}\.css|chunk-[A-Z0-9]{8}\.js)$/.exec(pathname);
     const asset = isPage ? pageAsset : publicFiles[pathname] || (immutableAsset && [pathname.slice(1), pathname.endsWith('.js') ? 'text/javascript' : 'text/css']);

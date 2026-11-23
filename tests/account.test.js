@@ -27,7 +27,7 @@ test('mi cuenta expone identidad y capacidades sin tokens ni claves', async t =>
   assert.equal((await call('/api/account')).status, 401);
   const profile = await call('/api/account', { cookie });
   assert.equal(profile.status, 200);
-  assert.deepEqual(await profile.json(), { id: 'fixture-user', username: 'felix', canChangeUsername: true, canChangePassword: true });
+  assert.deepEqual(await profile.json(), { id: 'fixture-user', username: 'felix', role: 'dueno', canChangeUsername: true, canChangePassword: true });
   assert.equal(profile.headers.get('cache-control'), 'no-store');
 });
 
@@ -43,7 +43,7 @@ test('cambia nombre y contraseña conservando UUID y permiso administrativo', as
   const login = await call('/login', { body: { username: 'felix.nuevo', password: 'otra-frase-secreta-de-prueba' } });
   assert.equal(login.status, 200);
   const profile = await call('/api/account', { cookie: login.headers.get('set-cookie').split(';')[0] });
-  assert.deepEqual(await profile.json(), { id: 'fixture-user', username: 'felix.nuevo', canChangeUsername: true, canChangePassword: true });
+  assert.deepEqual(await profile.json(), { id: 'fixture-user', username: 'felix.nuevo', role: 'dueno', canChangeUsername: true, canChangePassword: true });
 });
 
 test('rechaza clave actual incorrecta, usuario ocupado, CSRF y cambio de otra identidad', async t => {

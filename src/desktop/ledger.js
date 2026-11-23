@@ -4,13 +4,17 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { tables, backupLayout } from '../pos/relational-backup.js';
 
-const booleans = new Set(['activo', 'gravado', 'es_contado', 'notificar_minimo', 'permitir_stock_negativo']);
+const booleans = new Set(['activo', 'gravado', 'es_contado', 'notificar_minimo', 'permitir_stock_negativo', 'activa']);
 export const references = {
-  suplidores: { formula_id: 'formulas_precios' }, ventas: { cliente_id: 'clientes', caja_id: 'turnos_caja' },
-  venta_detalles: { venta_id: 'ventas', producto_id: 'productos' }, compras: { suplidor_id: 'suplidores' },
+  suplidores: { formula_id: 'formulas_precios' },
+  productos_codigos: { producto_id: 'productos' },
+  ventas: { cliente_id: 'clientes', caja_id: 'turnos_caja' },
+  venta_detalles: { venta_id: 'ventas', producto_id: 'productos' },
+  compras: { suplidor_id: 'suplidores' },
   compra_detalles: { compra_id: 'compras', producto_id: 'productos' },
   movimientos_inventario: { producto_id: 'productos', venta_detalle_id: 'venta_detalles', compra_detalle_id: 'compra_detalles' },
   movimientos_caja: { caja_id: 'turnos_caja' },
+  abonos_cuentas: { venta_id: 'ventas', compra_id: 'compras', caja_id: 'turnos_caja' },
 };
 const encoded = value => typeof value === 'boolean' ? Number(value) : value;
 
@@ -29,6 +33,10 @@ export class DesktopLedger {
       CREATE TABLE IF NOT EXISTS remembered_sessions(token_hash TEXT PRIMARY KEY REFERENCES sessions(token_hash) ON DELETE CASCADE) STRICT;`);
     for (const [table, columns] of Object.entries(tables)) {
       this.database.exec(`CREATE TABLE IF NOT EXISTS local_${table}(${columns.map(column => `${column} ANY${column === 'id' ? ' PRIMARY KEY' : ''}`).join(',')}) STRICT;`);
+      const existing = new Set(this.database.prepare(`PRAGMA table_info(local_${table})`).all().map(row => row.name));
+      for (const column of columns) {
+        if (!existing.has(column)) this.database.exec(`ALTER TABLE local_${table} ADD COLUMN ${column} ANY`);
+      }
     }
     if (!this.get('deviceId')) this.set('deviceId', randomUUID());
   }
@@ -45,7 +53,7 @@ export class DesktopLedger {
       data[table] = this.database.prepare(`SELECT * FROM local_${table} ORDER BY CAST(id AS INTEGER)`).all().map(row =>
         Object.fromEntries(columns.map(column => [column, row[column] !== null && booleans.has(column) ? Boolean(row[column]) : row[column]])));
     }
-    return { version: 6, format: 'repuestos-felix-relacional', exportedAt: new Date().toISOString(), tables: data };
+    return { version: 7, format: 'repuestos-felix-relacional', exportedAt: new Date().toISOString(), tables: data };
   }
   // Fixed relational columns retain NUMERIC strings; no JSON snapshot is the business authority.
   projection(backup) {

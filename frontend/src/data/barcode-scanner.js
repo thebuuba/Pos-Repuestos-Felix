@@ -4,8 +4,10 @@ export function productForBarcode(products, code, format) {
   // decoded format permits this equivalence; keyboard codes stay literal.
   if (format === 'UPC_A' && /^\d{12}$/.test(code)) codes.push('0' + code);
   if (format === 'EAN_13' && /^0\d{12}$/.test(code)) codes.push(code.slice(1));
-  const matches = products.filter(product => codes.includes(product.code));
-  const similar = matches.length ? matches : products.filter(product => product.code.toLowerCase() === code.toLowerCase());
+  const productCodes = product => [product.code, ...(product.altCodes || [])];
+  const matches = products.filter(product => productCodes(product).some(c => codes.includes(c)));
+  const lower = code.toLowerCase();
+  const similar = matches.length ? matches : products.filter(product => productCodes(product).some(c => c.toLowerCase() === lower));
   if (matches.length > 1 || similar.length > 1)
     throw new Error(`El código «${code}» corresponde a varios artículos. Revisa el catálogo antes de agregarlo.`);
   if (matches.length === 1) return matches[0];

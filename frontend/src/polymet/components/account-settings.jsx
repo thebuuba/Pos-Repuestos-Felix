@@ -75,7 +75,16 @@ export function AccountSettings() {
     }
   };
 
-  return <SectionCard title="Mi cuenta" description="Cambia tus datos de acceso. Necesitas conexión y tu contraseña actual." icon={UserRound}>
+  return <SectionCard
+    title="Mi cuenta"
+    description="Cambia tus datos de acceso. Necesitas conexión y tu contraseña actual."
+    icon={UserRound}
+    actions={account?.role ? (
+      <span className="rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium">
+        {account.role === 'cajero' ? 'Rol: Cajero' : 'Rol: Dueño'}
+      </span>
+    ) : undefined}
+  >
     {error && <p role="alert" className="mb-4 text-sm text-primary">{error}</p>}
     {!account ? <div className="text-sm text-muted-foreground">
       {error ? <Button type="button" variant="outline" className="rounded-xl" onClick={() => setRetry(value => value + 1)}>Volver a cargar</Button> : 'Cargando cuenta…'}

@@ -6,36 +6,43 @@ const iso = date => date instanceof Date ? date.toISOString() : date;
 const closure = row => ({ id: Number(row.id), openedAt: iso(row.abierto_en), closedAt: iso(row.cerrado_en),
   cashier: row.cajero, opening: Number(row.fondo), expected: Number(row.esperado), counted: Number(row.contado), sales: Number(row.ventas) });
 
-function totals(turn, sales, movements) {
-  const sum = predicate => sales.filter(predicate).reduce((total, row) => total + cents(row.total), 0n);
+function totals(turn, sales, movements, payments = []) {
+  const activeSales = sales.filter(row => row.estado !== 'anulada');
+  const sum = predicate => activeSales.filter(predicate).reduce((total, row) => total + cents(row.total), 0n);
   const moved = type => movements.filter(row => row.tipo === type).reduce((total, row) => total + cents(row.monto), 0n);
+  const paid = type => payments.filter(row => row.tipo === type && row.metodo_pago === 'efectivo').reduce((total, row) => total + cents(row.monto), 0n);
   const cash = sum(row => row.metodo_pago === 'efectivo');
   const incoming = moved('entrada'), outgoing = moved('salida');
-  const expected = cents(turn.fondo) + cash + incoming - outgoing;
+  const cobros = paid('cobro'), pagos = paid('pago');
+  const expected = cents(turn.fondo) + cash + incoming + cobros - outgoing - pagos;
   return { expected, sales: sum(() => true), summary: {
     ...emptySummary(), opening: Number(turn.fondo), cashSales: Number(money(cash)),
     cardSales: Number(money(sum(row => row.metodo_pago === 'tarjeta'))),
     transferSales: Number(money(sum(row => row.metodo_pago === 'transferencia'))),
     creditSales: Number(money(sum(row => row.metodo_pago === 'credito'))),
-    entradas: Number(money(incoming)), salidas: Number(money(outgoing)), expected: Number(money(expected)), invoices: sales.length,
+    entradas: Number(money(incoming)), salidas: Number(money(outgoing)),
+    cobros: Number(money(cobros)), pagos: Number(money(pagos)),
+    expected: Number(money(expected)), invoices: activeSales.length,
   } };
 }
 export function cashPresentation(data) {
   const turn = data.turnos_caja.find(row => row.cerrado_en === null);
   const movements = turn ? data.movimientos_caja.filter(row => row.caja_id === turn.id) : [];
+  const payments = turn ? (data.abonos_cuentas || []).filter(row => row.caja_id === turn.id) : [];
   return {
     session: turn ? { id: Number(turn.id), version: Number(turn.version), open: true, openedAt: iso(turn.abierto_en),
       cashier: turn.cajero, openingAmount: Number(turn.fondo) } : { id: null, version: null, open: false, openedAt: '', cashier: '' },
-    summary: turn ? totals(turn, data.ventas.filter(row => row.caja_id === turn.id), movements).summary : emptySummary(),
+    summary: turn ? totals(turn, data.ventas.filter(row => row.caja_id === turn.id), movements, payments).summary : emptySummary(),
     movements: movements.map(row => ({ id: Number(row.id), sessionId: Number(row.caja_id), type: row.tipo,
       amount: Number(row.monto), description: row.concepto, date: iso(row.creado_en) })).reverse(),
     closures: data.turnos_caja.filter(row => row.cerrado_en !== null).map(closure).reverse(),
   };
 }
-async function turnTotals(client, turn) {
-  const sales = (await client.query('SELECT total,metodo_pago FROM ventas WHERE caja_id=$1', [turn.id])).rows;
+export async function turnTotals(client, turn) {
+  const sales = (await client.query("SELECT total,metodo_pago,estado FROM ventas WHERE caja_id=$1 AND estado='activa'", [turn.id])).rows;
   const movements = (await client.query('SELECT tipo,monto FROM movimientos_caja WHERE caja_id=$1', [turn.id])).rows;
-  return totals(turn, sales, movements);
+  const payments = (await client.query('SELECT tipo,metodo_pago,monto FROM abonos_cuentas WHERE caja_id=$1', [turn.id])).rows;
+  return totals(turn, sales, movements, payments);
 }
 // Shared order for sales, movements and closing prevents a sale from entering a closed turn.
 export async function lockCash(client, cajaId, version) {
@@ -84,18 +91,19 @@ export async function validateCashRestore(client) {
   const invalid = await client.query(`SELECT 1 FROM ventas v JOIN turnos_caja c ON c.id=v.caja_id
     WHERE v.creado_en<c.abierto_en OR (c.cerrado_en IS NOT NULL AND v.creado_en>c.cerrado_en)
     UNION ALL SELECT 1 FROM movimientos_caja m JOIN turnos_caja c ON c.id=m.caja_id
-    WHERE m.creado_en<c.abierto_en OR (c.cerrado_en IS NOT NULL AND m.creado_en>c.cerrado_en) LIMIT 1`);
+    WHERE m.creado_en<c.abierto_en OR (c.cerrado_en IS NOT NULL AND m.creado_en>c.cerrado_en)
+    UNION ALL SELECT 1 FROM abonos_cuentas a JOIN turnos_caja c ON c.id=a.caja_id
+    WHERE a.creado_en<c.abierto_en OR (c.cerrado_en IS NOT NULL AND a.creado_en>c.cerrado_en) LIMIT 1`);
   if (invalid.rowCount) fail('El respaldo contiene operaciones fuera de su turno de caja.');
   const overlapping = await client.query(`SELECT 1 FROM (
     SELECT abierto_en,lag(COALESCE(cerrado_en,'infinity'::timestamptz)) OVER(ORDER BY abierto_en,id) AS cierre_anterior
     FROM turnos_caja
   ) turnos WHERE abierto_en<cierre_anterior LIMIT 1`);
   if (overlapping.rowCount) fail('El respaldo contiene turnos de caja superpuestos.');
-  // ponytail: older millisecond backups cannot order events inside the same timestamp.
-  // Positive entries first preserve valid exports; new exports retain microseconds.
   const negative = await client.query(`WITH eventos AS (
-    SELECT caja_id,creado_en,total AS cambio,0 AS origen,id FROM ventas WHERE metodo_pago='efectivo'
+    SELECT caja_id,creado_en,total AS cambio,0 AS origen,id FROM ventas WHERE metodo_pago='efectivo' AND estado='activa'
     UNION ALL SELECT caja_id,creado_en,CASE WHEN tipo='entrada' THEN monto ELSE -monto END,1,id FROM movimientos_caja
+    UNION ALL SELECT caja_id,creado_en,CASE WHEN tipo='cobro' THEN monto ELSE -monto END,2,id FROM abonos_cuentas WHERE metodo_pago='efectivo'
   ), saldos AS (
     SELECT c.fondo+sum(e.cambio) OVER(PARTITION BY e.caja_id ORDER BY e.creado_en,(e.cambio<0),e.origen,e.id
       ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS saldo

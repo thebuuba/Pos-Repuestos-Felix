@@ -42,6 +42,12 @@ function catalogChanged(line, product) {
   return (line.productId ?? null) !== (product?.id ?? null) ||
     (line.productVersion ?? null) !== (product?.version ?? null);
 }
+function defaultDueDate(days) {
+  const n = Number.isFinite(Number(days)) && Number(days) > 0 ? Math.trunc(Number(days)) : 30;
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
 function PurchaseEntryForm({
   suppliers,
   formulas,
@@ -53,7 +59,8 @@ function PurchaseEntryForm({
   const [supplierId, setSupplierId] = useState("");
   const [invoice, setInvoice] = useState("");
   const [formulaId, setFormulaId] = useState(runtime ? "manual" : String(formulas[0]?.id ?? ""));
-  const [condition, setCondition] = useState("credito");
+  const [condition, setCondition] = useState(runtime ? "contado" : "credito");
+  const [dueDate, setDueDate] = useState(() => defaultDueDate(30));
   const [entry, setEntry] = useState(EMPTY_ENTRY);
   const [lines, setLines] = useState([]);
   const [tried, setTried] = useState(false);
@@ -149,6 +156,7 @@ function PurchaseEntryForm({
     if (!retryInput && (!supplier || (runtime && !invoice.trim()) || !lines.length || hasInvalidLine)) return;
     const input = retryInput ?? {
       databaseId, supplierId: supplier.id, supplierInvoice: invoice.trim(), formulaId: formula?.id, condition,
+      dueDate: condition === "credito" ? dueDate || null : null,
       lines: pricedLines.map(l => ({
         productId: l.productId, productVersion: l.productVersion, code: l.code, name: l.name, category: l.category,
         quantity: runtime ? l.quantity : Number(l.quantity),
@@ -200,6 +208,7 @@ function PurchaseEntryForm({
                 setSupplierId(id);
                 const s = suppliers.find((x) => String(x.id) === id);
                 setFormulaId(String(s?.formulaId ?? "manual"));
+                setDueDate(defaultDueDate(s?.creditDays ?? 30));
               }}
             >
               <SelectTrigger2 aria-label="Suplidor" className={inputClass}>
@@ -224,20 +233,30 @@ function PurchaseEntryForm({
             />
           </Field>
           <Field label="Condición">
-            <Select2 disabled={!!runtime || locked} value={runtime ? "unavailable" : condition} onValueChange={(v) => setCondition(v)}>
-              <SelectTrigger2 className={inputClass}>
+            <Select2 disabled={locked} value={condition} onValueChange={(v) => setCondition(v)}>
+              <SelectTrigger2 aria-label="Condición" className={inputClass}>
                 <SelectValue2 />
               </SelectTrigger2>
               <SelectContent2>
-                {runtime && <SelectItem2 value="unavailable">Sin registrar</SelectItem2>}
                 <SelectItem2 value="credito">{"A crédito"}</SelectItem2>
                 <SelectItem2 value="contado">{"Pagada (contado)"}</SelectItem2>
               </SelectContent2>
             </Select2>
           </Field>
+          {condition === "credito" && (
+            <Field label="Vencimiento" htmlFor="purchase-due-date" className="md:col-span-2">
+              <Input
+                id="purchase-due-date"
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className={inputClass}
+              />
+            </Field>
+          )}
           <Field
             label="Fórmula de precios"
-            className="md:col-span-4"
+            className={condition === "credito" ? "md:col-span-2" : "md:col-span-4"}
             hint="Se elige sola según el suplidor. Los precios se recalculan al cambiarla."
           >
             <Select2 disabled={locked} value={formulaId} onValueChange={setFormulaId}>
@@ -589,7 +608,7 @@ function PurchaseEntryForm({
           )}
         </div>
         <p className="text-xs text-muted-foreground">
-          {runtime ? "La condición de pago no está disponible para esta entrada." : condition === "credito"
+          {condition === "credito"
             ? "Se creará una cuenta por pagar al suplidor."
             : "Se registra como compra pagada."}{" "}
           {"Las existencias, costos y precios se actualizan al subir."}

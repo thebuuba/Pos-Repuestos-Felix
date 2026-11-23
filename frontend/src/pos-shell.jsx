@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Component, Fragment, Suspense, useEffect, useRef, useState } from 'react';
 import { loadingLabel } from './loading-labels.js';
 import { Toaster } from './components/ui/sonner.jsx';
@@ -13,9 +13,25 @@ import { PwaProvider, PwaNotice } from './pwa.jsx';
 
 const syncTime = new Intl.DateTimeFormat('es-DO', { timeZone: 'America/Santo_Domingo', dateStyle: 'short', timeStyle: 'short' });
 const dateLabel = value => value && Number.isFinite(Date.parse(value)) ? syncTime.format(new Date(value)) : 'No registrada';
-const operations = { ventas: 'Venta', compras: 'Compra', productos: 'Artículo', clientes: 'Cliente', suplidores: 'Suplidor',
-  formulas: 'Fórmula de precios', configuracion: 'Configuración', 'caja/abrir': 'Apertura de caja',
-  'caja/cerrar': 'Cierre de caja', 'caja/movimiento': 'Movimiento de caja' };
+const operations = { ventas: 'Venta', 'ventas/anular': 'Anulación de venta', compras: 'Compra', productos: 'Artículo',
+  clientes: 'Cliente', suplidores: 'Suplidor', formulas: 'Fórmula de precios', configuracion: 'Configuración',
+  ncf: 'Secuencia NCF', 'cuentas/cobros': 'Cobro a cliente', 'cuentas/pagos': 'Pago a suplidor',
+  'caja/abrir': 'Apertura de caja', 'caja/cerrar': 'Cierre de caja', 'caja/movimiento': 'Movimiento de caja' };
+const OWNER_ONLY_ROUTES = new Set(['/compras', '/suplidores', '/reportes', '/cuentas-por-pagar']);
+
+function OwnerOnlyNotice() {
+  return (
+    <section className="mx-auto max-w-md space-y-4 rounded-2xl border border-border bg-card p-6 text-center">
+      <h1 className="text-lg font-semibold">Acceso restringido</h1>
+      <p className="text-sm text-muted-foreground">
+        Esta sección solo está disponible para el dueño del negocio.
+      </p>
+      <Button asChild className="rounded-xl">
+        <Link to="/ventas">Ir a Ventas</Link>
+      </Button>
+    </section>
+  );
+}
 
 function PacketDetails({ packet }) {
   let payload = {};
@@ -208,7 +224,11 @@ export function PosShell({ pages, homePath }) {
         <ModuleContent><Routes>
           {homePath && <Route path="/" element={<Navigate to={homePath} replace />} />}
           {Object.entries(pages).map(([path, Page]) => (
-            <Route key={path} path={path} element={<Page />} />
+            <Route
+              key={path}
+              path={path}
+              element={runtime && !runtime.isOwner && OWNER_ONLY_ROUTES.has(path) ? <OwnerOnlyNotice /> : <Page />}
+            />
           ))}
           <Route path="*" element={<ModulePlaceholderPage operational={!!runtime} />} />
         </Routes></ModuleContent>

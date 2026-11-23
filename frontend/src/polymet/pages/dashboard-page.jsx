@@ -108,7 +108,7 @@ function DashboardPage({ reference }) {
           <SalesActivityChart {...activity} />
         </div>
         <SalesGoalGauge
-          goal={reference?.goal}
+          goal={reference?.goal ?? (settings.dailyGoal > 0 ? settings.dailyGoal : null)}
           achieved={salesToday}
           breakdown={paymentGroups(today, Boolean(runtime)).map((group, index) => ({
             label: group.label, value: group.total, className: barColors[index % barColors.length],

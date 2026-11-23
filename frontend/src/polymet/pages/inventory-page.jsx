@@ -19,6 +19,7 @@ const roundedValue = millionths => decimalUnits((millionths + 5000n) / 10000n, 2
 function InventoryPage() {
   const { products, categories, formulas, settings, saveProduct, deleteProduct, runtime } =
     usePosStore();
+  const isOwner = !runtime || runtime.isOwner;
   const [sheetOpen, setSheetOpen] = useState(false);
   const [draft, setDraft] = useState(null);
   const [toDelete, setToDelete] = useState(null);
@@ -57,41 +58,45 @@ function InventoryPage() {
     <div className="space-y-6">
       <PageHeader
         title="Catálogo de artículos e inventario"
-        description="Existencias, costos, precios y alertas de reposición."
+        description={isOwner ? "Existencias, costos, precios y alertas de reposición." : "Existencias, ubicaciones y precios de venta."}
         actions={
-          <Fragment>
-            <Button
-              asChild={true}
-              variant="outline"
-              className="h-10 rounded-full bg-card px-5"
-            >
-              <Link to="/compras">
-                <PackagePlus />
-                {"Entrada de mercancía"}
-              </Link>
-            </Button>
-            <Button
-              ref={newProductButtonRef}
-              className="h-10 rounded-full px-5 shadow-md shadow-primary/20"
-              onClick={() => openProduct()}
-            >
-              <Plus />
-              {"Nuevo artículo"}
-            </Button>
-          </Fragment>
+          isOwner ? (
+            <Fragment>
+              <Button
+                asChild={true}
+                variant="outline"
+                className="h-10 rounded-full bg-card px-5"
+              >
+                <Link to="/compras">
+                  <PackagePlus />
+                  {"Entrada de mercancía"}
+                </Link>
+              </Button>
+              <Button
+                ref={newProductButtonRef}
+                className="h-10 rounded-full px-5 shadow-md shadow-primary/20"
+                onClick={() => openProduct()}
+              >
+                <Plus />
+                {"Nuevo artículo"}
+              </Button>
+            </Fragment>
+          ) : undefined
         }
       />
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          title="Valor del inventario"
-          value={stockValue}
-          scrollableValue
-          footer={`A precio de venta: ${runtime
-            ? formatMoney(retailValue)
-            : `RD$ ${wholeMoney.format(retailValue)}`}`}
-          to="/reportes"
-          highlight={true}
-        />
+      <div className={isOwner ? "grid gap-4 sm:grid-cols-2 xl:grid-cols-4" : "grid gap-4 sm:grid-cols-3"}>
+        {isOwner && (
+          <StatCard
+            title="Valor del inventario"
+            value={stockValue}
+            scrollableValue
+            footer={`A precio de venta: ${runtime
+              ? formatMoney(retailValue)
+              : `RD$ ${wholeMoney.format(retailValue)}`}`}
+            to="/reportes"
+            highlight={true}
+          />
+        )}
         <StatCard
           title="Artículos activos"
           value={products.length}
@@ -104,14 +109,14 @@ function InventoryPage() {
           value={lowCount}
           format="number"
           footer="Requieren reposición pronto"
-          to="/compras"
+          to={isOwner ? "/compras" : "/inventario?existencia=low"}
         />
         <StatCard
           title="Agotados"
           value={outCount}
           format="number"
           footer="Sin existencia disponible para venta"
-          to="/compras"
+          to={isOwner ? "/compras" : "/inventario?existencia=out"}
         />
       </div>
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -119,8 +124,9 @@ function InventoryPage() {
           products={products}
           categories={categories}
           connected={Boolean(runtime)}
-          onEdit={openProduct}
-          onDelete={setToDelete}
+          showCosts={isOwner}
+          onEdit={isOwner ? openProduct : undefined}
+          onDelete={isOwner ? setToDelete : undefined}
         />
         <LowStockList products={lowStock} />
       </div>

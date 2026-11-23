@@ -4,6 +4,7 @@ import { resolve, sep } from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { matchesPassword, passwordRecord, tokenHash } from './credentials.js';
 import { matchesStateTag, stateTag } from '../pos/state-tag.js';
+import { allowedOperation, normalizeRole, redactSnapshotForRole } from '../pos/roles.js';
 
 const pages = new Set(['/', '/index.html', '/ventas', '/inventario', '/compras', '/caja', '/clientes', '/suplidores', '/reportes', '/cuentas-por-cobrar', '/cuentas-por-pagar', '/configuracion', '/ayuda']);
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.webmanifest': 'application/manifest+json' };
@@ -11,7 +12,7 @@ const security = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosni
   'Referrer-Policy': 'no-referrer', 'Permissions-Policy': 'camera=(self), microphone=(), geolocation=()',
   'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; media-src 'self' blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'none'" };
 const error = (message, status = 400) => Object.assign(new Error(message), { status });
-const labels = { productos: 'Producto', clientes: 'Cliente', suplidores: 'Suplidor', formulas: 'Fórmula', configuracion: 'Configuración', ventas: 'Venta', compras: 'Compra', caja: 'Caja' };
+const labels = { productos: 'Producto', clientes: 'Cliente', suplidores: 'Suplidor', formulas: 'Fórmula', configuracion: 'Configuración', ventas: 'Venta', compras: 'Compra', caja: 'Caja', cuentas: 'Abono', ncf: 'Comprobante NCF' };
 
 export function desktopServer(engine, remote, assetsDirectory) {
   const ledger = engine.ledger;
@@ -54,7 +55,7 @@ export function desktopServer(engine, remote, assetsDirectory) {
         await engine.serial(() => {
           const current = currentProfile();
           if (identity.id !== current.id) { revokeAccess(profile); throw error('La cuenta del servidor cambió. Vuelve a iniciar sesión.', 401); }
-          ledger.set('profile', { ...current, onlineAt: Date.now() });
+          ledger.set('profile', { ...current, role: normalizeRole(identity.role), onlineAt: Date.now() });
         });
         return await engine.synchronize(request, currentProfile, { retryConflicts });
       } catch (cause) {
@@ -124,7 +125,7 @@ export function desktopServer(engine, remote, assetsDirectory) {
               throw error('Sincroniza primero con la cuenta que registró las operaciones pendientes.', 409);
             }
             if (!engine.pool) await engine.adopt(await remote.request('/api/sync/bootstrap'));
-            ledger.set('profile', { id: identity.id, username: identity.username, name: identity.username, generation: randomUUID(),
+            ledger.set('profile', { id: identity.id, username: identity.username, name: identity.username, role: normalizeRole(identity.role), generation: randomUUID(),
               ...passwordRecord(path === '/cuenta/clave' ? body.newPassword : body.password), onlineAt: Date.now(), allowOffline: true });
             engine.connection = 'online';
           } catch (cause) {
@@ -208,17 +209,25 @@ export function desktopServer(engine, remote, assetsDirectory) {
         { format: 'repuestos-felix-pendientes', version: 1, exportedAt: new Date().toISOString(), databaseId: ledger.get('databaseId'), operations: ledger.pending().map(row => ({ ...row.record, error: row.error })) },
         { 'Content-Disposition': 'attachment; filename="operaciones-pendientes-felix.json"' });
       if (path === '/api/state' && request.method === 'GET') return await engine.serial(async () => {
-        requireAccess();
-        const tag = engine.snapshotTag();
+        const profile = requireAccess();
+        const role = normalizeRole(profile.role);
+        const tag = stateTag({ databaseId: ledger.get('databaseId'), revision: ledger.get('revision'), databaseLabel: 'Este equipo · almacenamiento local', role });
         if (engine.pool && matchesStateTag(request.headers['if-none-match'], tag)) return send(304, undefined, { ETag: tag });
-        return send(200, await engine.snapshot(), { ETag: tag });
+        return send(200, redactSnapshotForRole(await engine.snapshot(), role), { ETag: tag });
       });
-      if (path === '/api/backup' && request.method === 'GET') return send(200, ledger.backup());
+      if (path === '/api/backup' && request.method === 'GET') {
+        const profile = requireAccess();
+        if (!allowedOperation(normalizeRole(profile.role), 'GET', '/api/backup')) throw error('Tu cuenta de cajero no tiene permiso para esta operación.', 403);
+        return send(200, ledger.backup());
+      }
       if (path.startsWith('/api/') && ['POST', 'PUT', 'DELETE'].includes(request.method)) {
+        const profile = requireAccess();
+        const role = normalizeRole(profile.role);
+        if (!allowedOperation(role, request.method, path)) throw error('Tu cuenta de cajero no tiene permiso para esta operación.', 403);
         const result = await engine.write(request.method, path, body, request.headers['idempotency-key'], () => {
-          const profile = requireAccess(); return { id: profile.id, name: profile.username, generation: profile.generation };
+          const current = requireAccess(); return { id: current.id, name: current.username, role: normalizeRole(current.role), generation: current.generation };
         });
-        send(200, result, { ETag: stateTag(result) }); synchronize().catch(() => {}); return;
+        send(200, redactSnapshotForRole(result, role), { ETag: stateTag({ ...result, role }) }); synchronize().catch(() => {}); return;
       }
       if (!['GET', 'HEAD'].includes(request.method)) throw error('Método no permitido.', 405);
       if (path === '/desktop.js') { response.writeHead(200, { ...security, 'Content-Type': mime['.js'] }); response.end('window.__FELIX_DESKTOP__ = true;'); return; }

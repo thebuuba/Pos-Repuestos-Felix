@@ -181,9 +181,11 @@ label {
   .pos-sale .sale-cart-tax { grid-column: 2; grid-row: 3; }
   .pos-sale .sale-cart [data-label]::before { content: attr(data-label) " "; font-size: 11px; font-weight: 400; color: hsl(var(--muted-foreground)); }
   .pos-sale .sale-summary { scroll-margin-top: 80px; }
-  .pos-sale .sale-summary-heading, .pos-sale .sale-summary-discounts { display: none; }
+  .pos-sale .sale-summary-heading { display: none; }
   .pos-sale .sale-summary:not([data-payment-open="true"]) .sale-summary-breakdown,
   .pos-sale .sale-summary:not([data-payment-open="true"]) .sale-payment-content { display: none; }
+  .pos-sale .sale-summary-discounts button { min-height: 36px; min-width: 36px; }
+  .pos-sale .sale-summary-discount-custom input { min-height: 40px; }
   .pos-sale .sale-summary-breakdown { padding: 12px; }
   .pos-sale .sale-summary-total { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 12px 12px 0; padding: 10px 12px; }
   .pos-sale .sale-summary-total > :last-child { font-size: 26px; white-space: nowrap; }
@@ -192,8 +194,7 @@ label {
   .pos-sale .sale-payment-tabs button { min-height: 44px; }
   .pos-sale .sale-quick-amounts button { min-height: 44px; }
   .pos-sale .sale-payment-actions { padding: 12px; }
-  .pos-sale .sale-secondary-actions { grid-template-columns: 1fr; }
-  .pos-sale .sale-secondary-actions > button:first-child { display: none; }
+  .pos-sale .sale-secondary-actions button { min-height: 44px; }
 }
 
 .barcode-camera-dialog {

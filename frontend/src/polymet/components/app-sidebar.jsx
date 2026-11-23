@@ -11,11 +11,17 @@ function isActive(item, pathname) {
     ? pathname === "/"
     : pathname === item.path || pathname.startsWith(`${item.path}/`);
 }
+const OWNER_ONLY_PATHS = new Set(["/compras", "/suplidores", "/reportes", "/cuentas-por-pagar"]);
 // Polymet's menu list, shared by the desktop sidebar and the phone «Más» panel.
 function SidebarNav({ onNavigate, className, groupsClassName, touch = false, ...props }) {
   const { pathname } = useLocation();
-  const { receivables, payables, products } =
+  const { receivables, payables, products, runtime } =
     usePosStore();
+  const isOwner = !runtime || runtime.isOwner;
+  const groups = NAV_GROUPS.map((group) => ({
+    ...group,
+    items: isOwner ? group.items : group.items.filter((item) => !OWNER_ONLY_PATHS.has(item.path)),
+  })).filter((group) => group.items.length > 0);
   const badges = {
     "/cuentas-por-cobrar": receivables?.filter((r) => balanceOf(r) > 0).length,
     "/cuentas-por-pagar": payables?.filter((p) => balanceOf(p) > 0).length,
@@ -24,7 +30,7 @@ function SidebarNav({ onNavigate, className, groupsClassName, touch = false, ...
   return (
     <nav className={className} {...props}>
       <div className={cn("space-y-6", groupsClassName)}>
-        {NAV_GROUPS.map((group) => (
+        {groups.map((group) => (
           <div key={group.label}>
             <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">
               {group.label}

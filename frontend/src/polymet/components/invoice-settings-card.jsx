@@ -118,7 +118,7 @@ function InvoiceSettingsCard({
             {"Selecciona un cliente con crédito aprobado"}
           </span>
         )}
-        {operational && <span className="rounded-lg bg-muted px-2.5 py-1.5 text-muted-foreground">Sin emisión de NCF</span>}
+        {operational && !nextNcf && <span className="rounded-lg bg-muted px-2.5 py-1.5 text-muted-foreground">Sin emisión de NCF</span>}
         {nextNcf && (
           <span className="inline-flex items-center gap-1.5 rounded-lg bg-muted px-2.5 py-1.5 text-muted-foreground">
             {"NCF a asignar:"}

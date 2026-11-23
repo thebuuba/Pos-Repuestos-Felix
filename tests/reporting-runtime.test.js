@@ -78,8 +78,8 @@ test('real reports export a confirmed sale and versioned settings and formulas s
   await search.fill('inexistente');
   await page.getByText('Sin facturas', { exact: true }).waitFor();
   await search.fill('Cliente de reportes');
-  await page.getByRole('row').filter({ hasText: 'Cliente de reportes' }).getByText('Registrada').waitFor();
-  assert.equal(await page.getByRole('button', { name: 'Anular', exact: true }).count(), 0);
+  await page.getByRole('row').filter({ hasText: 'Cliente de reportes' }).getByText('pendiente').waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Anular', exact: true }).count(), 1);
   const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Exportar' }).click()]);
   assert.match(await readFile(await download.path(), 'utf8'), /"Crédito","100.00","18.00","118.00"/);
   await page.goto(origin + '/configuracion');
@@ -116,9 +116,9 @@ test('real reports export a confirmed sale and versioned settings and formulas s
   const [removed] = await Promise.all([waitSave('formulas/' + stored.id, 'DELETE'), page.getByRole('alertdialog').getByRole('button', { name: 'Eliminar', exact: true }).click()]);
   assert.equal(removed.status(), 200);
   await page.getByRole('tab', { name: 'Comprobantes NCF' }).click();
-  await page.getByText('Emisión fiscal pendiente de habilitación.').waitFor();
+  await page.getByText(/las secuencias inician vacías e inactivas/).waitFor();
   await page.goto(origin + '/ayuda');
   await page.getByRole('button', { name: /Me equivoqué/ }).click();
-  await page.getByText(/La anulación de facturas todavía no está habilitada/).waitFor();
+  await page.getByText(/anular indicando el motivo/).waitFor();
   assert.deepEqual(errors, []);
 });

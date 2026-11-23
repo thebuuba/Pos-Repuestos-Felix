@@ -92,7 +92,7 @@ function ReportsPage() {
           tone="primary"
           label="Ventas totales"
           value={formatMoney(data.total)}
-          hint={operational ? `${data.valid.length} facturas registradas` : `${data.valid.length} facturas · ${data.voided} anuladas`}
+          hint={data.voided > 0 || !operational ? `${data.valid.length} facturas · ${data.voided} anuladas` : `${data.valid.length} facturas registradas`}
         />
         <MiniStat
           icon={TrendingUp}
@@ -324,7 +324,24 @@ function ReportsPage() {
           </SectionCard>
         </div>
       </div>
-      <SalesReportTable key={period} sales={data.inPeriod} onVoid={voidSale} />
+      <SalesReportTable
+        key={period}
+        sales={data.inPeriod}
+        operational={operational}
+        onVoid={
+          operational
+            ? runtime.isOwner
+              ? (sale, reason) =>
+                  voidSale({
+                    databaseId: sale.databaseId,
+                    saleId: sale.id,
+                    version: sale.version,
+                    reason,
+                  })
+              : undefined
+            : (sale) => voidSale(sale.id)
+        }
+      />
     </div>
   );
 }

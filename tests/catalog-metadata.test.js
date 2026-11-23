@@ -82,7 +82,7 @@ test('tax exempt catalog prices retain the same gross amount and produce zero IT
 test('v5 backups preserve metadata and older versions use the SQL defaults', async () => {
   const original = await state();
   const backup = await (await fetch(origin + '/api/backup')).json();
-  assert.equal(backup.version, 6);
+  assert.equal(backup.version, 7);
   const row = backup.tables.productos.find(p => Number(p.id) === productId);
   assert.equal(row.stock_minimo, '7.00');
   assert.equal(row.gravado, false);
@@ -141,7 +141,7 @@ test('additive catalog migration preserves populated prior schema and historical
     const oldProduct = (await admin.query('SELECT * FROM productos')).rows[0];
     const oldDocuments = (await admin.query('SELECT row_to_json(v) AS document FROM ventas v ORDER BY id')).rows;
     const oldMovements = (await admin.query('SELECT row_to_json(m) AS document FROM movimientos_inventario m ORDER BY id')).rows;
-    assert.deepEqual(await migrateDatabase(admin), ['20261121220000', '20261122000000', '20261122010000', '20261122015000', '20261122020000', '20261122030000']);
+    assert.deepEqual(await migrateDatabase(admin), ['20261121220000', '20261122000000', '20261122010000', '20261122015000', '20261122020000', '20261122030000', '20261122210000']);
     assert.equal((await admin.query('SELECT es_contado FROM clientes')).rows[0].es_contado, false);
     const migrated = (await admin.query('SELECT * FROM productos')).rows[0];
     assert.deepEqual(Object.fromEntries(Object.keys(oldProduct).map(key => [key, migrated[key]])),
@@ -152,7 +152,11 @@ test('additive catalog migration preserves populated prior schema and historical
     assert.equal(migrated.notificar_minimo, true);
     assert.equal(migrated.categoria, '');
     assert.deepEqual((await admin.query('SELECT row_to_json(v) AS document FROM ventas v ORDER BY id')).rows,
-      oldDocuments.map(row => ({ document: { ...row.document, caja_id: null, metodo_pago: null } })));
+      oldDocuments.map(row => ({ document: {
+        ...row.document, caja_id: null, metodo_pago: null,
+        descuento_porcentaje: 0, descuento: 0, estado: 'activa',
+        anulada_en: null, anulada_por: null, motivo_anulacion: null, vencimiento: null, version: 1,
+      } })));
     assert.deepEqual((await admin.query('SELECT row_to_json(m) AS document FROM movimientos_inventario m ORDER BY id')).rows, oldMovements);
     assert.deepEqual(await migrateDatabase(admin), []);
     await assert.rejects(admin.query('UPDATE productos SET stock_minimo=-1'), error => error.code === '23514');

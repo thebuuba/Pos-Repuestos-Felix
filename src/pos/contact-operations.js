@@ -32,6 +32,7 @@ const settings = {
   formatoImpresion: ['formato_impresion', value => oneOf(value, [null, 'Térmica 80 mm', 'Térmica 58 mm', 'Carta (8.5 x 11)'], 'el formato de impresión')],
   pieTicket: ['pie_ticket', optionalText],
   permitirStockNegativo: ['permitir_stock_negativo', value => oneOf(value, [false], 'el control de existencias')],
+  metaDiaria: ['meta_diaria', nullable(value => money(cents(value, 'la meta diaria')))],
 };
 export const settingValue = (field, value) => settings[field][1](value);
 
@@ -64,8 +65,16 @@ const formulaFields = ['nombre', 'factorCosto', 'recargo1', 'recargo2', 'recargo
 async function refuseUsedRecord(client, table, recordId) {
   if (table === 'clientes') {
     const result = await client.query(`SELECT 1 FROM clientes c WHERE c.id=$1 AND
-      c.saldo_apertura+COALESCE((SELECT sum(v.total) FROM ventas v WHERE v.cliente_id=c.id AND v.condicion='Credito'),0)<>0`, [recordId]);
+      c.saldo_apertura
+      + COALESCE((SELECT sum(v.total) FROM ventas v WHERE v.cliente_id=c.id AND v.condicion='Credito' AND v.estado='activa'),0)
+      - COALESCE((SELECT sum(a.monto) FROM abonos_cuentas a JOIN ventas v ON v.id=a.venta_id WHERE v.cliente_id=c.id AND v.condicion='Credito' AND v.estado='activa'),0)<>0`, [recordId]);
     if (result.rowCount) fail('El cliente tiene saldo pendiente.', 409);
+  }
+  if (table === 'suplidores') {
+    const result = await client.query(`SELECT 1 FROM suplidores s WHERE s.id=$1 AND
+      COALESCE((SELECT sum(c.total) FROM compras c WHERE c.suplidor_id=s.id AND c.condicion='Credito'),0)
+      - COALESCE((SELECT sum(a.monto) FROM abonos_cuentas a JOIN compras c ON c.id=a.compra_id WHERE c.suplidor_id=s.id AND c.condicion='Credito'),0)<>0`, [recordId]);
+    if (result.rowCount) fail('El suplidor tiene saldo pendiente.', 409);
   }
   if (table === 'formulas_precios') {
     const used = await client.query('SELECT 1 FROM suplidores WHERE formula_id=$1 LIMIT 1', [recordId]);

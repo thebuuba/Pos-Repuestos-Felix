@@ -25,6 +25,8 @@ export function purchaseOperation(input) {
     databaseId: input.databaseId, method: 'POST', path: '/api/compras',
     payload: {
       suplidorId: input.supplierId, numero: input.supplierInvoice,
+      ...(input.condition ? { condicion: input.condition === 'credito' ? 'Credito' : 'Contado' } : {}),
+      ...(input.condition === 'credito' && input.dueDate ? { vencimiento: input.dueDate } : {}),
       items: input.lines.map(line => ({
         productoId: line.productId ?? null, versionProducto: line.productVersion ?? null,
         codigo: line.code, nombre: line.name, cantidad: purchaseDecimal(line.quantity), costo: purchaseDecimal(line.cost),

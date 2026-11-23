@@ -39,6 +39,11 @@ function OrderSummaryPanel({
   totals,
   discountPct,
   onDiscountChange,
+  discountMode = "percent",
+  onDiscountModeChange,
+  discountValue,
+  onDiscountValueChange,
+  discountError,
   paymentMethod,
   onPaymentMethodChange,
   received,
@@ -105,31 +110,124 @@ function OrderSummaryPanel({
             {formatMoney(totals.subtotal)}
           </span>
         </div>
-        <div className="sale-summary-discounts flex items-center justify-between gap-2">
-          <span className="text-muted-foreground">{"Descuento"}</span>
-          <div className="flex items-center gap-1">
-            {DISCOUNTS.map((d) => (
-              <button
-                type="button"
-                disabled={operational}
-                onClick={() => onDiscountChange(d)}
-                className={cn(
-                  "h-6 rounded-md px-1.5 text-[11px] font-semibold transition-colors",
-                  discountPct === d
-                    ? "bg-foreground text-background"
-                    : "bg-muted text-muted-foreground hover:text-foreground",
-                )}
-                key={d}
-              >
-                {d}
-                {"%"}
-              </button>
-            ))}
+        <div className="sale-summary-discounts space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-muted-foreground">{"Descuento"}</span>
+            <div className="flex items-center gap-1">
+              {DISCOUNTS.map((d) => {
+                const active =
+                  discountMode === "percent" &&
+                  (d === 0
+                    ? (discountValue === undefined ? discountPct === 0 : discountValue === "" || Number(discountValue) === 0)
+                    : (discountValue === undefined ? discountPct === d : Number(discountValue) === d));
+                return (
+                  <button
+                    type="button"
+                    disabled={!onDiscountChange && !onDiscountValueChange}
+                    onClick={() => {
+                      if (onDiscountModeChange && onDiscountValueChange) {
+                        onDiscountModeChange("percent");
+                        onDiscountValueChange(d === 0 ? "" : String(d));
+                      } else {
+                        onDiscountChange?.(d);
+                      }
+                    }}
+                    className={cn(
+                      "h-6 rounded-md px-1.5 text-[11px] font-semibold transition-colors",
+                      active
+                        ? "bg-foreground text-background"
+                        : "bg-muted text-muted-foreground hover:text-foreground",
+                    )}
+                    key={d}
+                  >
+                    {d}
+                    {"%"}
+                  </button>
+                );
+              })}
+            </div>
           </div>
+          {(onDiscountValueChange || onDiscountChange) && (
+            <div className="sale-summary-discount-custom flex items-center gap-1.5">
+              {onDiscountModeChange && (
+                <div className="flex shrink-0 rounded-lg bg-muted p-0.5">
+                  <button
+                    type="button"
+                    aria-label="Descuento en porcentaje"
+                    aria-pressed={discountMode === "percent"}
+                    onClick={() => {
+                      if (discountMode !== "percent") {
+                        onDiscountModeChange("percent");
+                        onDiscountValueChange?.("");
+                      }
+                    }}
+                    className={cn(
+                      "h-7 rounded-md px-2 text-[11px] font-semibold transition-colors",
+                      discountMode === "percent"
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {"%"}
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Descuento en pesos"
+                    aria-pressed={discountMode === "amount"}
+                    onClick={() => {
+                      if (discountMode !== "amount") {
+                        onDiscountModeChange("amount");
+                        onDiscountValueChange?.("");
+                      }
+                    }}
+                    className={cn(
+                      "h-7 rounded-md px-2 text-[11px] font-semibold transition-colors",
+                      discountMode === "amount"
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {"RD$"}
+                  </button>
+                </div>
+              )}
+              <Input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                max={discountMode === "percent" ? "100" : undefined}
+                step="0.01"
+                aria-label="Descuento personalizado"
+                aria-invalid={Boolean(discountError)}
+                value={
+                  discountValue !== undefined
+                    ? discountValue
+                    : discountPct > 0
+                      ? String(discountPct)
+                      : ""
+                }
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (onDiscountValueChange) onDiscountValueChange(val);
+                  else onDiscountChange?.(val === "" ? 0 : Math.min(100, Math.max(0, Number(val) || 0)));
+                }}
+                placeholder={discountMode === "amount" ? "Monto libre RD$" : "Otro porcentaje %"}
+                className="h-8 flex-1 rounded-lg bg-card px-2.5 text-right text-xs font-medium tabular-nums"
+              />
+            </div>
+          )}
+          {discountError && (
+            <p role="alert" className="text-xs font-medium text-primary">
+              {discountError}
+            </p>
+          )}
         </div>
         {totals.discount > 0 && (
           <div className="flex justify-between text-primary">
-            <span>{"Descuento aplicado"}</span>
+            <span>
+              {"Descuento aplicado"}
+              {totals.discountPercent > 0 ? ` (${totals.discountPercent}%)` : ""}
+            </span>
             <span className="font-medium tabular-nums">
               {"− "}
               {formatMoney(totals.discount)}
@@ -247,11 +345,11 @@ function OrderSummaryPanel({
         </div>
       ) : (
         <div className="mx-5 mt-4 rounded-xl border border-dashed border-border px-4 py-3 text-xs text-muted-foreground">
-          {operational ? "La venta se sumará al saldo del cliente." : <>{"La factura se registrará en "}
+          {"La factura se registrará en "}
           <span className="font-medium text-foreground">
             {"Cuentas x cobrar"}
           </span>
-          {" con vencimiento a 30 días."}</>}
+          {" con vencimiento a 30 días."}
         </div>
       )}
       <div className="sale-payment-actions mt-auto space-y-2 p-5">
@@ -275,7 +373,7 @@ function OrderSummaryPanel({
           <Button
             variant="outline"
             onClick={onSaveQuote}
-            disabled={empty || operational}
+            disabled={empty || !onSaveQuote}
             className="h-10 rounded-xl bg-card"
           >
             <FileClock />

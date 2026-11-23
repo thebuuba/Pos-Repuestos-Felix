@@ -50,8 +50,8 @@ function PurchasesPage() {
         <MiniStat
           icon={Receipt}
           label="Pendiente a suplidores"
-          value={runtime ? "—" : formatMoney(owed)}
-          hint={runtime ? "Saldo no disponible" : "Ver Cuentas x pagar"}
+          value={formatMoney(owed ?? 0)}
+          hint="Ver Cuentas x pagar"
         />
         <MiniStat
           icon={Truck}

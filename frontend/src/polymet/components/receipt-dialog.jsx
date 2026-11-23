@@ -24,6 +24,7 @@ function ReceiptDialog({
   printFormat = "Térmica 80 mm",
   footer = "¡Gracias por su compra!",
   title = "Venta registrada",
+  isQuote = false,
 }) {
   return (
     <Dialog2 open={open} onOpenChange={onOpenChange}>
@@ -32,9 +33,10 @@ function ReceiptDialog({
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/10">
             <CircleCheck className="h-6 w-6 text-emerald-600" />
           </div>
-          <DialogTitle2 className="text-lg">{sale?.localReference ? "Venta guardada en este equipo" : title}</DialogTitle2>
+          <DialogTitle2 className="text-lg">{isQuote ? "Cotización" : sale?.localReference ? "Venta guardada en este equipo" : title}</DialogTitle2>
           <DialogDescription2>
-            {sale?.localReference ? "Registro local durable. Consulta las operaciones locales para verificar su confirmación en el servidor."
+            {isQuote ? "Cotización informativa. No descuenta inventario ni registra movimiento en caja."
+              : sale?.localReference ? "Registro local durable. Consulta las operaciones locales para verificar su confirmación en el servidor."
               : <>La factura {sale?.invoiceNumber} se guardó correctamente.</>}
           </DialogDescription2>
         </DialogHeader>
@@ -86,7 +88,7 @@ function ReceiptDialog({
                   <span className="font-semibold">{sale.ncf}</span>
                 </div>
               )}
-              {sale.dateOnly && !sale.ncf && <p className="text-muted-foreground">Sin emisión de NCF</p>}
+              {sale.dateOnly && !sale.ncf && !isQuote && <p className="text-muted-foreground">Sin emisión de NCF</p>}
               {sale.localReference && <div className="space-y-1 pt-1">
                 <p className="font-semibold">Guardado en este equipo. Confirmación del servidor por verificar.</p>
                 <p style={{ overflowWrap: 'anywhere' }}>Referencia local: {sale.localReference}</p>
@@ -167,7 +169,7 @@ function ReceiptDialog({
             {sale?.dateOnly ? "Imprimir" : "Reimprimir"}
           </Button>
           <Button className="h-11 rounded-xl" onClick={onNewSale}>
-            {"Nueva venta"}
+            {isQuote ? "Cerrar" : "Nueva venta"}
           </Button>
         </div>
       </DialogContent2>

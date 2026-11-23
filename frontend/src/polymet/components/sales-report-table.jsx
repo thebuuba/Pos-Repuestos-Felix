@@ -8,7 +8,8 @@ import { formatMoney } from "../lib/format.js";
 import { cn } from "../../lib/utils.js";
 import { Button } from "../../components/ui/button.jsx";
 import { Ban } from "lucide-react";
-import { ConfirmDialog } from "./confirm-dialog.jsx";
+import { Dialog2, DialogContent2, DialogHeader, DialogTitle2, DialogDescription2, DialogFooter } from "../../components/ui/dialog.jsx";
+import { Field, inputClass } from "./form-field.jsx";
 import { toast as ue } from "sonner";
 import { useState } from "react";
 import { paymentLabel } from "../lib/sales-analytics.js";
@@ -17,10 +18,13 @@ var STATUS_UI = {
   pendiente: "border-foreground/50 text-foreground",
   anulada: "border-primary/50 text-primary line-through",
 };
-function SalesReportTable({ sales, onVoid }) {
+function SalesReportTable({ sales, onVoid, operational = false }) {
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(15);
   const [toVoid, setToVoid] = useState(null);
+  const [reason, setReason] = useState("");
+  const [voiding, setVoiding] = useState(false);
+  const [voidError, setVoidError] = useState(null);
   const q = query.trim().toLowerCase();
   const filtered = sales.filter(
     (s) =>
@@ -104,9 +108,15 @@ function SalesReportTable({ sales, onVoid }) {
                         "rounded-full border px-2.5 py-0.5 text-[11px] font-medium capitalize",
                         STATUS_UI[s.status],
                       )}
+                      title={s.voidReason || undefined}
                     >
                       {s.status ?? "Registrada"}
                     </span>
+                    {s.status === "anulada" && s.voidReason && (
+                      <p className="mt-1 max-w-[180px] truncate text-[11px] text-muted-foreground">
+                        {s.voidReason}
+                      </p>
+                    )}
                   </td>
                   <td className="px-5 py-3 text-right">
                     {onVoid && s.status !== "anulada" && (
@@ -114,7 +124,11 @@ function SalesReportTable({ sales, onVoid }) {
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8 text-muted-foreground hover:bg-accent hover:text-primary"
-                        onClick={() => setToVoid(s)}
+                        onClick={() => {
+                          setToVoid(s);
+                          setReason("");
+                          setVoidError(null);
+                        }}
                         aria-label="Anular"
                       >
                         <Ban />
@@ -144,20 +158,86 @@ function SalesReportTable({ sales, onVoid }) {
           </Button>
         )}
       </div>
-      <ConfirmDialog
+      <Dialog2
         open={Boolean(toVoid)}
-        onOpenChange={(o) => !o && setToVoid(null)}
-        title={`¿Anular la factura ${toVoid?.number ?? ""}?`}
-        description="La mercancía regresará al inventario y, si era a crédito, se elimina la cuenta por cobrar."
-        confirmLabel="Anular factura"
-        onConfirm={async () => {
-          if (toVoid) {
-            await onVoid(toVoid.id);
-            ue(`Factura ${toVoid.number} anulada`);
+        onOpenChange={(o) => {
+          if (!o && !voiding) {
+            setToVoid(null);
+            setReason("");
+            setVoidError(null);
           }
-          setToVoid(null);
         }}
-      />
+      >
+        <DialogContent2 className="max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle2>{`¿Anular la factura ${toVoid?.number ?? ""}?`}</DialogTitle2>
+            <DialogDescription2>
+              {"La mercancía regresará al inventario y, si era a crédito, se revierte la cuenta por cobrar."}
+            </DialogDescription2>
+          </DialogHeader>
+          <Field
+            label="Motivo de anulación"
+            htmlFor="void-sale-reason"
+            hint="Se guarda en el historial de la factura."
+          >
+            <Input
+              id="void-sale-reason"
+              value={reason}
+              disabled={voiding}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Ej. Error en artículo o precio"
+              className={inputClass}
+              autoFocus
+            />
+          </Field>
+          {voidError && (
+            <p role="alert" className="text-sm text-primary">
+              {voidError}
+            </p>
+          )}
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-xl"
+              disabled={voiding}
+              onClick={() => {
+                setToVoid(null);
+                setReason("");
+                setVoidError(null);
+              }}
+            >
+              {"Cancelar"}
+            </Button>
+            <Button
+              type="button"
+              className="rounded-xl bg-primary text-primary-foreground hover:bg-primary/90"
+              disabled={voiding || (operational && !reason.trim())}
+              onClick={async () => {
+                if (!toVoid || voiding) return;
+                if (operational && !reason.trim()) {
+                  setVoidError("Indica el motivo de la anulación.");
+                  return;
+                }
+                setVoiding(true);
+                setVoidError(null);
+                try {
+                  await onVoid(toVoid, reason.trim() || "Anulada por el usuario");
+                  ue.success(`Factura ${toVoid.number} anulada`);
+                  setToVoid(null);
+                  setReason("");
+                } catch (cause) {
+                  setVoidError(cause?.message || "No se pudo anular la factura.");
+                } finally {
+                  setVoiding(false);
+                }
+              }}
+            >
+              {voiding ? "Anulando…" : "Anular factura"}
+            </Button>
+          </DialogFooter>
+        </DialogContent2>
+      </Dialog2>
     </section>
   );
 }

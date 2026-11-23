@@ -37,7 +37,8 @@ const string = value => typeof value === 'string';
 const amount = decimal(/^\d{1,12}(?:\.\d{1,2})?$/);
 const productFields = { codigo: string, nombre: string, marca: string, categoria: string, ubicacion: string,
   stockMinimo: decimalQuantity, gravado: bool, notificarMinimo: bool, stock: decimalQuantity,
-  costo: cost, precio1: cost, precio2: cost, precio3: cost };
+  costo: cost, precio1: cost, precio2: cost, precio3: cost,
+  codigosAlternativos: value => Array.isArray(value) && value.length <= 20 && value.every(name) };
 const contactFields = { nombre: name, rnc: text, tel: text, correo: text };
 const customerFields = { ...contactFields, direccion: text, limiteCredito: nullable(amount) };
 const supplierFields = { ...contactFields, contacto: text, diasCredito: nullable(integerQuantity), formulaId: nullable(id) };
@@ -55,12 +56,20 @@ function validFormula(row) {
 const settingsFields = { empresa: name, rnc: text, tel: text, correo: text, direccion: text, itbisPorcentaje: percentage,
   redondeo: oneOf(0, 1, 5, 10, 25), nivelPrecioPredeterminado: oneOf(null, 'p1', 'p2', 'p3'),
   formatoImpresion: oneOf(null, 'Térmica 80 mm', 'Térmica 58 mm', 'Carta (8.5 x 11)'), pieTicket: text,
+  permitirStockNegativo: oneOf(false), metaDiaria: nullable(amount) };
+const settingsRequiredFields = { empresa: name, rnc: text, tel: text, correo: text, direccion: text, itbisPorcentaje: percentage,
+  redondeo: oneOf(0, 1, 5, 10, 25), nivelPrecioPredeterminado: oneOf(null, 'p1', 'p2', 'p3'),
+  formatoImpresion: oneOf(null, 'Térmica 80 mm', 'Térmica 58 mm', 'Carta (8.5 x 11)'), pieTicket: text,
   permitirStockNegativo: oneOf(false) };
 const resourceFields = { productos: productFields, clientes: customerFields, suplidores: supplierFields, formulas: formulaFields,
   configuracion: settingsFields };
 
 function checkTarget(method, path) {
   if (method === 'POST' && ['/api/caja/abrir','/api/caja/cerrar','/api/caja/movimiento'].includes(path)) return { resource: path.slice(5), target: null };
+  if (method === 'POST' && ['/api/cuentas/cobros','/api/cuentas/pagos'].includes(path)) return { resource: path.slice(5), target: null };
+  if (method === 'PUT' && path === '/api/ncf') return { resource: 'ncf', target: null };
+  const voidMatch = typeof path === 'string' && /^\/api\/ventas\/([1-9]\d*)\/anular$/.exec(path);
+  if (method === 'POST' && voidMatch && id(Number(voidMatch[1]))) return { resource: 'ventas/anular', target: Number(voidMatch[1]) };
   if (method === 'POST' && ['/api/ventas', '/api/compras'].includes(path)) return { resource: path.slice(5), target: null };
   if (method === 'PUT' && path === '/api/configuracion') return { resource: 'configuracion', target: 1 };
   const match = typeof path === 'string' && /^\/api\/(productos|clientes|suplidores|formulas)(?:\/([1-9]\d*))?$/.exec(path);
@@ -74,6 +83,38 @@ function checkPayload(method, resource, payload) {
   const mutable = resourceFields[resource];
   const invalid = () => { throw new Error('Los campos de la solicitud no son válidos.'); };
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) invalid();
+  if (resource === 'ventas/anular') {
+    const fields = { version: id, motivo: name };
+    if (Object.keys(payload).length !== 2 || !complete(payload, fields)) invalid();
+    return;
+  }
+  if (resource === 'cuentas/cobros' || resource === 'cuentas/pagos') {
+    const isCobro = resource === 'cuentas/cobros';
+    const allowed = {
+      [isCobro ? 'ventaId' : 'compraId']: id,
+      version: id,
+      monto: value => amount(value) && Number(value) > 0,
+      metodoPago: oneOf('efectivo', 'tarjeta', 'transferencia'),
+      cajaId: nullable(id),
+      referencia: text,
+      nota: text,
+    };
+    const req = [isCobro ? 'ventaId' : 'compraId', 'version', 'monto', 'metodoPago'];
+    if (Object.entries(payload).some(([key, value]) => !allowed[key] || !allowed[key](value)) ||
+        req.some(key => !Object.hasOwn(payload, key))) invalid();
+    if (payload.metodoPago === 'efectivo' && !id(payload.cajaId)) invalid();
+    if (payload.metodoPago !== 'efectivo' && payload.cajaId != null) invalid();
+    return;
+  }
+  if (resource === 'ncf') {
+    const allowed = { tipo: oneOf('B01', 'B02', 'B14'), inicio: integerQuantity, fin: integerQuantity,
+      actual: integerQuantity, vencimiento: documentDate, activa: bool, version: nullable(id) };
+    const req = ['tipo', 'inicio', 'fin', 'actual', 'vencimiento', 'activa'];
+    if (Object.entries(payload).some(([key, value]) => !allowed[key] || !allowed[key](value)) ||
+        req.some(key => !Object.hasOwn(payload, key))) invalid();
+    if (payload.inicio < 1 || payload.fin < payload.inicio || payload.actual < payload.inicio - 1 || payload.actual > payload.fin) invalid();
+    return;
+  }
   if (resource.startsWith('caja/')) {
     const fields = resource === 'caja/abrir' ? { monto: amount } : resource === 'caja/cerrar'
       ? { cajaId: id, version: id, conteo: amount }
@@ -84,7 +125,12 @@ function checkPayload(method, resource, payload) {
   if (resource === 'ventas' || resource === 'compras') {
     const sale = resource === 'ventas';
     const header = sale ? { clienteId: id, condicion: oneOf('Contado','Credito'), tipoComprobante: oneOf('B01','B02','B14'),
-      versionConfiguracion: id, cajaId: id, metodoPago: oneOf('efectivo','tarjeta','transferencia','credito') } : { suplidorId: id, numero: name };
+      versionConfiguracion: id, cajaId: id, metodoPago: oneOf('efectivo','tarjeta','transferencia','credito'),
+      descuentoPorcentaje: value => amount(value) && Number(value) <= 100,
+      descuentoMonto: amount,
+      vencimiento: nullable(documentDate) }
+      : { suplidorId: id, numero: name, condicion: oneOf('Contado','Credito'), vencimiento: nullable(documentDate) };
+    const optionalHeader = sale ? ['cajaId','metodoPago','descuentoPorcentaje','descuentoMonto','vencimiento'] : ['condicion','vencimiento'];
     const fields = sale ? { productoId: id, cantidad: v => decimalQuantity(v) && Number(v) > 0,
       nivelPrecio: oneOf('precio1','precio2','precio3'), versionProducto: id } :
       { codigo: name, nombre: name, cantidad: v => decimalQuantity(v) && Number(v) > 0, costo: cost, precio1: cost, precio2: cost, precio3: cost,
@@ -92,7 +138,7 @@ function checkPayload(method, resource, payload) {
     const required = sale ? ['productoId','cantidad','nivelPrecio'] : ['codigo','nombre','cantidad','costo','precio1','precio2','precio3'];
     if (!Array.isArray(payload.items) || !payload.items.length || payload.items.length > 1000 ||
         Object.entries(payload).some(([key,value]) => key !== 'items' && (!header[key] || !header[key](value))) ||
-        Object.keys(header).some(key => !key.startsWith('version') && !['cajaId','metodoPago'].includes(key) && !Object.hasOwn(payload,key))) invalid();
+        Object.keys(header).some(key => !key.startsWith('version') && !optionalHeader.includes(key) && !Object.hasOwn(payload,key))) invalid();
     // Old pending journals must reach the server to obtain a definitive rejection.
     if (sale && (Object.hasOwn(payload,'cajaId') !== Object.hasOwn(payload,'metodoPago') ||
         (payload.metodoPago && (payload.condicion === 'Credito') !== (payload.metodoPago === 'credito')))) invalid();
@@ -168,7 +214,8 @@ function validDocument(row, sale) {
 function validOperationalState(state) {
   if (state.caja !== undefined && !validCash(state.caja)) return false;
   const config = state.configuracion;
-  if (!complete(config, settingsFields) || !id(config.version) || typeof config.itbisPorcentaje !== 'number' ||
+  if (!complete(config, settingsRequiredFields) || !id(config.version) || typeof config.itbisPorcentaje !== 'number' ||
+      (Object.hasOwn(config, 'metaDiaria') && !nullable(money)(config.metaDiaria)) ||
       state.empresa !== config.empresa || state.configuracionVersion !== config.version || !Number.isFinite(state.itbisRate) ||
       Number((config.itbisPorcentaje / 100).toFixed(6)) !== state.itbisRate) return false;
   if (!records(state.formulas, row => id(row.version) && name(row.nombre) && validFormula(row) &&
@@ -223,6 +270,21 @@ function checkConfirmation(snapshot, packet, resource, expected, payload) {
   // Older journals have no baseline. Their exact operation can still be confirmed by the server.
   if (Object.hasOwn(packet, 'baseRevision') && (!Number.isSafeInteger(packet.baseRevision) ||
       packet.baseRevision < 0 || snapshot.revision <= packet.baseRevision)) throw new Error(unconfirmed);
+  if (resource === 'ventas/anular') {
+    if (!proof.replayed) {
+      const row = snapshot.state.facturas.find(item => item.id === target);
+      if (!row || row.estado !== 'anulada') throw new Error(unconfirmed);
+    }
+    return;
+  }
+  if (resource === 'cuentas/cobros' || resource === 'cuentas/pagos') {
+    if (!proof.replayed && !(snapshot.state.abonos || []).some(item => item.id === target)) throw new Error(unconfirmed);
+    return;
+  }
+  if (resource === 'ncf') {
+    if (!proof.replayed && !(snapshot.state.secuenciasNcf || []).some(item => item.id === target && item.tipo === payload.tipo)) throw new Error(unconfirmed);
+    return;
+  }
   if (resource.startsWith('caja/')) {
     if (!validCash(snapshot.state.caja)) throw new Error(unconfirmed);
     // A replay may now show a later turn; the durable receipt proves the original command.

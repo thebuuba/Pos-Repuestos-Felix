@@ -28,7 +28,7 @@ function RecentSalesTable({ sales }) {
           asChild={true}
           variant="ghost"
           size="sm"
-          className="text-muted-foreground"
+          className="min-h-11 sm:min-h-8 text-muted-foreground"
         >
           <Link to="/reportes">
             {"Ver todas"}

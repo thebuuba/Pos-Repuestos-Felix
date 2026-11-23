@@ -8,13 +8,11 @@ import { CONDITIONS } from "../../data/sales-options.js";
 import { PAYMENT_METHODS } from "../../data/sales-options.js";
 import { PageHeader } from "../components/page-header.jsx";
 import { Button } from "../../components/ui/button.jsx";
-import { CirclePause } from "lucide-react";
-import { RotateCcw } from "lucide-react";
-import { Lock } from "lucide-react";
-import { ChevronDown } from "lucide-react";
+import { CirclePause, RotateCcw, Lock, ChevronDown, LayoutGrid, Play, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { InvoiceSettingsCard } from "../components/invoice-settings-card.jsx";
-import { LayoutGrid } from "lucide-react";
+import { Dialog2, DialogContent2, DialogHeader, DialogTitle2, DialogDescription2 } from "../../components/ui/dialog.jsx";
+import { formatMoney } from "../lib/format.js";
 import { ProductSearchBar } from "../components/product-search-bar.jsx";
 import { QuickProductsGrid } from "../components/quick-products-grid.jsx";
 import { CartTable } from "../components/cart-table.jsx";
@@ -375,10 +373,15 @@ export { PointOfSalePage };
 export function OperationalPointOfSalePage() {
   const { products, customers, settings, cashSession, runtime, cashCustomer,
     customerId, setCustomerId, comprobante, setComprobante, condition, setCondition,
-    paymentMethod, setPaymentMethod, received, setReceived, priceLevel, setPriceLevel,
-    items, setItems, receipt, failure, sending, customer, lines, totals, cartQuantities,
+    paymentMethod, setPaymentMethod, discountMode, setDiscountMode, discountValue, setDiscountValue, discountError,
+    discountPercent, setDiscountPercent, received, setReceived, priceLevel, setPriceLevel,
+    items, setItems, heldSales, holdCurrentSale, resumeHeldSale, removeHeldSale, openQuote,
+    receipt, failure, sending, customer, lines, totals, cartQuantities,
     locked, disabledReason, resetSale, editQuantity, checkout } = useSaleDraft();
+  const [heldOpen, setHeldOpen] = useState(false);
   const recoveryIssue = runtime.recoveryIssue?.operationId === failure?.operationId ? runtime.recoveryIssue : null;
+  const activeNcf = !window.__FELIX_DESKTOP__ && (settings.ncf || []).find(s => s.type === comprobante && s.active && s.current < s.end);
+  const nextNcfPreview = activeNcf ? `${activeNcf.prefix}${String(activeNcf.current + 1).padStart(8, "0")}` : null;
   const checkoutRef = useRef(null);
   checkoutRef.current = () => checkout();
   useEffect(() => {
@@ -417,13 +420,31 @@ export function OperationalPointOfSalePage() {
           <div><p className="text-sm font-semibold text-accent-foreground">La caja está cerrada</p>
             <p className="text-xs text-accent-foreground/80">Abre la caja con el fondo inicial para empezar a facturar.</p></div>
         </div>
-        <Button asChild className="rounded-xl"><Link to="/caja">Abrir caja</Link></Button>
+        <Button asChild className="min-h-11 rounded-xl"><Link to="/caja">Abrir caja</Link></Button>
       </div>}
       <SaleLayout
         locked={locked}
         selectionActions={<>
-          <Button disabled variant="outline" className="sale-desktop-only h-10 rounded-xl bg-card"
-            title="Ventas en espera no disponibles"><CirclePause />En espera</Button>
+          <Button
+            disabled={locked || (!items.length && !heldSales.length)}
+            variant="outline"
+            className="h-11 rounded-xl bg-card"
+            onClick={() => {
+              if (!heldSales.length && items.length) {
+                holdCurrentSale();
+              } else {
+                setHeldOpen(true);
+              }
+            }}
+          >
+            <CirclePause />
+            <span>En espera</span>
+            {heldSales.length > 0 && (
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-[11px] font-semibold tabular-nums">
+                {heldSales.length}
+              </span>
+            )}
+          </Button>
           <Button disabled={locked} variant="outline" className="h-11 rounded-xl bg-card" onClick={resetSale}>
             <RotateCcw />
             <span className="sale-desktop-only">Nueva venta</span><span className="sale-mobile-only">Limpiar</span>
@@ -446,6 +467,7 @@ export function OperationalPointOfSalePage() {
             onComprobanteChange={setComprobante}
             condition={condition}
             onConditionChange={setCondition}
+            nextNcf={nextNcfPreview}
           />
           </MobileSaleDetails>
         }
@@ -495,18 +517,79 @@ export function OperationalPointOfSalePage() {
             comprobante={comprobante}
             condition={condition}
             totals={totals}
-            discountPct={0}
+            discountPct={discountPercent}
+            onDiscountChange={setDiscountPercent}
+            discountMode={discountMode}
+            onDiscountModeChange={setDiscountMode}
+            discountValue={discountValue}
+            onDiscountValueChange={setDiscountValue}
+            discountError={discountError}
             paymentMethod={paymentMethod}
             onPaymentMethodChange={setPaymentMethod}
             received={received}
             onReceivedChange={setReceived}
             itbisRate={settings.itbisRate}
+            ncf={nextNcfPreview}
+            onSaveQuote={openQuote}
             onCancel={resetSale}
             disabledReason={disabledReason}
             onCheckout={() => checkout()}
           />
         }
       />
+      <Dialog2 open={heldOpen} onOpenChange={setHeldOpen}>
+        <DialogContent2 className="max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle2>Ventas en espera</DialogTitle2>
+            <DialogDescription2>Borradores guardados en este dispositivo. No descuentan inventario hasta facturarlos.</DialogDescription2>
+          </DialogHeader>
+          {items.length > 0 && (
+            <Button
+              variant="outline"
+              className="h-11 w-full rounded-xl bg-card"
+              onClick={() => { holdCurrentSale(); setHeldOpen(false); }}
+            >
+              <CirclePause />
+              {"Poner venta actual en espera"}
+            </Button>
+          )}
+          {heldSales.length === 0 ? (
+            <p className="py-4 text-center text-sm text-muted-foreground">No hay ventas en espera.</p>
+          ) : (
+            <ul className="max-h-72 space-y-2 overflow-y-auto">
+              {heldSales.map((entry) => (
+                <li key={entry.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-3 text-sm">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{entry.customerName}</p>
+                    <p className="text-xs text-muted-foreground tabular-nums">
+                      {entry.items.length} {entry.items.length === 1 ? "línea" : "líneas"} · {formatMoney(entry.total)}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-1.5">
+                    <Button
+                      size="sm"
+                      className="h-10 rounded-xl"
+                      onClick={() => { resumeHeldSale(entry.id); setHeldOpen(false); }}
+                    >
+                      <Play className="h-3.5 w-3.5" />
+                      {"Retomar"}
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-10 w-10 rounded-xl text-muted-foreground hover:text-primary"
+                      aria-label={`Eliminar venta en espera de ${entry.customerName}`}
+                      onClick={() => removeHeldSale(entry.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </DialogContent2>
+      </Dialog2>
 
     </div>
   );

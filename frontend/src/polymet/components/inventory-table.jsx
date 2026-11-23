@@ -46,7 +46,8 @@ var STATE_UI = {
     bg: "bg-accent",
   },
 };
-const InventoryTable = memo(function InventoryTable({ products, categories, connected, onEdit, onDelete }) {
+const InventoryTable = memo(function InventoryTable({ products, categories, connected, showCosts = true, onEdit, onDelete }) {
+  const showActions = Boolean(onEdit || onDelete);
   const [params, setParams] = useSearchParams();
   const { key } = useLocation();
   const selectedStock = params.get("existencia");
@@ -63,6 +64,7 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
       if (!q) return true;
       return (
         p.code.toLowerCase().includes(q) ||
+        p.altCodes?.some((c) => c.toLowerCase().includes(q)) ||
         p.name.toLowerCase().includes(q) ||
         p.brand.toLowerCase().includes(q)
       );
@@ -162,9 +164,11 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
                 <th className="px-3 py-2.5 font-medium">{"Categoría"}</th>
                 <th className="px-3 py-2.5 font-medium">{"Ubic."}</th>
                 <th className="px-3 py-2.5 font-medium">{"Existencia"}</th>
-                <th className="px-3 py-2.5 text-right font-medium">
-                  {"Costo"}
-                </th>
+                {showCosts && (
+                  <th className="px-3 py-2.5 text-right font-medium">
+                    {"Costo"}
+                  </th>
+                )}
                 <th className="px-3 py-2.5 text-right font-medium">
                   {"Precio 1"}
                 </th>
@@ -174,12 +178,16 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
                 <th className="px-3 py-2.5 text-right font-medium">
                   {"Precio 3"}
                 </th>
-                <th className="px-3 py-2.5 text-right font-medium">
-                  {"Margen"}
-                </th>
-                <th className="w-24 px-5 py-2.5 text-right font-medium">
-                  {"Acciones"}
-                </th>
+                {showCosts && (
+                  <th className="px-3 py-2.5 text-right font-medium">
+                    {"Margen"}
+                  </th>
+                )}
+                {showActions && (
+                  <th className="w-24 px-5 py-2.5 text-right font-medium">
+                    {"Acciones"}
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -246,9 +254,11 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
                         </div>
                       </div>
                     </td>
-                    <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">
-                      {formatUnitMoney(p.costExact ?? p.cost)}
-                    </td>
+                    {showCosts && (
+                      <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">
+                        {formatUnitMoney(p.costExact ?? p.cost)}
+                      </td>
+                    )}
                     <td className="px-3 py-3 text-right font-semibold tabular-nums">
                       {formatUnitMoney(p.pricesExact?.p1 ?? p.prices.p1)}
                     </td>
@@ -258,31 +268,39 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
                     <td className="px-3 py-3 text-right tabular-nums">
                       {formatUnitMoney(p.pricesExact?.p3 ?? p.prices.p3)}
                     </td>
-                    <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">
-                      {margin === null ? "—" : `${margin.toFixed(1)}%`}
-                    </td>
-                    <td className="px-5 py-3">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-muted-foreground"
-                          onClick={() => onEdit?.(p)}
-                          aria-label="Editar"
-                        >
-                          <Pencil />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:bg-accent hover:text-primary"
-                          onClick={() => onDelete?.(p)}
-                          aria-label="Eliminar"
-                        >
-                          <Trash2 />
-                        </Button>
-                      </div>
-                    </td>
+                    {showCosts && (
+                      <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">
+                        {margin === null ? "—" : `${margin.toFixed(1)}%`}
+                      </td>
+                    )}
+                    {showActions && (
+                      <td className="px-5 py-3">
+                        <div className="mobile-touch-controls flex justify-end gap-1">
+                          {onEdit && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground"
+                              onClick={() => onEdit(p)}
+                              aria-label="Editar"
+                            >
+                              <Pencil />
+                            </Button>
+                          )}
+                          {onDelete && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:bg-accent hover:text-primary"
+                              onClick={() => onDelete(p)}
+                              aria-label="Eliminar"
+                            >
+                              <Trash2 />
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 );
               })}

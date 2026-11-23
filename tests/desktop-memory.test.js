@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 test('el motor de Windows ejecuta las migraciones y reglas PostgreSQL compartidas con importes exactos', async t => {
   const pool = await memoryPool();
   t.after(() => pool.end());
-  assert.equal((await migrateDatabase(pool)).length, 8);
+  assert.equal((await migrateDatabase(pool)).length, 9);
   const initial = await readSnapshot(pool, 'Windows');
   const opened = await writeOperation(pool, 'POST', '/api/caja/abrir', { databaseId: initial.databaseId, monto: '0.01' }, randomUUID(), 'Windows');
   assert.equal(opened.state.caja.summary.expected, 0.01);

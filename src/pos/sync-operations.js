@@ -7,10 +7,20 @@ import { bootstrapTag } from './state-tag.js';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const instant = value => value === null ? null : new Date(value).toISOString();
 const sameId = (a, b) => String(a) === String(b);
-const cashOperation = path => path === '/api/ventas' || path.startsWith('/api/caja/');
-const tableFor = resource => ({ formulas: 'formulas_precios', 'caja/abrir': 'turnos_caja',
-  'caja/cerrar': 'turnos_caja', 'caja/movimiento': 'movimientos_caja' })[resource] ?? resource;
-function resourceFor(path) { return path.slice('/api/'.length).replace(/\/\d+$/, ''); }
+export const isCashSyncOperation = (path, body) =>
+  path === '/api/ventas' || path.startsWith('/api/caja/') ||
+  /^\/api\/ventas\/\d+\/anular$/.test(path) ||
+  (['/api/cuentas/cobros', '/api/cuentas/pagos'].includes(path) && body?.metodoPago === 'efectivo');
+const tableFor = resource => ({
+  formulas: 'formulas_precios', 'caja/abrir': 'turnos_caja',
+  'caja/cerrar': 'turnos_caja', 'caja/movimiento': 'movimientos_caja',
+  'ventas/anular': 'ventas', 'cuentas/cobros': 'abonos_cuentas',
+  'cuentas/pagos': 'abonos_cuentas', ncf: 'secuencias_ncf',
+})[resource] ?? resource;
+function resourceFor(path) {
+  if (/^\/api\/ventas\/\d+\/anular$/.test(path)) return 'ventas/anular';
+  return path.slice('/api/'.length).replace(/\/\d+$/, '');
+}
 
 /** Stable values only: local and remote generated identifiers are mapped separately. */
 export function operationEffect(method, path, body, result, backup) {
@@ -19,7 +29,7 @@ export function operationEffect(method, path, body, result, backup) {
   const table = tableFor(resource);
   const row = backup.tables[table]?.find(row => sameId(row.id, result.id));
   if (!row) fail('No se encontró el resultado durable de la operación.', 503);
-  const immutable = ['ventas', 'compras', 'turnos_caja', 'movimientos_caja'].includes(table);
+  const immutable = ['ventas', 'compras', 'turnos_caja', 'movimientos_caja', 'abonos_cuentas'].includes(table);
   const values = (source, dates) => Object.fromEntries(Object.entries(source)
     .filter(([key]) => key !== 'id' && key !== 'version' && !key.endsWith('_id') &&
       (dates || !key.endsWith('_en')))
@@ -29,6 +39,10 @@ export function operationEffect(method, path, body, result, backup) {
     const sale = resource === 'ventas';
     effect.items = backup.tables[sale ? 'venta_detalles' : 'compra_detalles']
       .filter(line => sameId(line[sale ? 'venta_id' : 'compra_id'], result.id)).map(line => values(line, true));
+  }
+  if (resource === 'productos' && backup.tables.productos_codigos) {
+    effect.altCodes = backup.tables.productos_codigos
+      .filter(code => sameId(code.producto_id, result.id)).map(code => code.codigo).sort();
   }
   return effect;
 }
@@ -40,8 +54,10 @@ export function cashHeadFromBackup(backup) {
     order(row) === order(last) && Number(row.id) > Number(last.id) ? row : last, null);
   if (!turn) return { id: null, version: null, open: false, latestAt: null };
   const events = [turn.abierto_en, turn.cerrado_en,
-    ...backup.tables.ventas.filter(row => sameId(row.caja_id, turn.id)).map(row => row.creado_en),
-    ...backup.tables.movimientos_caja.filter(row => sameId(row.caja_id, turn.id)).map(row => row.creado_en)].filter(Boolean);
+    ...backup.tables.ventas.filter(row => sameId(row.caja_id, turn.id)).flatMap(row => [row.creado_en, row.anulada_en]),
+    ...backup.tables.movimientos_caja.filter(row => sameId(row.caja_id, turn.id)).map(row => row.creado_en),
+    ...(backup.tables.abonos_cuentas || []).filter(row => sameId(row.caja_id, turn.id)).map(row => row.creado_en),
+  ].filter(Boolean);
   return { id: Number(turn.id), version: Number(turn.version), open: turn.cerrado_en === null,
     latestAt: new Date(events.reduce((latest, value) => Math.max(latest, new Date(value).getTime()), 0)).toISOString() };
 }
@@ -76,15 +92,18 @@ function validateEnvelope(envelope) {
       !uuid.test(envelope.deviceId) || !uuid.test(envelope.operationId)) fail('El sobre de sincronización no es válido.');
   id(envelope.sequence, 'la secuencia del equipo');
   const { method, path, body, occurredAt, expected } = envelope;
-  const validRoute = method === 'POST' && /^\/api\/(productos|clientes|suplidores|formulas|ventas|compras|caja\/(abrir|cerrar|movimiento))$/.test(path) ||
+  const validRoute = method === 'POST' && (
+      /^\/api\/(productos|clientes|suplidores|formulas|ventas|compras|caja\/(abrir|cerrar|movimiento)|cuentas\/(cobros|pagos))$/.test(path) ||
+      /^\/api\/ventas\/[1-9]\d*\/anular$/.test(path)
+    ) ||
     ['PUT', 'DELETE'].includes(method) && /^\/api\/(productos|clientes|suplidores|formulas)\/[1-9]\d*$/.test(path) ||
-    method === 'PUT' && path === '/api/configuracion';
+    method === 'PUT' && ['/api/configuracion', '/api/ncf'].includes(path);
   if (!validRoute || !body || typeof body !== 'object' || Array.isArray(body) || !uuid.test(body.databaseId)) fail('La operación no se puede sincronizar.');
   if (typeof occurredAt !== 'string' || !Number.isFinite(Date.parse(occurredAt)) || instant(occurredAt) !== occurredAt ||
       Date.parse(occurredAt) > Date.now() + 300000) fail('Revisa la fecha y la hora del equipo antes de sincronizar.', 409);
   if (!expected || Object.keys(expected).sort().join(',') !== 'cashHead,effect' || !expected.effect ||
       typeof expected.effect !== 'object' || Array.isArray(expected.effect)) fail('Falta el resultado local confirmado.');
-  if (cashOperation(path)) {
+  if (isCashSyncOperation(path, body)) {
     const head = expected.cashHead;
     if (!head || Object.keys(head).sort().join(',') !== 'id,latestAt,open,version' || typeof head.open !== 'boolean' ||
         (head.id === null ? head.version !== null || head.open || head.latestAt !== null :
@@ -112,10 +131,14 @@ async function verifyCashHead(client, expected, occurredAt, saleBody) {
   await client.query('SELECT pg_advisory_xact_lock(74198233)');
   const turn = (await client.query(`SELECT c.id,c.version,c.cerrado_en,
     $1::timestamptz >= c.abierto_en AS dentro_del_turno,
-    greatest(c.abierto_en,c.cerrado_en,(SELECT max(creado_en) FROM ventas WHERE caja_id=c.id),
-      (SELECT max(creado_en) FROM movimientos_caja WHERE caja_id=c.id)) AS ultimo,
-    $1::timestamptz >= greatest(c.abierto_en,c.cerrado_en,(SELECT max(creado_en) FROM ventas WHERE caja_id=c.id),
-      (SELECT max(creado_en) FROM movimientos_caja WHERE caja_id=c.id)) AS fecha_valida
+    greatest(c.abierto_en,c.cerrado_en,
+      (SELECT max(greatest(creado_en,anulada_en)) FROM ventas WHERE caja_id=c.id),
+      (SELECT max(creado_en) FROM movimientos_caja WHERE caja_id=c.id),
+      (SELECT max(creado_en) FROM abonos_cuentas WHERE caja_id=c.id)) AS ultimo,
+    $1::timestamptz >= greatest(c.abierto_en,c.cerrado_en,
+      (SELECT max(greatest(creado_en,anulada_en)) FROM ventas WHERE caja_id=c.id),
+      (SELECT max(creado_en) FROM movimientos_caja WHERE caja_id=c.id),
+      (SELECT max(creado_en) FROM abonos_cuentas WHERE caja_id=c.id)) AS fecha_valida
     FROM turnos_caja c ORDER BY c.abierto_en DESC,c.id DESC LIMIT 1`, [occurredAt])).rows[0];
   const current = turn ? { id: Number(turn.id), version: Number(turn.version), open: turn.cerrado_en === null, latestAt: instant(turn.ultimo) } :
     { id: null, version: null, open: false, latestAt: null };
@@ -134,8 +157,6 @@ function streamKey(kind, actorId, deviceId, databaseId) {
 }
 
 // A retired stream is a durable server-side barrier, not deletion of invoices.
-// Locking the same device as delivery ensures an in-flight request either
-// commits before this check (and blocks retirement) or is rejected afterwards.
 export async function retireSyncStream(pool, body, databaseLabel, actor) {
   if (!body || Object.keys(body).sort().join(',') !== 'databaseId,deviceId,operationIds' ||
       !uuid.test(body.deviceId) || !uuid.test(body.databaseId) || !Array.isArray(body.operationIds) ||
@@ -177,7 +198,7 @@ export async function retireSyncStream(pool, body, databaseLabel, actor) {
   } finally { client.release(discard); }
 }
 
-async function operationBackup(client, method, path, result, priorMovement) {
+async function operationBackup(client, method, path, result, priorMovement, priorAltCode) {
   const resource = resourceFor(path), table = tableFor(resource);
   const data = Object.fromEntries(Object.keys(tables).map(name => [name, []]));
   if (method === 'DELETE') return { tables: data };
@@ -189,31 +210,47 @@ async function operationBackup(client, method, path, result, priorMovement) {
       sql: (sale ? 'venta_detalle_id' : 'compra_detalle_id') + '=ANY($1::bigint[])', values: [data[detail].map(row => row.id)],
     });
     if (!sale) data.productos = await rows(client, 'productos', true, { sql: 'id=ANY($1::bigint[])', values: [data[detail].map(row => row.producto_id)] });
-  } else if (resource === 'productos') data.movimientos_inventario = await rows(client, 'movimientos_inventario', true, {
-    sql: 'producto_id=$1 AND id>$2', values: [result.id, priorMovement],
-  });
+  } else if (resource === 'ventas/anular') {
+    data.movimientos_inventario = await rows(client, 'movimientos_inventario', true, {
+      sql: 'id>$1 AND tipo=$2', values: [priorMovement, 'anulacion'],
+    });
+  } else if (resource === 'productos') {
+    data.movimientos_inventario = await rows(client, 'movimientos_inventario', true, {
+      sql: 'producto_id=$1 AND id>$2', values: [result.id, priorMovement],
+    });
+    data.productos_codigos = await rows(client, 'productos_codigos', true, {
+      sql: 'producto_id=$1', values: [result.id],
+    });
+  }
   return { tables: data };
 }
 
-function createdRows(method, path, body, result, backup, priorProducts, priorMovement) {
-  const resource = resourceFor(path), tables = backup.tables;
+function createdRows(method, path, body, result, backup, priorProducts, priorMovement, priorAltCode, hadNcf) {
+  const resource = resourceFor(path), tbl = backup.tables;
   const created = {};
-  const add = (table, rows) => { if (rows.length) created[table] = rows.map(row => Number(row.id)); };
-  const selected = table => tables[table].filter(row => sameId(row.id, result.id));
+  const add = (table, list) => { if (list.length) created[table] = list.map(row => Number(row.id)); };
+  const selected = table => tbl[table].filter(row => sameId(row.id, result.id));
   if (method === 'POST' && ['clientes', 'suplidores', 'productos', 'formulas'].includes(resource)) add(tableFor(resource), selected(tableFor(resource)));
-  if (resource === 'productos' && method !== 'DELETE') add('movimientos_inventario', tables.movimientos_inventario
-    .filter(row => Number(row.id) > priorMovement && sameId(row.producto_id, result.id)));
+  if (resource === 'productos' && method !== 'DELETE') {
+    add('movimientos_inventario', tbl.movimientos_inventario.filter(row => Number(row.id) > priorMovement && sameId(row.producto_id, result.id)));
+    add('productos_codigos', tbl.productos_codigos.filter(row => Number(row.id) > priorAltCode && sameId(row.producto_id, result.id)));
+  }
   if (resource === 'caja/abrir') add('turnos_caja', selected('turnos_caja'));
   if (resource === 'caja/movimiento') add('movimientos_caja', selected('movimientos_caja'));
+  if (resource === 'cuentas/cobros' || resource === 'cuentas/pagos') add('abonos_cuentas', selected('abonos_cuentas'));
+  if (resource === 'ncf' && !hadNcf) add('secuencias_ncf', selected('secuencias_ncf'));
+  if (resource === 'ventas/anular') {
+    add('movimientos_inventario', tbl.movimientos_inventario.filter(row => Number(row.id) > priorMovement && row.tipo === 'anulacion'));
+  }
   if (resource === 'ventas' || resource === 'compras') {
     const sale = resource === 'ventas', detailTable = sale ? 'venta_detalles' : 'compra_detalles';
-    const details = tables[detailTable].filter(row => sameId(row[sale ? 'venta_id' : 'compra_id'], result.id));
+    const details = tbl[detailTable].filter(row => sameId(row[sale ? 'venta_id' : 'compra_id'], result.id));
     const detailIds = new Set(details.map(row => String(row.id)));
     add(resource, selected(resource)); add(detailTable, details);
-    add('movimientos_inventario', tables.movimientos_inventario.filter(row => detailIds.has(String(row[sale ? 'venta_detalle_id' : 'compra_detalle_id']))));
+    add('movimientos_inventario', tbl.movimientos_inventario.filter(row => detailIds.has(String(row[sale ? 'venta_detalle_id' : 'compra_detalle_id']))));
     if (!sale) {
       const products = new Set(details.map(row => String(row.producto_id)));
-      add('productos', tables.productos.filter(row => products.has(String(row.id)) && !priorProducts.has(String(row.id))));
+      add('productos', tbl.productos.filter(row => products.has(String(row.id)) && !priorProducts.has(String(row.id))));
     }
   }
   return created;
@@ -226,41 +263,45 @@ export async function writeSyncOperation(pool, envelope, databaseLabel, actor, {
   const executionBody = structuredClone(body);
   const retiredKey = streamKey('retired', actorId, deviceId, body.databaseId);
   const cursorKey = streamKey('cursor', actorId, deviceId, body.databaseId);
-  let priorProducts = new Set(), priorMovement = 0;
+  let priorProducts = new Set(), priorMovement = 0, priorAltCode = 0, hadNcf = false;
   return writeOperation(pool, method, path, executionBody, operationId, databaseLabel, actor, {
-    occurredAt, requestType: `sync:${actorId}:${method} ${path}`, fingerprintPayload: envelope, versionOnly: receiptOnly,
+    occurredAt, allowNcf: false, requestType: `sync:${actorId}:${method} ${path}`, fingerprintPayload: envelope, versionOnly: receiptOnly,
     async beforeExecute(client) {
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [`sync:${actorId}:${deviceId}`]);
       const markers = (await client.query('SELECT clave,tipo,resultado FROM pos_privado.solicitudes WHERE clave=ANY($1::uuid[])', [[retiredKey, cursorKey]])).rows;
       if (markers.some(row => row.clave === retiredKey)) fail('Este flujo fue archivado para revisión. La operación original se conserva y no puede reenviarse.', 409);
       let previous = markers.find(row => row.clave === cursorKey)?.resultado.cursor;
       const version = await snapshotVersion(client, databaseLabel);
-      // A matching revision proves no legacy writer committed outside this
-      // cursor. Interleaved writes require one historical reconciliation.
       if (!previous || previous.revision !== version.revision || sequence > previous.sequence + 1) previous = (await client.query(`SELECT resultado->'metadata' AS metadata FROM pos_privado.solicitudes
         WHERE resultado->'metadata'->>'deviceId'=$1 AND resultado->'metadata'->>'actorId'=$2
           AND resultado->>'databaseId'=$3
         ORDER BY (resultado->'metadata'->>'sequence')::bigint DESC LIMIT 1`, [deviceId, actorId, body.databaseId])).rows[0]?.metadata;
       if (sequence !== (previous ? previous.sequence + 1 : 1)) fail('La secuencia del equipo no coincide. Sincroniza primero la operación pendiente anterior.', 409);
       if (previous && occurredAt < previous.occurredAt) fail('La fecha del equipo retrocedió. La operación local se conserva para revisar.', 409);
-      if (cashOperation(path)) await verifyCashHead(client, expected.cashHead, occurredAt, path === '/api/ventas' ? body : null);
+      if (isCashSyncOperation(path, body)) await verifyCashHead(client, expected.cashHead, occurredAt, path === '/api/ventas' ? body : null);
       if (path === '/api/ventas') {
-        // Lock current versions; price/name/tax/quantity differences are rejected
-        // by the exact immutable effect below. The frozen envelope never changes.
         const versions = new Map((await client.query('SELECT id,version FROM productos WHERE id=ANY($1::bigint[]) ORDER BY id FOR UPDATE',
           [body.items.map(line => line.productoId)])).rows.map(row => [Number(row.id), Number(row.version)]));
         executionBody.items.forEach(line => { if (versions.has(line.productoId)) line.versionProducto = versions.get(line.productoId); });
       }
       if (path === '/api/compras') priorProducts = new Set((await client.query('SELECT id FROM productos WHERE codigo=ANY($1::text[])',
         [body.items.map(line => line.codigo)])).rows.map(row => String(row.id)));
-      if (resourceFor(path) === 'productos') priorMovement = Number((await client.query('SELECT COALESCE(max(id),0) AS id FROM movimientos_inventario')).rows[0].id);
+      if (resourceFor(path) === 'productos' || resourceFor(path) === 'ventas/anular') {
+        priorMovement = Number((await client.query('SELECT COALESCE(max(id),0) AS id FROM movimientos_inventario')).rows[0].id);
+      }
+      if (resourceFor(path) === 'productos') {
+        priorAltCode = Number((await client.query('SELECT COALESCE(max(id),0) AS id FROM productos_codigos')).rows[0].id);
+      }
+      if (resourceFor(path) === 'ncf') {
+        hadNcf = Boolean((await client.query('SELECT 1 FROM secuencias_ncf WHERE tipo=$1 LIMIT 1', [body.tipo])).rowCount);
+      }
     },
     async afterExecute(client, result) {
-      const backup = await operationBackup(client, method, path, result, priorMovement);
+      const backup = await operationBackup(client, method, path, result, priorMovement, priorAltCode);
       const effect = operationEffect(method, path, body, result, backup);
       if (canonical(effect) !== canonical(expected.effect)) fail('Conflicto de sincronización: el resultado difiere del confirmado localmente. Revisa la operación conservada en el equipo.', 409);
       return { actorId, deviceId, sequence, operationId, occurredAt, result, effect,
-        created: createdRows(method, path, body, result, backup, priorProducts, priorMovement) };
+        created: createdRows(method, path, body, result, backup, priorProducts, priorMovement, priorAltCode, hadNcf) };
     },
     async represent(client, observed, metadata, replayed) {
       const { result: _result, ...current } = observed;

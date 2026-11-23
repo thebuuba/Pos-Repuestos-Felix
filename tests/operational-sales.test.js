@@ -23,7 +23,7 @@ test('los totales incluyen el ITBIS por línea y usan cuatro decimales de precio
   let cart = updateSaleLine([], product, 'p1', '2.50');
   cart = updateSaleLine(cart, second, 'p1', '0.01');
   const quote = quoteSale(cart, 18);
-  assert.deepEqual(quote.totals, { items: 2.51, subtotal: 21.24, discount: 0, itbis: 3.82, total: 25.06 });
+  assert.deepEqual(quote.totals, { items: 2.51, subtotal: 21.24, grossTotal: 25.06, discount: 0, discountPercent: 0, itbis: 3.82, total: 25.06 });
   assert.equal(quote.lines[0].subtotal, 25.01);
   assert.equal(quote.lines[0].unitPrice, '10.0030');
   assert.deepEqual(saleRequest(cart, settings, 9, 'contado', 'B02'), {
@@ -53,13 +53,34 @@ test('el recibo usa el registro confirmado por el servidor, sin inventar tiempo,
   assert.equal(receipt.invoiceNumber, 'Registro 91');
   assert.equal(receipt.dateOnly, '2026-11-22');
   assert.equal(receipt.customerName, 'Cliente confirmado');
-  assert.deepEqual(receipt.totals, { subtotal: 21.2, itbis: 3.81, total: 25.01 });
+  assert.deepEqual(receipt.totals, { subtotal: 21.2, discount: 0, discountPercent: 0, itbis: 3.81, total: 25.01 });
   assert.equal(receipt.lines[0].product.name, 'Nombre histórico');
   assert.equal(receipt.lines[0].unitPrice, '10.0030');
   assert.equal(receipt.ncf, null);
   assert.equal(receipt.received, undefined);
   assert.equal(receipt.paymentLabel, undefined);
   assert.equal(receiptFromConfirmation({ ...snapshot, state: { facturas: [{ ...doc, metodoPago: 'tarjeta' }] } }).paymentLabel, 'Tarjeta');
+});
+
+test('el descuento libre soporta cualquier porcentaje (0-100%) o monto fijo en RD$ con validación', () => {
+  const cart = updateSaleLine([], { ...product, pricesExact: { p1: '500.0000', p2: '500.0000', p3: '500.0000' } }, 'p1', '1');
+  const pct = quoteSale(cart, 18, { mode: 'percent', value: '22.5' });
+  assert.equal(pct.discountError, null);
+  assert.equal(pct.totals.discount, 112.5);
+  assert.equal(pct.totals.total, 387.5);
+  assert.equal(saleRequest(cart, settings, 9, 'contado', 'B02', undefined, undefined, { mode: 'percent', value: '22.5' }).descuentoPorcentaje, 22.5);
+
+  const amt = quoteSale(cart, 18, { mode: 'amount', value: '75' });
+  assert.equal(amt.discountError, null);
+  assert.equal(amt.totals.discount, 75);
+  assert.equal(amt.totals.discountPercent, 15);
+  assert.equal(amt.totals.total, 425);
+  assert.equal(saleRequest(cart, settings, 9, 'contado', 'B02', undefined, undefined, { mode: 'amount', value: '75' }).descuentoMonto, 75);
+
+  const tooHighPct = quoteSale(cart, 18, { mode: 'percent', value: '120' });
+  assert.match(tooHighPct.discountError, /100/);
+  const tooHighAmt = quoteSale(cart, 18, { mode: 'amount', value: '600' });
+  assert.match(tooHighAmt.discountError, /total/);
 });
 
 test('el recibo durable local conserva su referencia y no se presenta como confirmación fiscal remota', () => {

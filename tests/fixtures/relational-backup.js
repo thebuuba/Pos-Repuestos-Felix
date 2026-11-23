@@ -11,16 +11,30 @@ function centAmount(value) {
 }
 
 export function historicalBackup(backup, version) {
-  assert.equal(backup.version, 6);
-  assert.ok([2, 3, 4].includes(version));
+  assert.equal(backup.version, 7);
+  assert.ok([2, 3, 4, 5, 6].includes(version));
   const historical = structuredClone(backup);
   historical.version = version;
   const { tables } = historical;
+  if (version < 7) {
+    delete tables.secuencias_ncf;
+    delete tables.productos_codigos;
+    delete tables.abonos_cuentas;
+    for (const row of tables.configuracion) delete row.meta_diaria;
+    for (const row of tables.ventas) {
+      for (const col of ['descuento_porcentaje', 'descuento', 'estado', 'anulada_en', 'anulada_por', 'motivo_anulacion', 'vencimiento', 'version']) delete row[col];
+    }
+    for (const row of tables.compras) {
+      for (const col of ['condicion', 'vencimiento', 'version']) delete row[col];
+    }
+  }
+  if (version === 6) return historical;
   delete tables.turnos_caja;
   delete tables.movimientos_caja;
   for (const row of tables.ventas) { delete row.caja_id; delete row.metodo_pago; }
   for (const entries of Object.values(tables)) for (const row of entries) for (const key of Object.keys(row))
     if (key.endsWith('_en') && row[key] !== null) row[key] = new Date(row[key]).toISOString();
+  if (version === 5) return historical;
   for (const row of tables.productos) {
     delete row.notificar_minimo;
     row.stock = integralQuantity(row.stock);

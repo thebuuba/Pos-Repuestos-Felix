@@ -21,40 +21,37 @@ const GUIDES = [
   {
     icon: Wallet,
     title: "1. Abre la caja",
-    operationalTitle: "1. Consulta la caja",
-    text: "Consulta la disponibilidad del control de efectivo.",
+    text: "Registra el fondo inicial para cobrar en efectivo y llevar el cuadre del turno.",
     to: "/caja",
   },
   {
     icon: ShoppingCart,
-    title: "2. Factura",
-    text: "Busca un artículo y registra la factura.",
+    title: "2. Factura o cotiza",
+    text: "Busca por código, código de barras o nombre; aplica descuentos, pon ventas en espera o imprime cotizaciones.",
     to: "/ventas",
   },
   {
     icon: PackagePlus,
     title: "3. Sube compras",
-    text: "La mercancía suma al inventario con sus precios.",
+    text: "Registra facturas de contado o crédito; la mercancía suma al inventario con sus costos y precios.",
     to: "/compras",
   },
   {
     icon: HandCoins,
-    title: "4. Cobra créditos",
-    operationalTitle: "4. Revisa créditos",
-    text: "Consulta el saldo pendiente de cada cliente.",
+    title: "4. Cobra y paga créditos",
+    text: "Registra abonos en Cuentas x cobrar y Cuentas x pagar; el efectivo se refleja en la caja abierta.",
     to: "/cuentas-por-cobrar",
   },
   {
     icon: Box,
     title: "5. Revisa inventario",
-    text: "Atiende los artículos bajo el mínimo.",
+    text: "Atiende alertas de reposición y agrega códigos de barras alternativos a cada artículo.",
     to: "/inventario",
   },
   {
     icon: Wallet,
     title: "6. Cierra la caja",
-    operationalTitle: "6. Revisa los cierres",
-    text: "Consulta la disponibilidad de los cierres de turno.",
+    text: "Cuenta el efectivo al terminar el turno para verificar el cuadre y guardar el cierre.",
     to: "/caja",
   },
 ];
@@ -71,24 +68,24 @@ var FAQ = [
     a: "En Compras, el factor de costo y los porcentajes de la fórmula determinan los tres precios. Revisa el costo y los precios antes de confirmar la factura. Las fórmulas se editan en Configuración.",
   },
   {
-    q: "¿Qué comprobante uso?",
-    a: "Selecciona el tipo de documento en Punto de venta. El registro de la venta conserva su tipo. La emisión de una secuencia fiscal autorizada requiere configuración adicional.",
+    q: "¿Qué comprobante uso y cómo activo los NCF?",
+    a: "Selecciona B02 (Consumo), B01 (Crédito Fiscal con RNC) o B14 en Punto de venta. En Configuración → Comprobantes NCF el dueño puede registrar rangos reales autorizados por la DGII; los NCF solo se emiten cuando el rango está activo, vigente y conectado.",
   },
   {
-    q: "¿Cómo vendo a crédito?",
-    a: "Selecciona el cliente y la condición Crédito. Una venta confirmada suma al saldo del cliente. Consulta ese saldo en Cuentas x cobrar.",
+    q: "¿Cómo vendo a crédito y registro abonos?",
+    a: "Selecciona un cliente con crédito aprobado y la condición Crédito. La factura pasa a Cuentas x cobrar, donde puedes registrar abonos parciales o totales; los cobros en efectivo se reflejan automáticamente en la caja abierta.",
   },
   {
     q: "Me equivoqué en una factura, ¿qué hago?",
-    a: "Busca el registro en Reportes y verifica los artículos e importes. La anulación de facturas todavía no está habilitada.",
+    a: "Con permiso de dueño, abre Reportes, busca la factura y pulsa el icono de anular indicando el motivo. La mercancía regresa al inventario y, si era a crédito sin abonos, se revierte la cuenta por cobrar.",
   },
   {
-    q: "¿Por qué la caja no cuadra?",
-    a: "La apertura, los movimientos y el cierre de efectivo están pendientes de habilitación. En Reportes puedes consultar las ventas registradas por condición.",
+    q: "¿Cómo cuadra la caja al cierre del turno?",
+    a: "Al abrir caja se parte del fondo inicial, sumando ventas y cobros en efectivo más entradas, y restando salidas y pagos en efectivo. Al cerrar, el sistema compara el conteo físico contra el efectivo esperado.",
   },
   {
-    q: "¿Puedo vender un artículo sin existencia?",
-    a: "El sistema comprueba las existencias al confirmar cada venta. Revisa la cantidad disponible en Inventario.",
+    q: "¿Cómo uso códigos de barras alternativos, ventas en espera y cotizaciones?",
+    a: "Puedes guardar varios códigos de barras por producto en Inventario y escanear cualquiera en Ventas. En Punto de venta también puedes pausar una venta con En espera para atender a otro cliente o generar una Cotización sin descontar inventario.",
   },
 ];
 function HelpPage({ reference }) {
@@ -96,7 +93,7 @@ function HelpPage({ reference }) {
   const phone = reference?.phone ?? settings.business.phone;
   const digits = phone?.replace(/[^0-9+]/g, "") ?? "";
   const canCall = /^\+?\d{7,15}$/.test(digits);
-  const shortcuts = reference ? SHORTCUTS : SHORTCUTS.filter(([key]) => key !== "Ctrl K");
+  const shortcuts = SHORTCUTS;
 
   return (
     <div className="space-y-6">

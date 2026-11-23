@@ -31,16 +31,25 @@ import { Switch2 } from "../../components/ui/switch.jsx";
 import { useRef, useState } from "react";
 var TAB_CLASS =
   "gap-2 rounded-lg px-3.5 data-[state=active]:bg-card data-[state=active]:shadow-sm";
+var OPERATIONAL_NCF_TYPES = [
+  { type: "B01", label: "Crédito Fiscal" },
+  { type: "B02", label: "Consumo" },
+  { type: "B14", label: "Regímenes Especiales" },
+];
 function SettingsPage() {
   const {
     settings, runtime,
     updateSettings,
+    saveNcfSequence,
     formulas,
     suppliers,
     saveFormula,
     deleteFormula,
   } = usePosStore();
+  const isOwner = !runtime || runtime.isOwner;
   const [drafts, setDrafts] = useState({});
+  const [ncfDrafts, setNcfDrafts] = useState({});
+  const [ncfBusy, setNcfBusy] = useState(null);
   const [request, setRequest] = useState(null);
   const [error, setError] = useState(null);
   const sending = useRef(false);
@@ -50,6 +59,7 @@ function SettingsPage() {
     ...settings,
     itbisRate: String(settings.itbisRate),
     rounding: String(settings.rounding),
+    dailyGoal: settings.dailyGoal != null ? String(settings.dailyGoal) : "",
   };
   const edit = (section, value) => {
     if (sending.current || request) return;
@@ -79,6 +89,10 @@ function SettingsPage() {
     }
     if (runtime && section === "facturacion" && (!/^\d{1,3}(?:\.\d{1,4})?$/.test(patch.itbisRate) || Number(patch.itbisRate) > 100)) {
       setError("Indica un ITBIS entre 0 y 100 %, con hasta cuatro decimales.");
+      return;
+    }
+    if (runtime && section === "facturacion" && patch.dailyGoal !== null && (!Number.isFinite(Number(patch.dailyGoal)) || Number(patch.dailyGoal) < 0)) {
+      setError("Indica una meta diaria válida mayor o igual a 0, o déjala vacía.");
       return;
     }
     const dto = request?.dto ?? (runtime ? { ...patch, databaseId: draft.databaseId, version: draft.version } : patch);
@@ -115,24 +129,28 @@ function SettingsPage() {
         description="Datos del negocio, fórmulas de precios, comprobantes fiscales y facturación."
       />
       {error && <p role="alert" className="text-sm text-primary">{error}</p>}
-      <Tabs2 defaultValue="negocio" className="space-y-6">
+      <Tabs2 defaultValue={isOwner ? "negocio" : "cuenta"} key={isOwner ? "owner" : "cashier"} className="space-y-6">
         <TabsList2 className="mobile-touch-controls h-auto flex-wrap justify-start gap-1 rounded-xl bg-muted p-1">
-          <TabsTrigger2 value="negocio" className={TAB_CLASS}>
-            <Building className="h-4 w-4" />
-            {"Negocio"}
-          </TabsTrigger2>
-          <TabsTrigger2 value="precios" className={TAB_CLASS}>
-            <Calculator className="h-4 w-4" />
-            {"Fórmulas de precios"}
-          </TabsTrigger2>
-          <TabsTrigger2 value="ncf" className={TAB_CLASS}>
-            <FileBadge className="h-4 w-4" />
-            {"Comprobantes NCF"}
-          </TabsTrigger2>
-          <TabsTrigger2 value="facturacion" className={TAB_CLASS}>
-            <Printer className="h-4 w-4" />
-            {"Facturación"}
-          </TabsTrigger2>
+          {isOwner && (
+            <>
+              <TabsTrigger2 value="negocio" className={TAB_CLASS}>
+                <Building className="h-4 w-4" />
+                {"Negocio"}
+              </TabsTrigger2>
+              <TabsTrigger2 value="precios" className={TAB_CLASS}>
+                <Calculator className="h-4 w-4" />
+                {"Fórmulas de precios"}
+              </TabsTrigger2>
+              <TabsTrigger2 value="ncf" className={TAB_CLASS}>
+                <FileBadge className="h-4 w-4" />
+                {"Comprobantes NCF"}
+              </TabsTrigger2>
+              <TabsTrigger2 value="facturacion" className={TAB_CLASS}>
+                <Printer className="h-4 w-4" />
+                {"Facturación"}
+              </TabsTrigger2>
+            </>
+          )}
           {runtime && <TabsTrigger2 value="cuenta" className={TAB_CLASS}>
             <UserRound className="h-4 w-4" />Mi cuenta
           </TabsTrigger2>}
@@ -243,10 +261,178 @@ function SettingsPage() {
         <TabsContent2 value="ncf" className="mt-0">
           <SectionCard
             title="Secuencias de comprobantes"
-            description={runtime ? "La emisión de NCF requiere rangos autorizados y configurados." : "Rangos autorizados por la DGII. El sistema asigna el siguiente NCF en cada factura."}
+            description={
+              runtime
+                ? "Configura tus rangos autorizados por la DGII. Solo se asigna NCF en ventas en línea cuando la secuencia está activa y vigente."
+                : "Rangos autorizados por la DGII. El sistema asigna el siguiente NCF en cada factura."
+            }
             icon={FileBadge}
           >
-            {runtime ? <p className="text-sm text-muted-foreground">Emisión fiscal pendiente de habilitación.</p> : <>
+            {runtime ? (
+              <div className="space-y-4">
+                <p className="text-xs text-muted-foreground">
+                  {"Por seguridad fiscal, las secuencias inician vacías e inactivas y nunca se emiten sin conexión."}
+                </p>
+                <div className="grid gap-4 md:grid-cols-2">
+                  {OPERATIONAL_NCF_TYPES.map(({ type, label }) => {
+                    const saved = (settings.ncf ?? []).find((x) => x.type === type);
+                    const draft = ncfDrafts[type] ?? {
+                      start: saved ? String(saved.start) : "",
+                      end: saved ? String(saved.end) : "",
+                      current: saved ? String(saved.current + 1) : "",
+                      expiresAt: saved?.expiresAt ?? "",
+                      active: Boolean(saved?.active),
+                    };
+                    const setField = (patch) => {
+                      setError(null);
+                      setNcfDrafts((prev) => ({
+                        ...prev,
+                        [type]: { ...draft, ...patch },
+                      }));
+                    };
+                    const startNum = Number(draft.start);
+                    const endNum = Number(draft.end);
+                    const currentNum = Number(draft.current);
+                    const validRange =
+                      Number.isInteger(startNum) &&
+                      startNum >= 1 &&
+                      Number.isInteger(endNum) &&
+                      endNum >= startNum &&
+                      Number.isInteger(currentNum) &&
+                      currentNum >= startNum &&
+                      currentNum <= endNum + 1 &&
+                      /^\d{4}-\d{2}-\d{2}$/.test(draft.expiresAt);
+                    const left = validRange ? Math.max(0, endNum - currentNum + 1) : 0;
+                    const used =
+                      validRange && endNum >= startNum
+                        ? Math.min(100, Math.max(0, ((currentNum - startNum) / (endNum - startNum + 1)) * 100))
+                        : 0;
+                    const dirty = Boolean(ncfDrafts[type]);
+                    return (
+                      <div className="rounded-2xl border border-border p-4" key={type}>
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <p className="font-mono text-lg font-semibold">{type}</p>
+                            <p className="text-xs text-muted-foreground">{label}</p>
+                          </div>
+                          <label className="flex items-center gap-2 text-xs font-medium">
+                            <Switch2
+                              aria-label={`Activar secuencia ${type}`}
+                              checked={Boolean(draft.active)}
+                              disabled={ncfBusy === type}
+                              onCheckedChange={(checked) => setField({ active: checked })}
+                            />
+                            <span>{draft.active ? "Activa" : "Inactiva"}</span>
+                          </label>
+                        </div>
+                        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
+                          <div
+                            className={cn(
+                              "h-full rounded-full",
+                              left < 50 ? "bg-primary" : "bg-foreground/70",
+                            )}
+                            style={{ width: `${used}%` }}
+                          />
+                        </div>
+                        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                          <Field label="Desde" htmlFor={`ncf-${type}-start`}>
+                            <Input
+                              id={`ncf-${type}-start`}
+                              type="number"
+                              min="1"
+                              value={draft.start}
+                              disabled={ncfBusy === type}
+                              onChange={(e) => setField({ start: e.target.value, ...(draft.current === "" ? { current: e.target.value } : {}) })}
+                              placeholder="1"
+                              className="h-9 rounded-lg"
+                            />
+                          </Field>
+                          <Field label="Próximo" htmlFor={`ncf-${type}-current`}>
+                            <Input
+                              id={`ncf-${type}-current`}
+                              type="number"
+                              min="1"
+                              value={draft.current}
+                              disabled={ncfBusy === type}
+                              onChange={(e) => setField({ current: e.target.value })}
+                              placeholder="1"
+                              className="h-9 rounded-lg"
+                            />
+                          </Field>
+                          <Field label="Hasta" htmlFor={`ncf-${type}-end`}>
+                            <Input
+                              id={`ncf-${type}-end`}
+                              type="number"
+                              min="1"
+                              value={draft.end}
+                              disabled={ncfBusy === type}
+                              onChange={(e) => setField({ end: e.target.value })}
+                              placeholder="1000"
+                              className="h-9 rounded-lg"
+                            />
+                          </Field>
+                          <Field label="Vence" htmlFor={`ncf-${type}-expires`}>
+                            <Input
+                              id={`ncf-${type}-expires`}
+                              type="date"
+                              value={draft.expiresAt}
+                              disabled={ncfBusy === type}
+                              onChange={(e) => setField({ expiresAt: e.target.value })}
+                              className="h-9 rounded-lg"
+                            />
+                          </Field>
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                          <p className="font-mono text-xs text-muted-foreground">
+                            {validRange && draft.active && left > 0
+                              ? `Siguiente: ${type}${String(currentNum).padStart(8, "0")} · Quedan ${left.toLocaleString("es-DO")}`
+                              : saved
+                                ? "Inactiva o agotada · Sin emisión de NCF"
+                                : "Sin configurar · Sin emisión de NCF"}
+                          </p>
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="rounded-lg"
+                            disabled={!dirty || !validRange || ncfBusy === type}
+                            onClick={async () => {
+                              if (!validRange || ncfBusy) return;
+                              setNcfBusy(type);
+                              setError(null);
+                              try {
+                                await saveNcfSequence({
+                                  databaseId: runtime.databaseId,
+                                  type,
+                                  start: startNum,
+                                  end: endNum,
+                                  current: currentNum - 1,
+                                  expiresAt: draft.expiresAt,
+                                  active: Boolean(draft.active),
+                                  version: saved?.version,
+                                });
+                                setNcfDrafts((prev) => {
+                                  const next = { ...prev };
+                                  delete next[type];
+                                  return next;
+                                });
+                                ue.success(`Secuencia ${type} guardada`);
+                              } catch (cause) {
+                                setError(cause?.message || `No se pudo guardar la secuencia ${type}.`);
+                              } finally {
+                                setNcfBusy(null);
+                              }
+                            }}
+                          >
+                            <Save />
+                            {ncfBusy === type ? "Guardando…" : "Guardar"}
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : <>
             <div className="grid gap-4 md:grid-cols-2">
               {ncf.map((n, i) => {
                 const used = Math.min(100, (n.next / n.end) * 100);
@@ -426,7 +612,7 @@ function SettingsPage() {
                   </SelectContent2>
                 </Select2>
               </Field>
-              <Field label="Impresora" htmlFor="billing-printer" className="sm:col-span-3">
+              <Field label="Impresora" htmlFor="billing-printer" className="sm:col-span-2">
                 <Select2
                   value={billing.printer ?? ""}
                   onValueChange={(v) =>
@@ -451,6 +637,23 @@ function SettingsPage() {
                     </SelectItem2>
                   </SelectContent2>
                 </Select2>
+              </Field>
+              <Field label="Meta diaria de ventas (RD$)" htmlFor="billing-daily-goal" hint="Se muestra en el indicador del Panel">
+                <Input
+                  id="billing-daily-goal"
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="Sin meta"
+                  value={billing.dailyGoal ?? ""}
+                  onChange={(e) =>
+                    setBilling({
+                      ...billing,
+                      dailyGoal: e.target.value,
+                    })
+                  }
+                  className={inputClass}
+                />
               </Field>
               <Field
                 label="Mensaje al pie del ticket" htmlFor="billing-footer"
@@ -502,6 +705,7 @@ function SettingsPage() {
                     allowNegativeStock: billing.allowNegativeStock,
                     ticketFooter: billing.ticketFooter,
                     printer: billing.printer,
+                    dailyGoal: billing.dailyGoal === "" || billing.dailyGoal == null ? null : Number(billing.dailyGoal),
                   },
                   "Configuración de facturación",
                 )

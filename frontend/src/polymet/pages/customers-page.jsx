@@ -285,7 +285,7 @@ function CustomersPage() {
                         className="px-5 py-3"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <div className="flex justify-end gap-1">
+                        <div className="mobile-touch-controls flex justify-end gap-1">
                           <Button
                             variant="ghost"
                             size="icon"
@@ -298,24 +298,26 @@ function CustomersPage() {
                           >
                             <Pencil />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:bg-accent hover:text-primary"
-                            onClick={() => {
-                              if (c.balance > 0) {
-                                ue.error("No se puede eliminar", {
-                                  description:
-                                    "El cliente tiene balance pendiente.",
-                                });
-                                return;
-                              }
-                              setToDelete(c);
-                            }}
-                            aria-label="Eliminar"
-                          >
-                            <Trash2 />
-                          </Button>
+                          {(!runtime || runtime.isOwner) && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:bg-accent hover:text-primary"
+                              onClick={() => {
+                                if (c.balance > 0) {
+                                  ue.error("No se puede eliminar", {
+                                    description:
+                                      "El cliente tiene balance pendiente.",
+                                  });
+                                  return;
+                                }
+                                setToDelete(c);
+                              }}
+                              aria-label="Eliminar"
+                            >
+                              <Trash2 />
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -412,7 +414,7 @@ function CustomersPage() {
                 <Button asChild={true} className="mt-3 w-full rounded-xl">
                   <Link to={`/cuentas-por-cobrar?cliente=${detailCustomer.id}`}>
                     <HandCoins />
-                    {runtime ? "Consultar ventas a crédito" : "Registrar cobro"}
+                    {"Registrar cobro"}
                   </Link>
                 </Button>
               )}
@@ -422,7 +424,9 @@ function CustomersPage() {
                 </p>
                 {detailDocs.length === 0 ? (
                   <p className="mt-2 text-sm text-muted-foreground">
-                    {runtime ? "Los documentos históricos están pendientes de conciliación. El balance de apertura se conserva arriba." : "No tiene facturas pendientes."}
+                    {runtime && detailCustomer.balance > 0
+                      ? "Sin facturas pendientes del POS; el balance mostrado incluye saldos históricos de apertura."
+                      : "No tiene facturas pendientes."}
                   </p>
                 ) : (
                   <ul className="mt-2 divide-y divide-border">
@@ -433,10 +437,12 @@ function CustomersPage() {
                       >
                         <span>
                           <span className="font-medium">{d.document}</span>
-                          <span className="ml-2 text-xs text-muted-foreground">
-                            {"vence "}
-                            {formatDate(d.dueDate)}
-                          </span>
+                          {d.dueDate && (
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              {"vence "}
+                              {formatDate(d.dueDate)}
+                            </span>
+                          )}
                         </span>
                         <span className="font-medium tabular-nums">
                           {formatMoney(balanceOf(d))}

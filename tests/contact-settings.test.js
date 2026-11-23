@@ -66,9 +66,9 @@ test('contacts round trip every field, preserve omissions, and distinguish unkno
   const fid = (await confirmed('formulas', formula)).result.id;
   const supplier = { nombre: 'Proveedor', rnc: '231', tel: '555', correo: 'p@example.test', contacto: 'Juan', diasCredito: 0, formulaId: fid };
   const sid = (await confirmed('suplidores', supplier)).result.id;
-  assert.deepEqual(await lookup('suplidores', sid), { ...supplier, id: sid, version: 1 });
+  assert.deepEqual(await lookup('suplidores', sid), { ...supplier, id: sid, version: 1, deuda: 0 });
   await confirmed('suplidores/' + sid, { nombre: 'Otro', rnc: '', tel: '', version: 1 }, 'PUT');
-  assert.deepEqual(await lookup('suplidores', sid), { ...supplier, nombre: 'Otro', rnc: '', tel: '', id: sid, version: 2 });
+  assert.deepEqual(await lookup('suplidores', sid), { ...supplier, nombre: 'Otro', rnc: '', tel: '', id: sid, version: 2, deuda: 0 });
   await confirmed('suplidores/' + sid, { ...supplier, version: 2, diasCredito: null, formulaId: null }, 'PUT');
   assert.equal((await lookup('suplidores', sid)).diasCredito, null);
   assert.equal((await lookup('suplidores', sid)).formulaId, null);
@@ -98,7 +98,7 @@ test('configuration patches preserve other sections, exact percentages and legac
     formatoImpresion: 'Térmica 58 mm', pieTicket: 'Gracias', permitirStockNegativo: false };
   await confirmed('configuracion', { ...preferences, version: initial.configuracionVersion + 1 }, 'PUT');
   const { state } = await get();
-  assert.deepEqual(state.configuracion, { ...business, ...preferences, version: initial.configuracionVersion + 2 });
+  assert.deepEqual(state.configuracion, { ...business, ...preferences, metaDiaria: null, version: initial.configuracionVersion + 2 });
   assert.equal(state.itbisRate, 0.181234);
   assert.equal(state.empresa, business.empresa);
   assert.equal(state.configuracionVersion, state.configuracion.version);
@@ -148,8 +148,8 @@ test('v5 restores inactive records, references and cash identity while archiving
   const supplierId = (await confirmed('suplidores', { nombre: 'Archivado', formulaId })).result.id;
   await confirmed('suplidores/' + supplierId, { version: 1 }, 'DELETE');
   const backup = await get('backup');
-  assert.equal(backup.version, 6);
-  assert.deepEqual(Object.keys(backup.tables), ['turnos_caja', 'configuracion', 'clientes', 'formulas_precios', 'suplidores', 'productos', 'ventas', 'venta_detalles', 'compras', 'compra_detalles', 'movimientos_inventario', 'movimientos_caja']);
+  assert.equal(backup.version, 7);
+  assert.deepEqual(Object.keys(backup.tables), ['turnos_caja', 'configuracion', 'secuencias_ncf', 'clientes', 'formulas_precios', 'suplidores', 'productos', 'productos_codigos', 'ventas', 'venta_detalles', 'compras', 'compra_detalles', 'movimientos_inventario', 'movimientos_caja', 'abonos_cuentas']);
   const marked = backup.tables.clientes.find(c => c.es_contado);
   marked.id = '8500';
   backup.tables.clientes.sort((a, b) => Number(a.id) - Number(b.id));
@@ -158,7 +158,7 @@ test('v5 restores inactive records, references and cash identity while archiving
   assert.notEqual(restored.databaseId, original.databaseId);
   assert.deepEqual((await get('backup')).tables, backup.tables);
   const archived = (await pool.query("SELECT datos FROM pos_privado.respaldos WHERE motivo='Antes de restaurar' ORDER BY id DESC LIMIT 1")).rows[0].datos;
-  assert.equal(archived.version, 6);
+  assert.equal(archived.version, 7);
   assert.notEqual(archived.tables.clientes.find(c => c.es_contado).id, '8500');
   for (const method of ['PUT', 'DELETE'])
     await rejected(409, 'clientes/8500', method === 'PUT' ? { nombre: 'Cambio', version: 1 } : { version: 1 }, method);

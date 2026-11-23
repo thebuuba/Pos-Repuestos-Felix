@@ -4,26 +4,42 @@ import { useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/page-header.jsx";
 import { AccountsView } from "../components/accounts-view.jsx";
 function ReceivablesPage() {
-  const { runtime, receivables, customers, sales, payReceivable } = usePosStore();
-  const debts = runtime ? sales.filter(s => s.condition === 'credito').map(s => ({
-    id:s.id, partyId:s.customerId, document:s.number, date:s.date, dueDate:null, amount:s.total, paid:0,
-  })) : receivables;
+  const { runtime, receivables, customers, cashSession, payReceivable, recordReceivablePayment } = usePosStore();
   const [params] = useSearchParams();
   const initial = params.get("cliente") ?? undefined;
   return (
     <div className="space-y-6">
       <PageHeader
         title="Cuentas x cobrar"
-        description={runtime ? "Ventas a crédito registradas en el POS. Los saldos históricos de NetPOS requieren conciliación." : "Facturas a crédito de tus clientes. Los cobros en efectivo entran solos a la caja."}
+        description={
+          runtime
+            ? "Facturas a crédito de tus clientes. Los cobros en efectivo entran solos a la caja abierta; los saldos históricos de apertura se consultan en Clientes."
+            : "Facturas a crédito de tus clientes. Los cobros en efectivo entran solos a la caja."
+        }
       />
       <AccountsView
-        docs={debts}
-        parties={customers.filter((c) => runtime ? !c.isCashCustomer : c.id !== "c-000")}
+        docs={receivables}
+        parties={customers.filter((c) => (runtime ? !c.isCashCustomer : c.id !== "c-000"))}
         partyLabel="Cliente"
         verb="Cobrar"
         initialPartyId={initial}
-        onPay={payReceivable}
-        readOnly={!!runtime}
+        operational={Boolean(runtime)}
+        cashOpen={Boolean(cashSession?.open)}
+        onPay={async (doc, amount, method, note) => {
+          if (runtime) {
+            await recordReceivablePayment({
+              databaseId: doc.databaseId,
+              saleId: doc.id,
+              version: doc.version,
+              amount,
+              method,
+              cashSessionId: method === "efectivo" ? cashSession?.id : undefined,
+              note: note ?? "",
+            });
+          } else {
+            await payReceivable(doc.id, amount, method, note);
+          }
+        }}
         key={initial ?? "all"}
       />
     </div>

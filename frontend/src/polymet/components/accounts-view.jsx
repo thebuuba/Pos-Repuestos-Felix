@@ -48,6 +48,8 @@ var BUCKET_STYLE = {
 function AccountsView({
   readOnly = false,
   unavailable = false,
+  operational = false,
+  cashOpen = true,
   docs,
   parties,
   partyLabel,
@@ -253,10 +255,12 @@ function AccountsView({
                         {d.dueDate ? formatDate(d.dueDate) : "Sin vencimiento registrado"}
                       </td>
                       <td className="px-3 py-3">
-                        {!d.dueDate ? "Pendiente" : bal === 0 ? (
+                        {bal === 0 ? (
                           <span className="rounded-full border border-emerald-600/40 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
                             {"Saldada"}
                           </span>
+                        ) : !d.dueDate ? (
+                          <span className="text-xs text-muted-foreground">{"Pendiente"}</span>
                         ) : (
                           <span className="inline-flex items-center gap-1.5 text-xs">
                             <span
@@ -316,10 +320,12 @@ function AccountsView({
         doc={paying}
         partyName={paying ? partyName(paying.partyId) : ""}
         verb={verb}
+        operational={operational}
+        cashOpen={cashOpen}
         onOpenChange={(o) => !o && setPaying(null)}
-        onConfirm={(amount, method, note) => {
+        onConfirm={async (amount, method, note) => {
           if (!paying) return;
-          onPay(paying.id, amount, method, note);
+          await onPay(paying, amount, method, note);
           ue.success(
             verb === "Cobrar" ? "Cobro registrado" : "Pago registrado",
             {

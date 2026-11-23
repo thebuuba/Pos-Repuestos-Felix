@@ -3,7 +3,7 @@ import { memoryPool } from './memory-pool.js';
 import { migrateDatabase } from '../db/migrations.js';
 import { canonical, readSnapshot, snapshotVersion, writeOperation } from '../pos/store.js';
 import { tables } from '../pos/relational-backup.js';
-import { cashHeadFromBackup, operationEffect } from '../pos/sync-operations.js';
+import { cashHeadFromBackup, isCashSyncOperation, operationEffect } from '../pos/sync-operations.js';
 import { stateTag } from '../pos/state-tag.js';
 
 const label = 'Este equipo · almacenamiento local';
@@ -99,7 +99,7 @@ export class DesktopEngine {
       const occurredAt = new Date().toISOString();
       let response;
       try {
-        response = await writeOperation(this.pool, method, path, body, operationId, label, actor, { occurredAt });
+        response = await writeOperation(this.pool, method, path, body, operationId, label, actor, { occurredAt, allowNcf: false });
         const after = await readSnapshot(this.pool, label, true);
         if (typeof source === 'function') {
           const current = source();
@@ -107,7 +107,7 @@ export class DesktopEngine {
         }
         const record = { operationId, method, path, body, occurredAt, actor, result: response.result, created: createdRows(before, after),
           expected: { effect: operationEffect(method, path, body, response.result, after),
-            cashHead: path === '/api/ventas' || path.startsWith('/api/caja/') ? cashHeadFromBackup(before) : null } };
+            cashHead: isCashSyncOperation(path, body) ? cashHeadFromBackup(before) : null } };
         // This is the sole durable commit: all relational changes, the receipt and outbox.
         this.ledger.transaction(() => {
           this.ledger.projection(after); this.ledger.add(record, fingerprint);
@@ -127,9 +127,11 @@ export class DesktopEngine {
     const body = structuredClone(record.body);
     const map = (table, value) => this.ledger.remoteId(table, value);
     let path = record.path;
+    const voidMatch = path.match(/^\/api\/ventas\/(\d+)\/anular$/);
+    if (voidMatch) path = `/api/ventas/${map('ventas', voidMatch[1])}/anular`;
     const resource = path.match(/^\/api\/(productos|clientes|suplidores|formulas)\/(\d+)$/);
     if (resource) path = `/api/${resource[1]}/${map(resource[1] === 'formulas' ? 'formulas_precios' : resource[1], resource[2])}`;
-    for (const [key, table] of Object.entries({ clienteId: 'clientes', suplidorId: 'suplidores', formulaId: 'formulas_precios', cajaId: 'turnos_caja' })) {
+    for (const [key, table] of Object.entries({ clienteId: 'clientes', suplidorId: 'suplidores', formulaId: 'formulas_precios', cajaId: 'turnos_caja', ventaId: 'ventas', compraId: 'compras' })) {
       if (body[key] !== undefined && body[key] !== null) body[key] = map(table, body[key]);
     }
     for (const item of body.items || []) if (item.productoId !== null && item.productoId !== undefined) item.productoId = map('productos', item.productoId);

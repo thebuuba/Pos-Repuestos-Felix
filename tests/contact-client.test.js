@@ -66,25 +66,26 @@ test('provider maps confirmed contacts, formula relationships, documentary dates
   assert.equal(view.customers[1].isCashCustomer, true);
   assert.equal(view.customers[2].balance, -3.25);
   assert.deepEqual(view.suppliers[0], { id: 7, version: 1, databaseId, name: 'Proveedor', rnc: 'S', phone: '02',
-    email: 's@ej.test', contact: 'Contacto', creditDays: 0, formulaId: 3, balance: null });
+    email: 's@ej.test', contact: 'Contacto', creditDays: 0, formulaId: 3, balance: 0 });
   assert.equal(view.suppliers[1].creditDays, null);
   assert.equal(view.suppliers[1].formulaId, null);
   assert.deepEqual(view.formulas[0], { id: 3, version: 1, databaseId, name: 'Tarifa', costFactor: 1.18, margins: { p1: 10, p2: 5, p3: 0 } });
   assert.deepEqual(view.settings, { databaseId, version: 2, business: { name: 'Negocio', rnc: 'RN', phone: 'TEL',
     email: 'e@ej.test', address: 'Calle' }, itbisRate: 18.1234, rounding: 0, defaultPriceLevel: null, printer: null,
-    ticketFooter: '', allowNegativeStock: false, ncf: [] });
+    ticketFooter: '', allowNegativeStock: false, dailyGoal: null, ncf: [] });
   assert.equal(view.sales.length, 1);
   assert.equal(view.sales[0].customerId, 6);
   assert.equal(view.sales[0].date, sale.fechaISO);
   assert.equal(view.sales[0].total, 15);
   assert.match(view.sales[0].number, /registro.*9/i);
-  assert.ok(view.sales[0].status == null);
+  assert.equal(view.sales[0].status, 'pendiente');
   assert.equal(view.purchases.length, 1);
   assert.equal(view.purchases[0].supplierId, 7);
   assert.equal(view.purchases[0].date, purchase.fechaISO);
   assert.equal(view.purchases[0].total, 15);
-  assert.deepEqual(view.receivables, []);
-  assert.equal(view.available, false);
+  assert.equal(view.receivables.length, 1);
+  assert.equal(view.receivables[0].amount, 15);
+  assert.equal(view.available, true);
 });
 test('failed initial load exposes complete unloaded settings without a writable generation', async t => {
   const page = await open(t, { snapshot: { ...initial, state: { productos: [] } } });
