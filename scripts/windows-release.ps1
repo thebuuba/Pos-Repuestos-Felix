@@ -23,8 +23,11 @@ if (-not $Notes) {
 }
 
 $exists = $false
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
 & gh release view $tag *> $null
 if ($LASTEXITCODE -eq 0) { $exists = $true }
+$ErrorActionPreference = $prevEap
 
 if ($exists) {
   & gh release upload $tag $installer $sig $latest $sha --clobber
