@@ -8,14 +8,10 @@ import { CONDITIONS } from "../data/sales-options.js";
 import { PAYMENT_METHODS } from "../data/sales-options.js";
 import { PageHeader } from "../components/pos/page-header.jsx";
 import { Button } from "../components/ui/button.jsx";
-import { CirclePause, RotateCcw, Lock, ChevronDown, LayoutGrid, Play, Trash2 } from "lucide-react";
+import { CirclePause, RotateCcw, Lock, ChevronDown, LayoutGrid } from "lucide-react";
 import { Link } from "react-router-dom";
 import { InvoiceSettingsCard } from "../components/pos/invoice-settings-card.jsx";
-import { WorkshopTabsBar } from "../components/pos/workshop-tabs-bar.jsx";
-import { WorkshopItemsTable } from "../components/pos/workshop-items-table.jsx";
-import { quoteWorkshopItems, workshopBillRequest } from "../data/operational-sales.js";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../components/ui/dialog.jsx";
-import { formatMoney } from "../lib/format.js";
+import { HeldSalesDialog } from "../components/pos/held-sales-dialog.jsx";
 import { businessTodayIso } from "../lib/dates.js";
 import { ProductSearchBar } from "../components/pos/product-search-bar.jsx";
 import { QuickProductsGrid } from "../components/pos/quick-products-grid.jsx";
@@ -375,301 +371,29 @@ function PointOfSalePage() {
 export { PointOfSalePage };
 
 const EMPTY_CATEGORIES = [];
-const API_PRICE_LEVELS = { p1: "precio1", p2: "precio2", p3: "precio3" };
 
 export function OperationalPointOfSalePage() {
-  const {
-    workshopAccounts = [],
-    openWorkshopAccount,
-    dispatchWorkshopItems,
-    returnWorkshopItem,
-    cancelWorkshopAccount,
-    billWorkshopAccount,
-  } = usePosStore();
   const { products, customers, settings, cashSession, runtime, cashCustomer,
     customerId, setCustomerId, comprobante, setComprobante, condition, setCondition,
     paymentMethod, setPaymentMethod, discountMode, setDiscountMode, discountValue, setDiscountValue, discountError,
     discountPercent, setDiscountPercent, received, setReceived, priceLevel, setPriceLevel,
-    items, setItems, heldSales, holdCurrentSale, resumeHeldSale, removeHeldSale, openQuote,
-    showReceipt, showSaleDocument,
+    items, setItems, heldSales, activeHoldLabel, holdCurrentSale, resumeHeldSale, renameHeldSale, removeHeldSale, openQuote,
     receipt, failure, sending, customer, lines, totals, cartQuantities,
     locked, disabledReason, resetSale, editQuantity, checkout } = useSaleDraft();
   const [heldOpen, setHeldOpen] = useState(false);
-  const [activeWorkshopId, setActiveWorkshopId] = useState(null);
-  const [wBusy, setWBusy] = useState(false);
-  const [wCustomerId, setWCustomerId] = useState(null);
-  const [wComprobante, setWComprobante] = useState("B02");
-  const [wCondition, setWCondition] = useState("contado");
-  const [wPaymentMethod, setWPaymentMethod] = useState("efectivo");
-  const [wDiscountMode, setWDiscountMode] = useState("percent");
-  const [wDiscountValue, setWDiscountValue] = useState("");
-  const [wReceived, setWReceived] = useState("");
-
-  const openWorkshopAccounts = useMemo(
-    () => workshopAccounts.filter((a) => a.status === "abierta"),
-    [workshopAccounts],
-  );
-  const workshopTotalsById = useMemo(() => {
-    const map = new Map();
-    for (const acc of openWorkshopAccounts) {
-      map.set(acc.id, quoteWorkshopItems(acc.items, settings.itbisRate, 0));
-    }
-    return map;
-  }, [openWorkshopAccounts, settings.itbisRate]);
-  const activeWorkshop = useMemo(
-    () => openWorkshopAccounts.find((a) => a.id === activeWorkshopId) ?? null,
-    [openWorkshopAccounts, activeWorkshopId],
-  );
-  useEffect(() => {
-    if (activeWorkshopId !== null && !activeWorkshop) setActiveWorkshopId(null);
-  }, [activeWorkshopId, activeWorkshop]);
-
-  const selectWorkshopTab = (acc) => {
-    setActiveWorkshopId(acc.id);
-    setWCustomerId(acc.customerId);
-    setWComprobante("B02");
-    setWCondition("contado");
-    setWPaymentMethod("efectivo");
-    setWDiscountMode("percent");
-    setWDiscountValue("");
-    setWReceived("");
-  };
-
-  const wQuote = useMemo(() => {
-    if (!activeWorkshop) return null;
-    return quoteWorkshopItems(activeWorkshop.items, settings.itbisRate, {
-      mode: wDiscountMode,
-      value: wDiscountValue,
-    });
-  }, [activeWorkshop, settings.itbisRate, wDiscountMode, wDiscountValue]);
-  const wCustomer = useMemo(
-    () => customers.find((c) => c.id === wCustomerId) ?? cashCustomer,
-    [customers, wCustomerId, cashCustomer],
-  );
-  const wDiscountPercent = wDiscountMode === "percent" ? Number(wDiscountValue) || 0 : 0;
-  const setWDiscountPercent = (value) => {
-    setWDiscountMode("percent");
-    const num = Number(value);
-    setWDiscountValue(!value || !Number.isFinite(num) || num <= 0 ? "" : String(value));
-  };
-
-  const activeComprobante = activeWorkshop ? wComprobante : comprobante;
-  const activeCondition = activeWorkshop ? wCondition : condition;
-  const activeCustomer = activeWorkshop ? wCustomer : customer;
-  const activeLocked = locked || wBusy;
 
   const recoveryIssue = runtime.recoveryIssue?.operationId === failure?.operationId ? runtime.recoveryIssue : null;
   const todayIso = businessTodayIso();
-  const configuredNcf = !window.__FELIX_DESKTOP__ && (settings.ncf || []).find(s => s.type === activeComprobante && s.active);
+  const configuredNcf = !window.__FELIX_DESKTOP__ && (settings.ncf || []).find(s => s.type === comprobante && s.active);
   const activeNcf = configuredNcf && configuredNcf.current < configuredNcf.end && configuredNcf.expiresAt >= todayIso ? configuredNcf : null;
   const ncfWarning = configuredNcf && !activeNcf
     ? (configuredNcf.expiresAt < todayIso
-      ? `La secuencia NCF ${activeComprobante} venció el ${configuredNcf.expiresAt}. Actualízala en Configuración.`
-      : `La secuencia NCF ${activeComprobante} está agotada. Actualízala en Configuración.`)
+      ? `La secuencia NCF ${comprobante} venció el ${configuredNcf.expiresAt}. Actualízala en Configuración.`
+      : `La secuencia NCF ${comprobante} está agotada. Actualízala en Configuración.`)
     : null;
   const nextNcfPreview = activeNcf ? `${activeNcf.prefix}${String(activeNcf.current + 1).padStart(8, "0")}` : null;
-
-  const workshopDisabledReason = useMemo(() => {
-    if (!activeWorkshop || !wQuote) return null;
-    if (runtime.connection !== "connected") return "Conecta con el servicio para cobrar la cuenta.";
-    if (!cashSession?.open) return "La caja está cerrada. Ábrela para cobrar.";
-    if (!wCustomer) return "Selecciona un cliente activo.";
-    if (wQuote.discountError) return wQuote.discountError;
-    if (ncfWarning) return ncfWarning;
-    if (wComprobante !== "B02" && !(wCustomer.rnc || "").trim()) return "Selecciona un cliente con RNC.";
-    if (wCondition === "credito" && (wCustomer.isCashCustomer || !wCustomer.creditLimit)) {
-      return "Selecciona un cliente con crédito aprobado.";
-    }
-    if (
-      wCondition === "credito" &&
-      Math.round(wCustomer.balance * 100) + Math.round(wQuote.totals.total * 100) > Math.round(wCustomer.creditLimit * 100)
-    ) {
-      return "La cuenta excede el crédito disponible del cliente.";
-    }
-    return null;
-  }, [activeWorkshop, wQuote, runtime.connection, cashSession?.open, wCustomer, ncfWarning, wComprobante, wCondition]);
-
-  async function handleCreateWorkshop(label, includeCart) {
-    if (wBusy || !runtime.databaseId) return false;
-    const pickedCustomer = (!includeCart || !customer || customer.isCashCustomer) ? cashCustomer : customer;
-    if (!pickedCustomer) { ue.error("No hay cliente disponible para abrir la cuenta."); return false; }
-    setWBusy(true);
-    try {
-      const payload = {
-        databaseId: runtime.databaseId,
-        clienteId: pickedCustomer.id,
-        ...(pickedCustomer.isCashCustomer ? { clienteNombre: label } : { mecanico: label }),
-        ...(includeCart && items.length > 0 ? {
-          items: items.map((i) => ({
-            productoId: i.product.id,
-            versionProducto: i.product.version,
-            nivelPrecio: API_PRICE_LEVELS[i.priceLevel] || "precio1",
-            cantidad: String(i.quantity),
-          })),
-        } : {}),
-      };
-      const snapshot = await openWorkshopAccount(payload);
-      if (includeCart && items.length > 0) resetSale();
-      const created = snapshot.state.cuentasTaller?.find((a) => a.id === snapshot.result.id);
-      setActiveWorkshopId(snapshot.result.id);
-      setWCustomerId(created?.clienteId ?? pickedCustomer.id);
-      setWComprobante("B02");
-      setWCondition("contado");
-      setWPaymentMethod("efectivo");
-      setWDiscountMode("percent");
-      setWDiscountValue("");
-      setWReceived("");
-      ue.success("Cuenta abierta", { description: label });
-      return true;
-    } catch (error) {
-      ue.error(error.message || "No se pudo abrir la cuenta de taller.");
-      return false;
-    } finally {
-      setWBusy(false);
-    }
-  }
-
-  async function dispatchToWorkshop(product, qty = 1) {
-    if (wBusy || !activeWorkshop || !runtime.databaseId) return false;
-    const qtyNum = Number(qty);
-    if (!Number.isFinite(qtyNum) || qtyNum <= 0) {
-      ue.error("Indica una cantidad mayor que cero.");
-      return false;
-    }
-    if (qtyNum > product.stock) {
-      ue.error(product.stock === 0 ? `${product.name} está agotado` : `Solo hay ${product.stock} unidades de ${product.name}`);
-      return false;
-    }
-    setWBusy(true);
-    try {
-      await dispatchWorkshopItems({
-        databaseId: runtime.databaseId,
-        accountId: activeWorkshop.id,
-        version: activeWorkshop.version,
-        items: [{
-          productoId: product.id,
-          versionProducto: product.version,
-          nivelPrecio: API_PRICE_LEVELS[priceLevel] || "precio1",
-          cantidad: String(qtyNum),
-        }],
-      });
-      ue.success("Despachado", { description: `${qtyNum} × ${product.name}` });
-      return true;
-    } catch (error) {
-      ue.error(error.message || "No se pudo despachar el artículo.");
-      return false;
-    } finally {
-      setWBusy(false);
-    }
-  }
-
-  async function handleReturnWorkshopItem(line, qty) {
-    if (wBusy || !activeWorkshop || !runtime.databaseId) return false;
-    setWBusy(true);
-    try {
-      await returnWorkshopItem({
-        databaseId: runtime.databaseId,
-        accountId: activeWorkshop.id,
-        version: activeWorkshop.version,
-        itemId: line.id,
-        cantidad: String(qty),
-      });
-      ue.success("Devuelto al inventario", { description: `${qty} × ${line.name}` });
-      return true;
-    } catch (error) {
-      ue.error(error.message || "No se pudo registrar la devolución.");
-      return false;
-    } finally {
-      setWBusy(false);
-    }
-  }
-
-  async function handleCancelWorkshop() {
-    if (wBusy || !activeWorkshop || !runtime.databaseId) return;
-    setWBusy(true);
-    try {
-      await cancelWorkshopAccount({
-        databaseId: runtime.databaseId,
-        accountId: activeWorkshop.id,
-        version: activeWorkshop.version,
-      });
-      setActiveWorkshopId(null);
-      ue.success("Cuenta cancelada", { description: "Las piezas pendientes regresaron al inventario." });
-    } catch (error) {
-      ue.error(error.message || "No se pudo cancelar la cuenta.");
-    } finally {
-      setWBusy(false);
-    }
-  }
-
-  function printWorkshopStatement() {
-    if (!activeWorkshop || !wQuote) return;
-    const netLines = wQuote.lines
-      .filter((line) => line.netQuantity > 0)
-      .map((line) => ({
-        key: line.id,
-        product: { name: `${line.code} · ${line.name}` },
-        quantity: line.netQuantity,
-        unitPrice: line.priceExact ?? line.price,
-        subtotal: line.subtotal,
-      }));
-    if (!netLines.length) return;
-    showSaleDocument({
-      invoiceNumber: `Cuenta taller #${activeWorkshop.id}`,
-      dateOnly: todayIso,
-      customerName: activeWorkshop.customerName,
-      customerRnc: wCustomer?.rnc ?? "",
-      mechanic: activeWorkshop.mechanic,
-      vehicle: activeWorkshop.vehicle,
-      ncf: null,
-      comprobante: "Estado",
-      itbisRate: settings.itbisRate,
-      conditionLabel: "Cuenta abierta",
-      paymentLabel: "Pendiente de cobro (No es factura)",
-      totals: wQuote.totals,
-      lines: netLines,
-    }, {
-      isQuote: true,
-      title: "Estado de cuenta de taller",
-      description: "Cuenta abierta en taller. No es factura fiscal.",
-    });
-  }
-
-  async function checkoutWorkshop() {
-    if (wBusy || !activeWorkshop || !wQuote || workshopDisabledReason || wQuote.totals.items <= 0) return;
-    const isCash = wCondition === "contado" && wPaymentMethod === "efectivo";
-    const receivedNum = Number(wReceived);
-    if (isCash && (!Number.isFinite(receivedNum) || receivedNum < wQuote.totals.total)) {
-      ue.warning("El monto recibido es menor al total");
-      return;
-    }
-    setWBusy(true);
-    try {
-      const request = workshopBillRequest(
-        activeWorkshop,
-        settings,
-        wCustomer.id,
-        wCondition,
-        wComprobante,
-        cashSession,
-        wPaymentMethod,
-        { mode: wDiscountMode, value: wDiscountValue },
-      );
-      const snapshot = await billWorkshopAccount(request);
-      setActiveWorkshopId(null);
-      showReceipt(snapshot, isCash ? receivedNum : undefined);
-    } catch (error) {
-      ue.error(error.message || "No se pudo cobrar la cuenta de taller.");
-    } finally {
-      setWBusy(false);
-    }
-  }
-
   const checkoutRef = useRef(null);
-  checkoutRef.current = () => {
-    if (activeWorkshop) checkoutWorkshop();
-    else if (!ncfWarning) checkout();
-  };
+  checkoutRef.current = () => { if (!ncfWarning) checkout(); };
   useEffect(() => {
     const onKey = (event) => {
       if (event.key === "F9") {
@@ -680,6 +404,7 @@ export function OperationalPointOfSalePage() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
   return (
     <div className="pos-sale space-y-6">
       {(failure || sending) && (
@@ -708,34 +433,19 @@ export function OperationalPointOfSalePage() {
         </div>
         <Button asChild className="min-h-11 rounded-xl"><Link to="/caja">Abrir caja</Link></Button>
       </div>}
-      <WorkshopTabsBar
-        openAccounts={openWorkshopAccounts}
-        totalsById={workshopTotalsById}
-        activeWorkshopId={activeWorkshop?.id ?? null}
-        activeWorkshop={activeWorkshop}
-        cartCount={items.length}
-        busy={activeLocked}
-        disabled={runtime.connection !== "connected"}
-        onSelectNormal={() => setActiveWorkshopId(null)}
-        onSelectWorkshop={selectWorkshopTab}
-        onCreateWorkshop={handleCreateWorkshop}
-        onPrintStatement={printWorkshopStatement}
-        onCancelWorkshop={handleCancelWorkshop}
-      />
       <SaleLayout
-        locked={activeLocked}
-        selectionActions={!activeWorkshop ? <>
+        locked={locked}
+        selectionActions={<>
+          {activeHoldLabel && items.length > 0 && (
+            <span className="inline-flex h-8 items-center rounded-xl bg-accent px-2.5 text-xs font-medium text-accent-foreground">
+              {activeHoldLabel}
+            </span>
+          )}
           <Button
             disabled={locked || (!items.length && !heldSales.length)}
             variant="outline"
             className="h-11 rounded-xl bg-card"
-            onClick={() => {
-              if (!heldSales.length && items.length) {
-                holdCurrentSale();
-              } else {
-                setHeldOpen(true);
-              }
-            }}
+            onClick={() => setHeldOpen(true)}
           >
             <CirclePause />
             <span>En espera</span>
@@ -749,32 +459,24 @@ export function OperationalPointOfSalePage() {
             <RotateCcw />
             <span className="sale-desktop-only">Nueva venta</span><span className="sale-mobile-only">Limpiar</span>
           </Button>
-        </> : null}
+        </>}
         invoice={
-          <MobileSaleDetails label={`Datos de factura · ${activeCustomer?.name ?? "Seleccionar cliente"} · ${activeCondition === "contado" ? "Contado" : "Crédito"}`}>
+          <MobileSaleDetails label={`Datos de factura · ${customer?.name ?? "Seleccionar cliente"} · ${condition === "contado" ? "Contado" : "Crédito"}`}>
           <InvoiceSettingsCard
             operational
             customers={customers}
-            customerId={activeWorkshop ? wCustomerId : customerId}
+            customerId={customerId}
             onCustomerChange={(id) => {
-              if (activeWorkshop) {
-                setWCustomerId(id);
-                if (id === cashCustomer?.id) {
-                  setWCondition("contado");
-                  setWComprobante("B02");
-                }
-              } else {
-                setCustomerId(id);
-                if (id === cashCustomer?.id) {
-                  setCondition("contado");
-                  setComprobante("B02");
-                }
+              setCustomerId(id);
+              if (id === cashCustomer?.id) {
+                setCondition("contado");
+                setComprobante("B02");
               }
             }}
-            comprobante={activeComprobante}
-            onComprobanteChange={activeWorkshop ? setWComprobante : setComprobante}
-            condition={activeCondition}
-            onConditionChange={activeWorkshop ? setWCondition : setCondition}
+            comprobante={comprobante}
+            onComprobanteChange={setComprobante}
+            condition={condition}
+            onConditionChange={setCondition}
             nextNcf={nextNcfPreview}
             ncfWarning={ncfWarning}
           />
@@ -783,11 +485,11 @@ export function OperationalPointOfSalePage() {
         selection={
             <ProductSearchBar
               operational
-              disabled={activeLocked || !!receipt}
+              disabled={locked || !!receipt}
               products={products}
               priceLevel={priceLevel}
               onPriceLevelChange={setPriceLevel}
-              onAdd={(p, qty) => (activeWorkshop ? dispatchToWorkshop(p, qty) : editQuantity(p, priceLevel, qty))}
+              onAdd={(p, qty) => editQuantity(p, priceLevel, qty)}
             />
         }
         catalog={
@@ -799,116 +501,67 @@ export function OperationalPointOfSalePage() {
               categories={EMPTY_CATEGORIES}
               pageSize={8}
               priceLevel={priceLevel}
-              onAdd={(p) => (activeWorkshop ? dispatchToWorkshop(p, 1) : editQuantity(p, priceLevel, 1))}
-              cartQuantities={activeWorkshop ? {} : cartQuantities}
+              onAdd={(p) => editQuantity(p, priceLevel, 1)}
+              cartQuantities={cartQuantities}
             />
             </MobileSaleDetails>
           </section>
         }
         cart={
-          activeWorkshop ? (
-            <WorkshopItemsTable
-              account={activeWorkshop}
-              lines={wQuote?.lines ?? []}
-              busy={wBusy}
-              onReturnItem={handleReturnWorkshopItem}
-            />
-          ) : (
-            <CartTable
-              lines={lines}
-              onQuantityChange={(key, quantity) => {
-                const item = items.find((row) => row.key === key);
-                editQuantity(item.product, item.priceLevel, quantity, true);
-              }}
-              onRemove={(key) =>
-                setItems((prev) => prev.filter((row) => row.key !== key))
-              }
-              onClear={() => setItems([])}
-            />
-          )
+          <CartTable
+            lines={lines}
+            onQuantityChange={(key, quantity) => {
+              const item = items.find((row) => row.key === key);
+              editQuantity(item.product, item.priceLevel, quantity, true);
+            }}
+            onRemove={(key) =>
+              setItems((prev) => prev.filter((row) => row.key !== key))
+            }
+            onClear={() => setItems([])}
+          />
         }
         summary={
           <OrderSummaryPanel
             operational
-            invoiceNumber={activeWorkshop ? `Cuenta taller #${activeWorkshop.id}` : "Pendiente de registro"}
-            customerName={activeWorkshop ? activeWorkshop.customerName : customer?.name}
-            comprobante={activeComprobante}
-            condition={activeCondition}
-            totals={activeWorkshop ? (wQuote?.totals ?? totals) : totals}
-            discountPct={activeWorkshop ? wDiscountPercent : discountPercent}
-            onDiscountChange={activeWorkshop ? setWDiscountPercent : setDiscountPercent}
-            discountMode={activeWorkshop ? wDiscountMode : discountMode}
-            onDiscountModeChange={activeWorkshop ? setWDiscountMode : setDiscountMode}
-            discountValue={activeWorkshop ? wDiscountValue : discountValue}
-            onDiscountValueChange={activeWorkshop ? setWDiscountValue : setDiscountValue}
-            discountError={activeWorkshop ? wQuote?.discountError : discountError}
-            paymentMethod={activeWorkshop ? wPaymentMethod : paymentMethod}
-            onPaymentMethodChange={activeWorkshop ? setWPaymentMethod : setPaymentMethod}
-            received={activeWorkshop ? wReceived : received}
-            onReceivedChange={activeWorkshop ? setWReceived : setReceived}
+            invoiceNumber="Pendiente de registro"
+            customerName={activeHoldLabel || customer?.name}
+            comprobante={comprobante}
+            condition={condition}
+            totals={totals}
+            discountPct={discountPercent}
+            onDiscountChange={setDiscountPercent}
+            discountMode={discountMode}
+            onDiscountModeChange={setDiscountMode}
+            discountValue={discountValue}
+            onDiscountValueChange={setDiscountValue}
+            discountError={discountError}
+            paymentMethod={paymentMethod}
+            onPaymentMethodChange={setPaymentMethod}
+            received={received}
+            onReceivedChange={setReceived}
             itbisRate={settings.itbisRate}
             ncf={nextNcfPreview}
-            onSaveQuote={activeWorkshop ? printWorkshopStatement : openQuote}
-            onCancel={activeWorkshop ? () => setActiveWorkshopId(null) : resetSale}
-            disabledReason={activeWorkshop ? workshopDisabledReason : (disabledReason || ncfWarning)}
-            onCheckout={activeWorkshop ? checkoutWorkshop : () => checkout()}
+            onSaveQuote={openQuote}
+            onCancel={resetSale}
+            disabledReason={disabledReason || ncfWarning}
+            onCheckout={() => checkout()}
           />
         }
       />
-      <Dialog open={heldOpen} onOpenChange={setHeldOpen}>
-        <DialogContent className="max-w-md rounded-2xl">
-          <DialogHeader>
-            <DialogTitle>Ventas en espera</DialogTitle>
-            <DialogDescription>Borradores guardados en este dispositivo. No descuentan inventario hasta facturarlos.</DialogDescription>
-          </DialogHeader>
-          {items.length > 0 && (
-            <Button
-              variant="outline"
-              className="h-11 w-full rounded-xl bg-card"
-              onClick={() => { holdCurrentSale(); setHeldOpen(false); }}
-            >
-              <CirclePause />
-              {"Poner venta actual en espera"}
-            </Button>
-          )}
-          {heldSales.length === 0 ? (
-            <p className="py-4 text-center text-sm text-muted-foreground">No hay ventas en espera.</p>
-          ) : (
-            <ul className="max-h-72 space-y-2 overflow-y-auto">
-              {heldSales.map((entry) => (
-                <li key={entry.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-3 text-sm">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">{entry.customerName}</p>
-                    <p className="text-xs text-muted-foreground tabular-nums">
-                      {entry.items.length} {entry.items.length === 1 ? "línea" : "líneas"} · {formatMoney(entry.total)}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 gap-1.5">
-                    <Button
-                      size="sm"
-                      className="h-10 rounded-xl"
-                      onClick={() => { resumeHeldSale(entry.id); setHeldOpen(false); }}
-                    >
-                      <Play className="h-3.5 w-3.5" />
-                      {"Retomar"}
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-10 w-10 rounded-xl text-muted-foreground hover:text-primary"
-                      aria-label={`Eliminar venta en espera de ${entry.customerName}`}
-                      onClick={() => removeHeldSale(entry.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </DialogContent>
-      </Dialog>
-
+      <HeldSalesDialog
+        open={heldOpen}
+        onOpenChange={setHeldOpen}
+        hasCurrentItems={items.length > 0}
+        currentItemCount={items.length}
+        currentTotal={totals.total}
+        customer={customer}
+        activeHoldLabel={activeHoldLabel}
+        heldSales={heldSales}
+        onHoldCurrent={holdCurrentSale}
+        onResume={resumeHeldSale}
+        onRename={renameHeldSale}
+        onRemove={removeHeldSale}
+      />
     </div>
   );
 }

@@ -340,7 +340,7 @@ test('Windows offline SQLite: cuentas de taller offline, sincronización sin dup
   assert.equal(cloudSnap.state.caja.summary.expected, 1800); // 500 fondo + 300 venta v7 + 1000 taller
 });
 
-test('E2E navegador: flujo completo de cuentas de taller en mostrador, estado de cuenta, cobro efectivo y paso a Cuentas x cobrar', { timeout: 180000 }, async t => {
+test('E2E navegador: modal compacto de Ventas en espera con nombre opcional, renombrar inline, retomar, re-pausar y cobrar', { timeout: 180000 }, async t => {
   const db = await temporaryPostgres();
   const pool = new pg.Pool({ connectionString: db.connectionString });
   const assetsDir = await mkdtemp(join(tmpdir(), 'felix-taller-ui-'));
@@ -360,9 +360,6 @@ test('E2E navegador: flujo completo de cuentas de taller en mostrador, estado de
   const init = await readSnapshot(pool, 'TallerUI');
   const dbId = init.databaseId;
   await writeOperation(pool, 'POST', '/api/caja/abrir', { databaseId: dbId, monto: '1000' }, randomUUID(), 'TallerUI', actor);
-  await writeOperation(pool, 'POST', '/api/clientes', {
-    databaseId: dbId, nombre: 'Taller Hermanos Cruz', rnc: '131999888', tel: '809-555-3333', limiteCredito: '15000',
-  }, randomUUID(), 'TallerUI', actor);
   await writeOperation(pool, 'POST', '/api/productos', {
     databaseId: dbId, codigo: 'FLT-90', nombre: 'Filtro de aceite Toyota', gravado: true,
     costo: '200.0000', precio1: '500.0000', precio2: '450.0000', precio3: '400.0000', stock: '12',
@@ -384,71 +381,65 @@ test('E2E navegador: flujo completo de cuentas de taller en mostrador, estado de
   page.on('pageerror', err => pageErrors.push(err.message));
 
   await page.goto(origin + '/ventas', { waitUntil: 'networkidle' });
-  await page.getByRole('button', { name: /Nueva cuenta/i }).waitFor({ state: 'visible' });
-
-  // 1. Verificar cero desborde horizontal en móvil 390px
-  await page.setViewportSize({ width: 390, height: 844 });
-  const mobileOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
-  assert.equal(mobileOverflow, false, 'No debe haber desborde horizontal en /ventas móvil 390px');
-  await page.setViewportSize({ width: 1440, height: 1000 });
-
-  // 2. Agregar producto al carrito normal y abrir cuenta rápida de taller (1 solo campo, sin modal)
   const searchInput = page.getByLabel(/Código o nombre del producto/i);
+  await searchInput.waitFor({ state: 'visible' });
+
+  // 1. Poner venta en espera SIN escribir nombre (nombre opcional!)
   await searchInput.fill('FLT-90');
   await searchInput.press('Enter');
   await page.getByText('Filtro de aceite Toyota').first().waitFor({ state: 'visible' });
 
-  await page.getByRole('button', { name: /Nueva cuenta/i }).click();
-  await page.getByLabel(/Nombre de cuenta de taller/i).fill('Luis - Civic 2018');
-  await page.getByRole('button', { name: /^Abrir$/i }).click();
+  await page.getByRole('button', { name: /En espera/i }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('heading', { name: 'Ventas en espera' }).waitFor({ state: 'visible' });
+  await dialog.getByRole('button', { name: 'Poner venta actual en espera' }).click();
+  await page.getByRole('button', { name: /En espera.*1/ }).waitFor({ state: 'visible' });
 
-  // Debe quedar activa la pestaña de la cuenta #1 con 1 filtro despachado
-  await page.getByText('Piezas despachadas · Luis - Civic 2018').waitFor({ state: 'visible' });
-
-  // 3. Despachar 1 correa usando el MISMO buscador del POS
+  // 2. Segunda venta en espera CON nombre ("Luis - Civic")
   await searchInput.fill('COR-55');
   await searchInput.press('Enter');
   await page.getByText('Correa de alternador').first().waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: /En espera/i }).click();
+  await dialog.getByLabel(/Nombre o referencia/i).fill('Luis - Civic');
+  await dialog.getByRole('button', { name: 'Poner venta actual en espera' }).click();
+  await page.getByRole('button', { name: /En espera.*2/ }).waitFor({ state: 'visible' });
 
-  // 4. Devolver 1 correa directo en la tabla (sin modal)
-  const returnButtons = page.getByRole('button', { name: /^Devolver$/i });
-  await returnButtons.last().click();
-  await page.getByRole('button', { name: /Confirmar devolución/i }).click();
-  await page.getByText(/Devuelto: 1/i).waitFor({ state: 'visible' });
+  // 3. Abrir modal en móvil 390px y verificar cero desborde horizontal
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: /En espera/i }).click();
+  await dialog.getByText('Luis - Civic').waitFor({ state: 'visible' });
+  const mobileOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+  assert.equal(mobileOverflow, false, 'No debe haber desborde horizontal en móvil 390px');
+  await page.setViewportSize({ width: 1440, height: 1000 });
 
-  // 5. Imprimir lista (estado de cuenta informativo)
-  await page.getByRole('button', { name: /Imprimir lista/i }).click();
-  await page.getByRole('heading', { name: /Estado de cuenta de taller/i }).waitFor({ state: 'visible' });
-  await page.getByRole('button', { name: /^Cerrar$/i }).click();
+  // 4. Renombrar "Luis - Civic" -> "Luis - Corolla" dentro del modal
+  await dialog.getByRole('button', { name: /Renombrar venta en espera de Luis - Civic/i }).click();
+  await dialog.getByLabel('Nuevo nombre de venta en espera').fill('Luis - Corolla');
+  await dialog.getByRole('button', { name: 'Guardar nombre' }).click();
+  await dialog.getByText('Luis - Corolla').waitFor({ state: 'visible' });
 
-  // 6. Cobrar la cuenta en efectivo usando el MISMO panel derecho del POS
+  // 5. Retomar "Luis - Corolla", agregar filtro y re-pausar (recuerda el nombre automáticamente)
+  const luisRow = dialog.locator('li').filter({ hasText: 'Luis - Corolla' });
+  await luisRow.getByRole('button', { name: 'Retomar' }).click();
+  await dialog.waitFor({ state: 'hidden' });
+  await page.getByText('Correa de alternador').first().waitFor({ state: 'visible' });
+  await searchInput.fill('FLT-90');
+  await searchInput.press('Enter');
+  await page.getByText('Filtro de aceite Toyota').first().waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: /^En espera/i }).click();
+  assert.equal(await dialog.getByLabel(/Nombre o referencia/i).inputValue(), 'Luis - Corolla');
+  await dialog.getByRole('button', { name: 'Poner venta actual en espera' }).click();
+  await dialog.waitFor({ state: 'hidden' });
+
+  // 6. Retomar "Luis - Corolla" y cobrar en efectivo normalmente
+  await page.getByRole('button', { name: /^En espera/i }).click();
+  await dialog.locator('li').filter({ hasText: 'Luis - Corolla' }).getByRole('button', { name: 'Retomar' }).click();
   await page.getByRole('button', { name: /^Exacto$/i }).click();
   await page.getByRole('button', { name: /Registrar venta/i }).click();
   await page.getByRole('heading', { name: /Venta registrada/i }).waitFor({ state: 'visible' });
   await page.getByRole('button', { name: /Nueva venta/i }).click();
 
-  // 7. Abrir cuenta #2, despachar 1 filtro y cobrarla a CRÉDITO -> verificar en /cuentas-por-cobrar
-  await page.getByRole('button', { name: /Nueva cuenta/i }).click();
-  await page.getByLabel(/Nombre de cuenta de taller/i).fill('Carlos - Hilux');
-  await page.getByRole('button', { name: /^Abrir$/i }).click();
-  await page.getByText('Piezas despachadas · Carlos - Hilux').waitFor({ state: 'visible' });
-
-  await searchInput.fill('FLT-90');
-  await searchInput.press('Enter');
-  await page.getByText('Filtro de aceite Toyota').first().waitFor({ state: 'visible' });
-
-  // Cambiar cliente y condición a Crédito en el mismo panel Datos de la factura
-  await page.getByRole('combobox', { name: /^Cliente$/i }).click();
-  await page.getByRole('option', { name: 'Taller Hermanos Cruz' }).click();
-  await page.getByRole('combobox', { name: /^Condición$/i }).click();
-  await page.getByRole('option', { name: /^Crédito$/i }).click();
-  await page.getByRole('button', { name: /Registrar venta/i }).click();
-  await page.getByRole('heading', { name: /Venta registrada/i }).waitFor({ state: 'visible' });
-  await page.getByRole('button', { name: /Nueva venta/i }).click();
-
-  // Navegar a Cuentas x cobrar y verificar que aparece Taller Hermanos Cruz
-  await page.goto(origin + '/cuentas-por-cobrar', { waitUntil: 'networkidle' });
-  await page.getByText('Taller Hermanos Cruz').first().waitFor({ state: 'visible' });
-
+  // Queda solo 1 venta en espera (la primera sin nombre)
+  await page.getByRole('button', { name: /En espera.*1/ }).waitFor({ state: 'visible' });
   assert.deepEqual(pageErrors, [], 'No debe haber errores JS sin capturar');
 });

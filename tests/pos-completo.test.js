@@ -578,8 +578,9 @@ test('E2E navegador: Ctrl K, notificaciones, códigos alternativos, espera, coti
     await posSearch.press('Enter');
     await page.getByText('Pastilla de freno delantera').first().waitFor();
 
-    // En espera y retomar
+    // En espera (con nombre opcional vacío) y retomar desde el modal
     await page.getByRole('button', { name: /En espera/ }).click();
+    await page.getByRole('button', { name: 'Poner venta actual en espera' }).click();
     await page.getByRole('button', { name: /En espera.*1/ }).waitFor();
     await page.getByRole('button', { name: /En espera/ }).click();
     await page.getByRole('button', { name: 'Retomar' }).click();

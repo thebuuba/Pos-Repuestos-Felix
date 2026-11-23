@@ -54,6 +54,7 @@ export function SaleDraftProvider({ children }) {
   const itemsRef = useRef(items);
   itemsRef.current = items;
   const [heldSales, setHeldSales] = useState(() => readHeldSales(runtime.databaseId));
+  const [activeHoldLabel, setActiveHoldLabel] = useState("");
   const [receipt, setReceipt] = useState(null);
   const [failure, setFailure] = useState(null);
   const [sending, setSending] = useState(false);
@@ -124,6 +125,7 @@ export function SaleDraftProvider({ children }) {
     setDiscountMode("percent");
     setDiscountValue("");
     setReceived("");
+    setActiveHoldLabel("");
     setFailure(null);
   }
   function showReceipt(snapshot, cashReceived) {
@@ -176,11 +178,14 @@ export function SaleDraftProvider({ children }) {
       business: { name: settings.business.name, rnc: settings.business.rnc, address: settings.business.address, phone: settings.business.phone },
     });
   }
-  function holdCurrentSale() {
+  function holdCurrentSale(customLabel = "") {
     if (locked || inFlight.current || receipt || !items.length) return false;
+    const clean = typeof customLabel === "string" ? customLabel.trim() : "";
+    const label = clean || activeHoldLabel.trim() || customer?.name || "Cliente Contado";
     const entry = {
       id: crypto.randomUUID(),
       createdAt: new Date().toISOString(),
+      label,
       customerId,
       customerName: customer?.name ?? "Cliente Contado",
       comprobante,
@@ -197,7 +202,7 @@ export function SaleDraftProvider({ children }) {
     setHeldSales(next);
     writeHeldSales(runtime.databaseId, next);
     clearSale();
-    ue.success("Venta puesta en espera", { description: `${entry.customerName} · ${entry.items.length} líneas` });
+    ue.success("Venta en espera", { description: `${label} · ${entry.items.length} ${entry.items.length === 1 ? "línea" : "líneas"}` });
     return true;
   }
   function resumeHeldSale(holdId) {
@@ -218,9 +223,11 @@ export function SaleDraftProvider({ children }) {
     const hadActiveCart = itemsRef.current.length > 0;
     let nextHeld = heldSales.filter((h) => h.id !== holdId);
     if (hadActiveCart) {
+      const stashedLabel = activeHoldLabel.trim() || customer?.name || "Cliente Contado";
       const stashed = {
         id: crypto.randomUUID(),
         createdAt: new Date().toISOString(),
+        label: stashedLabel,
         customerId,
         customerName: customer?.name ?? "Cliente Contado",
         comprobante,
@@ -251,10 +258,20 @@ export function SaleDraftProvider({ children }) {
       setDiscountValue(entry.discountPercent ? String(entry.discountPercent) : "");
     }
     setReceived("");
+    setActiveHoldLabel(entry.label || (entry.customerName !== cashCustomer?.name ? entry.customerName : "") || "");
     setFailure(null);
+    const resumedName = entry.label || entry.customerName;
     if (skipped.length) ue.warning("Venta retomada con ajustes", { description: skipped.join("; ") });
-    else if (hadActiveCart) ue.success("Venta retomada", { description: "Tu carrito anterior se guardó automáticamente en espera." });
-    else ue.success("Venta retomada");
+    else if (hadActiveCart) ue.success(`Retomada: ${resumedName}`, { description: "Tu carrito anterior se guardó en espera." });
+    else ue.success(`Retomada: ${resumedName}`);
+    return true;
+  }
+  function renameHeldSale(holdId, nextLabel) {
+    const clean = typeof nextLabel === "string" ? nextLabel.trim() : "";
+    if (!clean) return false;
+    const next = heldSales.map((h) => (h.id === holdId ? { ...h, label: clean } : h));
+    setHeldSales(next);
+    writeHeldSales(runtime.databaseId, next);
     return true;
   }
   function removeHeldSale(holdId) {
@@ -352,7 +369,7 @@ export function SaleDraftProvider({ children }) {
     customerId, setCustomerId, comprobante, setComprobante, condition, setCondition,
     paymentMethod, setPaymentMethod, discountMode, setDiscountMode, discountValue, setDiscountValue, discountError,
     discountPercent, setDiscountPercent, received, setReceived, priceLevel, setPriceLevel,
-    items, setItems, heldSales, holdCurrentSale, resumeHeldSale, removeHeldSale, openQuote,
+    items, setItems, heldSales, activeHoldLabel, setActiveHoldLabel, holdCurrentSale, resumeHeldSale, renameHeldSale, removeHeldSale, openQuote,
     showReceipt, showSaleDocument,
     receipt, failure, sending, customer, lines, totals, cartQuantities,
     locked, disabledReason, resetSale, editQuantity, checkout }}>
