@@ -72,8 +72,8 @@ async function refuseUsedRecord(client, table, recordId) {
   }
   if (table === 'suplidores') {
     const result = await client.query(`SELECT 1 FROM suplidores s WHERE s.id=$1 AND
-      COALESCE((SELECT sum(c.total) FROM compras c WHERE c.suplidor_id=s.id AND c.condicion='Credito'),0)
-      - COALESCE((SELECT sum(a.monto) FROM abonos_cuentas a JOIN compras c ON c.id=a.compra_id WHERE c.suplidor_id=s.id AND c.condicion='Credito'),0)<>0`, [recordId]);
+      COALESCE((SELECT sum(c.total) FROM compras c WHERE c.suplidor_id=s.id AND c.condicion='Credito' AND c.estado='activa'),0)
+      - COALESCE((SELECT sum(a.monto) FROM abonos_cuentas a JOIN compras c ON c.id=a.compra_id WHERE c.suplidor_id=s.id AND c.condicion='Credito' AND c.estado='activa'),0)<>0`, [recordId]);
     if (result.rowCount) fail('El suplidor tiene saldo pendiente.', 409);
   }
   if (table === 'formulas_precios') {

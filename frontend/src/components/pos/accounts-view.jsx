@@ -4,13 +4,14 @@ import { businessTodayIso } from "../../lib/dates.js";
 import { MoneyDisplay } from "./money-display.jsx";
 import { formatMoney } from "../../lib/format.js";
 import { cn } from "../../lib/utils.js";
-import { CircleCheck, Printer, Search } from "lucide-react";
+import { CircleCheck, History, Printer, Search } from "lucide-react";
 import { Input } from "../ui/input.jsx";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.jsx";
 import { Switch } from "../ui/switch.jsx";
 import { EmptyState } from "./section-card.jsx";
 import { Button } from "../ui/button.jsx";
 import { PaymentDialog } from "./payment-dialog.jsx";
+import { AccountPaymentsDialog, PaymentReceiptDialog } from "./account-payments-dialog.jsx";
 import { toast as ue } from "sonner";
 import { useEffect, useMemo, useState } from "react";
 
@@ -49,12 +50,17 @@ function AccountsView({
   initialPartyId,
   onPay,
   onViewDocument,
+  business,
+  printFormat = "Térmica 80 mm",
+  ticketFooter = "¡Gracias por su pago!",
 }) {
   const [partyId, setPartyId] = useState(initialPartyId ?? "all");
   const [bucket, setBucket] = useState("all");
   const [query, setQuery] = useState("");
   const [showPaid, setShowPaid] = useState(false);
   const [paying, setPaying] = useState(null);
+  const [historyDocId, setHistoryDocId] = useState(null);
+  const [paymentReceipt, setPaymentReceipt] = useState(null);
   const [page, setPage] = useState(1);
   const partyNames = useMemo(() => new Map(parties.map((p) => [p.id, p.name])), [parties]);
   const partyName = (id) => partyNames.get(id) ?? "—";
@@ -93,6 +99,7 @@ function AccountsView({
   );
   const filteredBalance = useMemo(() => rows.reduce((s, d) => s + balanceOf(d), 0), [rows]);
   const activePaying = paying ? (docs.find((d) => d.id === paying.id) ?? paying) : null;
+  const activeHistoryDoc = historyDocId != null ? (docs.find((d) => d.id === historyDocId) ?? null) : null;
   const renderNow = new Date();
   const renderToday = documentaryDate(businessTodayIso(renderNow));
   return (
@@ -306,13 +313,40 @@ function AccountsView({
                         {formatMoney(d.amount)}
                       </td>
                       <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">
-                        {formatMoney(d.paid)}
+                        {(d.payments?.length ?? 0) > 0 ? (
+                          <button
+                            type="button"
+                            className="inline-flex flex-col items-end text-right hover:text-foreground hover:underline"
+                            onClick={() => setHistoryDocId(d.id)}
+                            title={`Ver historial de abonos de ${d.document}`}
+                          >
+                            <span className="font-medium text-foreground">{formatMoney(d.paid)}</span>
+                            <span className="text-[11px] text-muted-foreground">
+                              {d.payments.length} {d.payments.length === 1 ? "abono" : "abonos"}
+                            </span>
+                          </button>
+                        ) : (
+                          formatMoney(d.paid)
+                        )}
                       </td>
                       <td className="px-3 py-3 text-right font-semibold tabular-nums">
                         {formatMoney(bal)}
                       </td>
                       <td className="px-5 py-3 text-right">
                         <div className="inline-flex items-center justify-end gap-1.5">
+                          {(d.payments?.length ?? 0) > 0 && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:bg-muted hover:text-foreground"
+                              onClick={() => setHistoryDocId(d.id)}
+                              title={`Ver abonos de ${d.document}`}
+                              aria-label={`Ver abonos de ${d.document}`}
+                            >
+                              <History className="h-4 w-4" />
+                            </Button>
+                          )}
                           {onViewDocument && (
                             <Button
                               type="button"
@@ -320,8 +354,8 @@ function AccountsView({
                               size="icon"
                               className="h-8 w-8 text-muted-foreground hover:bg-muted hover:text-foreground"
                               onClick={() => onViewDocument(d)}
-                              title={`Reimprimir ${d.document}`}
-                              aria-label={`Reimprimir ${d.document}`}
+                              title={verb === "Cobrar" ? `Reimprimir ${d.document}` : `Ver factura ${d.document}`}
+                              aria-label={verb === "Cobrar" ? `Reimprimir ${d.document}` : `Ver factura ${d.document}`}
                             >
                               <Printer className="h-4 w-4" />
                             </Button>
@@ -380,16 +414,71 @@ function AccountsView({
         onOpenChange={(o) => !o && setPaying(null)}
         onConfirm={async (amount, method, note, retryAction) => {
           if (!activePaying) return;
+          const previousBalance = balanceOf(activePaying);
+          const remainingAfter = Math.max(0, Math.round((previousBalance - amount) * 100) / 100);
+          const confirmedParty = partyName(activePaying.partyId);
+          const receiptData = {
+            verb,
+            partyLabel,
+            partyName: confirmedParty,
+            document: activePaying.document,
+            date: new Date().toISOString(),
+            method,
+            note: note || "",
+            amount,
+            docAmount: activePaying.amount,
+            previousBalance,
+            remainingAfter,
+          };
           if (retryAction) await retryAction();
           else await onPay(activePaying, amount, method, note);
           ue.success(
             verb === "Cobrar" ? "Cobro registrado" : "Pago registrado",
             {
               description: `${activePaying.document} · ${formatMoney(amount)}${method === "efectivo" ? " · reflejado en caja" : ""}`,
+              action: {
+                label: "Ver recibo",
+                onClick: () => setPaymentReceipt(receiptData),
+              },
             },
           );
           setPaying(null);
         }}
+      />
+      <AccountPaymentsDialog
+        doc={activeHistoryDoc}
+        partyName={activeHistoryDoc ? partyName(activeHistoryDoc.partyId) : ""}
+        partyLabel={partyLabel}
+        verb={verb}
+        open={Boolean(activeHistoryDoc)}
+        onOpenChange={(open) => { if (!open) setHistoryDocId(null); }}
+        onPrintPayment={(payment) => {
+          if (!activeHistoryDoc) return;
+          const doc = activeHistoryDoc;
+          setHistoryDocId(null);
+          setPaymentReceipt({
+            verb,
+            partyLabel,
+            partyName: partyName(doc.partyId),
+            document: doc.document,
+            paymentId: payment.id ?? null,
+            date: payment.date,
+            method: payment.method,
+            note: [payment.reference, payment.note].filter(Boolean).join(" · "),
+            amount: payment.amount,
+            docAmount: doc.amount,
+            previousBalance: payment.previousBalance,
+            remainingAfter: payment.remainingAfter,
+          });
+        }}
+      />
+      <PaymentReceiptDialog
+        receipt={paymentReceipt}
+        business={business}
+        printFormat={printFormat}
+        footer={ticketFooter}
+        open={Boolean(paymentReceipt)}
+        onOpenChange={(open) => { if (!open) setPaymentReceipt(null); }}
       />
     </div>
   );
