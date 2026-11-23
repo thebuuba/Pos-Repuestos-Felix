@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import test from 'node:test';
 
-const moduleUrl = new URL('../frontend/src/polymet/lib/accounts.js', import.meta.url);
+const moduleUrl = new URL('../frontend/src/lib/accounts.js', import.meta.url);
 
 for (const [TZ, offset] of [['UTC', 0], ['America/Santo_Domingo', 240]]) {
   test(`formats documentary dates and business instants from ${TZ}`, () => {

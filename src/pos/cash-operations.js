@@ -6,8 +6,10 @@ const iso = date => date instanceof Date ? date.toISOString() : date;
 const closure = row => ({ id: Number(row.id), openedAt: iso(row.abierto_en), closedAt: iso(row.cerrado_en),
   cashier: row.cajero, opening: Number(row.fondo), expected: Number(row.esperado), counted: Number(row.contado), sales: Number(row.ventas) });
 
-function totals(turn, sales, movements, payments = []) {
-  const activeSales = sales.filter(row => row.estado !== 'anulada');
+function totals(turn, sales, movements, payments = [], closedAt = null) {
+  const closedMs = closedAt ? new Date(closedAt).getTime() : null;
+  const activeSales = sales.filter(row => row.estado !== 'anulada' ||
+    (closedMs !== null && row.anulada_en && new Date(row.anulada_en).getTime() > closedMs));
   const sum = predicate => activeSales.filter(predicate).reduce((total, row) => total + cents(row.total), 0n);
   const moved = type => movements.filter(row => row.tipo === type).reduce((total, row) => total + cents(row.monto), 0n);
   const paid = type => payments.filter(row => row.tipo === type && row.metodo_pago === 'efectivo').reduce((total, row) => total + cents(row.monto), 0n);
@@ -38,11 +40,17 @@ export function cashPresentation(data) {
     closures: data.turnos_caja.filter(row => row.cerrado_en !== null).map(closure).reverse(),
   };
 }
-export async function turnTotals(client, turn) {
-  const sales = (await client.query("SELECT total,metodo_pago,estado FROM ventas WHERE caja_id=$1 AND estado='activa'", [turn.id])).rows;
+export async function turnTotals(client, turn, { atClose = false } = {}) {
+  const closedAt = atClose ? turn.cerrado_en : null;
+  const sales = closedAt
+    ? (await client.query(
+        "SELECT total,metodo_pago,estado,anulada_en FROM ventas WHERE caja_id=$1 AND (estado='activa' OR (estado='anulada' AND anulada_en>$2::timestamptz))",
+        [turn.id, closedAt],
+      )).rows
+    : (await client.query("SELECT total,metodo_pago,estado FROM ventas WHERE caja_id=$1 AND estado='activa'", [turn.id])).rows;
   const movements = (await client.query('SELECT tipo,monto FROM movimientos_caja WHERE caja_id=$1', [turn.id])).rows;
   const payments = (await client.query('SELECT tipo,metodo_pago,monto FROM abonos_cuentas WHERE caja_id=$1', [turn.id])).rows;
-  return totals(turn, sales, movements, payments);
+  return totals(turn, sales, movements, payments, closedAt);
 }
 // Shared order for sales, movements and closing prevents a sale from entering a closed turn.
 export async function lockCash(client, cajaId, version) {
@@ -84,7 +92,7 @@ export async function cashOperation(client, path, body, actor, occurredAt = null
 export async function validateCashRestore(client) {
   const turns = (await client.query('SELECT * FROM turnos_caja')).rows;
   for (const turn of turns) {
-    const summary = await turnTotals(client, turn);
+    const summary = await turnTotals(client, turn, { atClose: Boolean(turn.cerrado_en) });
     if (turn.cerrado_en && (cents(turn.esperado) !== summary.expected || cents(turn.ventas) !== summary.sales))
       fail('El respaldo contiene un cierre de caja que no coincide con sus ventas y movimientos.');
   }
@@ -101,11 +109,12 @@ export async function validateCashRestore(client) {
   ) turnos WHERE abierto_en<cierre_anterior LIMIT 1`);
   if (overlapping.rowCount) fail('El respaldo contiene turnos de caja superpuestos.');
   const negative = await client.query(`WITH eventos AS (
-    SELECT caja_id,creado_en,total AS cambio,0 AS origen,id FROM ventas WHERE metodo_pago='efectivo' AND estado='activa'
-    UNION ALL SELECT caja_id,creado_en,CASE WHEN tipo='entrada' THEN monto ELSE -monto END,1,id FROM movimientos_caja
-    UNION ALL SELECT caja_id,creado_en,CASE WHEN tipo='cobro' THEN monto ELSE -monto END,2,id FROM abonos_cuentas WHERE metodo_pago='efectivo'
+    SELECT caja_id,creado_en AS instante,total AS cambio,0 AS origen,id FROM ventas WHERE metodo_pago='efectivo'
+    UNION ALL SELECT caja_id,anulada_en AS instante,-total AS cambio,3 AS origen,id FROM ventas WHERE metodo_pago='efectivo' AND estado='anulada'
+    UNION ALL SELECT caja_id,creado_en AS instante,CASE WHEN tipo='entrada' THEN monto ELSE -monto END,1,id FROM movimientos_caja
+    UNION ALL SELECT caja_id,creado_en AS instante,CASE WHEN tipo='cobro' THEN monto ELSE -monto END,2,id FROM abonos_cuentas WHERE metodo_pago='efectivo'
   ), saldos AS (
-    SELECT c.fondo+sum(e.cambio) OVER(PARTITION BY e.caja_id ORDER BY e.creado_en,(e.cambio<0),e.origen,e.id
+    SELECT c.fondo+sum(e.cambio) OVER(PARTITION BY e.caja_id ORDER BY e.instante,(e.cambio<0),e.origen,e.id
       ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS saldo
     FROM eventos e JOIN turnos_caja c ON c.id=e.caja_id
   ) SELECT 1 FROM saldos WHERE saldo<0 LIMIT 1`);

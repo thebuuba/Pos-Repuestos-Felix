@@ -235,7 +235,7 @@ export async function snapshot(client, databaseLabel, { compact = false } = {}) 
       ) ORDER BY id) FROM public.turnos_caja), '[]'::json),
       'movimientos_caja', COALESCE((SELECT json_agg(json_build_object(
         'id', id, 'caja_id', caja_id, 'tipo', tipo, 'monto', monto::text, 'concepto', concepto, 'creado_en', creado_en
-      ) ORDER BY id) FROM public.movimientos_caja), '[]'::json),
+      ) ORDER BY id) FROM public.movimientos_caja WHERE caja_id IN (SELECT id FROM public.turnos_caja WHERE cerrado_en IS NULL)), '[]'::json),
       'movimientos', COALESCE((SELECT json_agg(json_build_object(
         'id', m.id, 'producto_id', m.producto_id, 'productoId', m.producto_id,
         'cantidad', m.cantidad::double precision, 'existencia_posterior', m.existencia_posterior::double precision,
@@ -604,6 +604,7 @@ async function sale(client, body, occurredAt, allowNcf = true) {
   const customer = (await client.query('SELECT * FROM clientes WHERE id=$1 AND activo FOR UPDATE', [id(body.clienteId)])).rows[0];
   if (!customer) fail('Selecciona un cliente activo.');
   if (!['Contado', 'Credito'].includes(body.condicion) || !['B01', 'B02', 'B14'].includes(body.tipoComprobante)) fail('Condición o tipo de comprobante inválido.');
+  if (body.tipoComprobante !== 'B02' && !(customer.rnc || '').trim()) fail('Este comprobante requiere un cliente con RNC o cédula.');
   if (!Array.isArray(body.items) || !body.items.length || body.items.length > 1000) fail('La venta debe tener entre 1 y 1000 líneas.');
   const hasPct = body.descuentoPorcentaje !== undefined && body.descuentoPorcentaje !== null;
   const hasAmt = body.descuentoMonto !== undefined && body.descuentoMonto !== null;
@@ -744,8 +745,25 @@ async function restore(client, body) {
   if (legacy) await client.query('SELECT pos_privado.importar_estado_legacy($1::jsonb)', [legacy]);
   else {
     for (const [table, columns] of Object.entries(layout)) {
-      for (const row of backup.tables[table]) {
-        await client.query(`INSERT INTO public.${table}(${columns.join(',')}) VALUES(${columns.map((_, index) => '$' + (index + 1)).join(',')})`, columns.map(key => row[key]));
+      const rows = backup.tables[table];
+      if (!rows.length) continue;
+      const chunkSize = Math.max(1, Math.floor(2000 / columns.length));
+      const colList = columns.join(',');
+      for (let offset = 0; offset < rows.length; offset += chunkSize) {
+        const slice = rows.slice(offset, offset + chunkSize);
+        const params = [];
+        const placeholders = [];
+        for (let r = 0; r < slice.length; r++) {
+          const row = slice[r];
+          const base = r * columns.length;
+          const tuple = [];
+          for (let c = 0; c < columns.length; c++) {
+            params.push(row[columns[c]]);
+            tuple.push('$' + (base + c + 1));
+          }
+          placeholders.push('(' + tuple.join(',') + ')');
+        }
+        await client.query(`INSERT INTO public.${table}(${colList}) VALUES ${placeholders.join(',')}`, params);
       }
     }
     if (backup.version < 5 && (await client.query('SELECT 1 FROM productos GROUP BY lower(codigo) HAVING count(*) > 1 LIMIT 1')).rowCount)
@@ -834,9 +852,9 @@ export async function writeOperation(pool, method, path, body, key, databaseLabe
     if (context.versionOnly) {
       payload = await snapshotVersion(client, databaseLabel);
     } else if (!previous && !context.represent && Number.isSafeInteger(context.deltaBaseRevision) && newRevision === context.deltaBaseRevision + 1) {
-      payload = (await buildDelta(client, method, path, body, result, databaseLabel, context.deltaBaseRevision, priorMovementId)) ?? await snapshot(client, databaseLabel);
+      payload = (await buildDelta(client, method, path, body, result, databaseLabel, context.deltaBaseRevision, priorMovementId)) ?? await snapshot(client, databaseLabel, { compact: Boolean(context.compact) });
     } else {
-      payload = await snapshot(client, databaseLabel);
+      payload = await snapshot(client, databaseLabel, { compact: Boolean(context.compact) });
     }
     let response = { ...payload, result };
     if (context.represent) response = await context.represent(client, response, metadata, Boolean(previous));

@@ -79,7 +79,7 @@ export function redactBootstrapForRole(download, role) {
   const keptPurchaseIds = new Set(keptPayments.filter(a => a.compra_id !== null).map(a => String(a.compra_id)));
   const keptCompras = (src.compras || [])
     .filter(c => keptPurchaseIds.has(String(c.id)))
-    .map(c => ({ ...c, suplidor_nombre: 'Restringido', numero: 'Restringido' }));
+    .map(c => ({ ...c, suplidor_nombre: 'Restringido', numero: `Restringido-${c.id}` }));
   const keptDetails = (src.compra_detalles || [])
     .filter(d => keptPurchaseIds.has(String(d.compra_id)))
     .map(d => ({ ...d, nombre: 'Restringido' }));

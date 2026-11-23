@@ -114,7 +114,7 @@ export class DesktopEngine {
       if (previous) {
         if (previous.status === 'archived') throw failure('Esta operación fue archivada para revisión; consulta el historial conservado.');
         if (previous.fingerprint !== fingerprint) throw failure('Esta clave ya corresponde a otra operación.');
-        return { ...await this.snapshot(), result: previous.record.result,
+        return { ...await this.snapshot({ compact: Boolean(options.compact) }), result: previous.record.result,
           confirmation: { operationId, databaseId: body.databaseId, method, path, replayed: true }, localReceipt: operationId };
       }
       if (this.ledger.get('reconciliation')) throw failure('Hay una revisión de pendientes en curso. Reanúdala antes de registrar nuevas operaciones.');
@@ -125,6 +125,7 @@ export class DesktopEngine {
         occurredAt,
         allowNcf: false,
         ...(Number.isSafeInteger(options.deltaBaseRevision) ? { deltaBaseRevision: options.deltaBaseRevision } : {}),
+        ...(options.compact ? { compact: true } : {}),
       };
       let response;
       try {
@@ -209,7 +210,7 @@ export class DesktopEngine {
         catch (error) {
           await this.serial(() => {
             assertActor();
-            if ([400, 409].includes(error.status)) this.ledger.conflict(operation.operation_id, error.message);
+            if ([400, 403, 404, 409].includes(error.status)) this.ledger.conflict(operation.operation_id, error.message);
           });
           throw error;
         }
@@ -254,7 +255,7 @@ export class DesktopEngine {
     } catch (error) {
       await this.serial(() => {
         try { assertActor(); } catch { return; }
-        this.connection = error.status === 401 ? 'authentication' : error.status === 409 || error.status === 400 ? 'conflict' : 'offline';
+        this.connection = error.status === 401 ? 'authentication' : [400, 403, 404, 409].includes(error.status) ? 'conflict' : 'offline';
         this.lastError = error.status && error.status < 500 ? error.message : 'Sin conexión al servidor. Las operaciones confirmadas quedan guardadas en este equipo.';
       });
     }

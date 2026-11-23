@@ -16,8 +16,8 @@ import { DesktopLedger } from '../src/desktop/ledger.js';
 import { DesktopEngine } from '../src/desktop/engine.js';
 import { desktopServer } from '../src/desktop/server.js';
 import { passwordRecord, tokenHash } from '../src/desktop/credentials.js';
-import { daysOverdue } from '../frontend/src/polymet/lib/accounts.js';
-import { reportData } from '../frontend/src/polymet/lib/sales-analytics.js';
+import { daysOverdue } from '../frontend/src/lib/accounts.js';
+import { reportData } from '../frontend/src/lib/sales-analytics.js';
 
 test('cabeceras de seguridad web (CSP, Referrer-Policy, HSTS) y /theme.js público', async () => {
   const origin = 'https://pos.example';

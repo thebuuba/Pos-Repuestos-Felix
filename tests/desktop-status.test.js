@@ -14,7 +14,7 @@ before(async () => {
   directory = await mkdtemp(path.join(tmpdir(), 'felix-desktop-ui-'));
   await build({ stdin: { contents: `import { createRoot } from 'react-dom/client';
     import { DesktopSyncStatus } from './frontend/src/desktop-status.jsx';
-    import './frontend/src/polymet.css'; import './frontend/standards.css';
+    import './frontend/src/styles/theme.css'; import './frontend/src/styles/standards.css';
     createRoot(document.getElementById('root')).render(<DesktopSyncStatus onSync={() => { window.catalogRefreshes = (window.catalogRefreshes || 0) + 1; }}/>);`,
     loader: 'jsx', resolveDir: process.cwd() }, outfile: path.join(directory, 'app.js'),
     bundle: true, format: 'esm', jsx: 'automatic', define: { 'process.env.NODE_ENV': '"production"' }, logLevel: 'silent' });

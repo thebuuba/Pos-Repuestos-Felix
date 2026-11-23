@@ -125,8 +125,12 @@ export function desktopServer(engine, remote, assetsDirectory) {
               throw error('Sincroniza primero con la cuenta que registró las operaciones pendientes.', 409);
             }
             const nextRole = normalizeRole(identity.role);
-            if (!engine.pool) await engine.adopt(await remote.request('/api/sync/bootstrap'));
-            else if (profile && normalizeRole(profile.role) !== nextRole) ledger.set('needsRefresh', true);
+            const roleChanged = Boolean(profile && normalizeRole(profile.role) !== nextRole);
+            if (!engine.pool || (roleChanged && !ledger.pending().length)) {
+              await engine.adopt(await remote.request('/api/sync/bootstrap'));
+            } else if (roleChanged) {
+              ledger.set('needsRefresh', true);
+            }
             ledger.set('profile', { id: identity.id, username: identity.username, name: identity.username, role: nextRole, generation: randomUUID(),
               ...passwordRecord(path === '/cuenta/clave' ? body.newPassword : body.password), onlineAt: Date.now(), allowOffline: true });
             engine.connection = 'online';
@@ -248,9 +252,13 @@ export function desktopServer(engine, remote, assetsDirectory) {
         if (!allowedOperation(role, request.method, path)) throw error('Tu cuenta de cajero no tiene permiso para esta operación.', 403);
         const rawDelta = request.headers['x-felix-delta'];
         const deltaBaseRevision = typeof rawDelta === 'string' && /^\d+$/.test(rawDelta) && Number.isSafeInteger(Number(rawDelta)) ? Number(rawDelta) : null;
+        const compact = request.headers['x-felix-compact'] === '1';
         const result = await engine.write(request.method, path, body, request.headers['idempotency-key'], () => {
           const current = requireAccess(); return { id: current.id, name: current.username, role: normalizeRole(current.role), generation: current.generation };
-        }, deltaBaseRevision !== null ? { deltaBaseRevision } : {});
+        }, {
+          ...(deltaBaseRevision !== null ? { deltaBaseRevision } : {}),
+          ...(compact ? { compact: true } : {}),
+        });
         send(200, redactSnapshotForRole(result, role), { ETag: stateTag({ ...result, role }) }); synchronize().catch(() => {}); return;
       }
       if (!['GET', 'HEAD'].includes(request.method)) throw error('Método no permitido.', 405);
@@ -265,7 +273,12 @@ export function desktopServer(engine, remote, assetsDirectory) {
         if (name === 'login.html') html = html.replace('<html ', '<html data-accounts="true" ');
         data = Buffer.from(html);
       }
-      response.writeHead(200, { ...security, 'Content-Type': mime[Object.keys(mime).find(extension => name.endsWith(extension))] });
+      const immutable = /^assets\/pwa\/(app-[a-f0-9]{16}\.js|styles-[a-f0-9]{16}\.css|chunk-[A-Z0-9]{8}\.js)$/.test(name);
+      response.writeHead(200, {
+        ...security,
+        ...(immutable ? { 'Cache-Control': 'public, max-age=31536000, immutable' } : {}),
+        'Content-Type': mime[Object.keys(mime).find(extension => name.endsWith(extension))],
+      });
       response.end(request.method === 'HEAD' ? undefined : data);
     } catch (cause) { send(cause.status || 503, { error: cause.status ? cause.message : 'No se confirmó la operación. Los datos guardados permanecen en este equipo.', ...(cause.rejection && { rejection: cause.rejection }) }); }
   });

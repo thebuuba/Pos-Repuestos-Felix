@@ -3,16 +3,16 @@ import { Component, Fragment, Suspense, useEffect, useRef, useState } from 'reac
 import { loadingLabel } from './loading-labels.js';
 import { Toaster } from './components/ui/sonner.jsx';
 import { Button } from './components/ui/button.jsx';
-import { Dialog2, DialogContent2, DialogHeader, DialogTitle2, DialogDescription2 } from './components/ui/dialog.jsx';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './components/ui/dialog.jsx';
 import { usePosStore } from './data/pos-context.jsx';
 import { SaleDraftProvider, useSaleDraft } from './data/sale-draft.jsx';
-import { ModulePlaceholderPage } from './polymet/pages/module-placeholder-page.jsx';
-import { PosLayout } from './polymet/layouts/pos-layout.jsx';
-import { formatMoney, formatUnitMoney } from './polymet/lib/format.js';
+import { ModulePlaceholderPage } from './pages/module-placeholder-page.jsx';
+import { PosLayout } from './layouts/pos-layout.jsx';
+import { formatMoney, formatUnitMoney } from './lib/format.js';
+import { formatBusinessDateTime } from './lib/dates.js';
 import { PwaProvider, PwaNotice } from './pwa.jsx';
 
-const syncTime = new Intl.DateTimeFormat('es-DO', { timeZone: 'America/Santo_Domingo', dateStyle: 'short', timeStyle: 'short' });
-const dateLabel = value => value && Number.isFinite(Date.parse(value)) ? syncTime.format(new Date(value)) : 'No registrada';
+const dateLabel = value => formatBusinessDateTime(value);
 const operations = { ventas: 'Venta', 'ventas/anular': 'Anulación de venta', compras: 'Compra', productos: 'Artículo',
   clientes: 'Cliente', suplidores: 'Suplidor', formulas: 'Fórmula de precios', configuracion: 'Configuración',
   ncf: 'Secuencia NCF', 'cuentas/cobros': 'Cobro a cliente', 'cuentas/pagos': 'Pago a suplidor',
@@ -81,11 +81,11 @@ function ReviewPending({ runtime, review, close, restoreFocus }) {
     } catch (cause) { setError(cause.message); }
     finally { inFlight.current = false; setSending(false); }
   }
-  return <Dialog2 open onOpenChange={open => { if (!open && !inFlight.current) close(); }}>
-    <DialogContent2 closeDisabled={sending} aria-busy={sending} onCloseAutoFocus={restoreFocus}
+  return <Dialog open onOpenChange={open => { if (!open && !inFlight.current) close(); }}>
+    <DialogContent closeDisabled={sending} aria-busy={sending} onCloseAutoFocus={restoreFocus}
       className="max-w-lg overflow-y-auto rounded-2xl" style={{ width: 'calc(100vw - 2rem)', maxHeight: 'calc(100dvh - 2rem)' }}>
-      <DialogHeader><DialogTitle2>Revisar solicitud pendiente</DialogTitle2>
-        <DialogDescription2>Los datos del negocio cambiaron. Esta solicitud corresponde a los datos anteriores y requiere revisión.</DialogDescription2></DialogHeader>
+      <DialogHeader><DialogTitle>Revisar solicitud pendiente</DialogTitle>
+        <DialogDescription>Los datos del negocio cambiaron. Esta solicitud corresponde a los datos anteriores y requiere revisión.</DialogDescription></DialogHeader>
       <PacketDetails packet={review.packet} />
       <p className="text-sm">Archivar conserva el registro en este navegador y permite nuevas operaciones. No confirma ni anula la solicitud original.</p>
       <Button variant="outline" style={{ minHeight: 44 }} onClick={() => downloadRecord({ packet: review.packet, currentDatabaseId: review.databaseId, status: 'pending-review' })}>Descargar registro</Button>
@@ -99,8 +99,8 @@ function ReviewPending({ runtime, review, close, restoreFocus }) {
         <Button style={{ minHeight: 44 }} disabled={!acknowledged || sending || runtime.busy} onClick={archive}>{sending ? 'Archivando…' : 'Archivar y continuar'}</Button>
         <Button style={{ minHeight: 44 }} variant="outline" disabled={sending} onClick={close}>Cancelar</Button>
       </div>
-    </DialogContent2>
-  </Dialog2>;
+    </DialogContent>
+  </Dialog>;
 }
 
 function ArchivedRequests({ runtime, close, restoreFocus }) {
@@ -111,11 +111,11 @@ function ArchivedRequests({ runtime, close, restoreFocus }) {
     runtime.readArchives().then(rows => { if (current) setRecords(rows); }, cause => { if (current) setError(cause.message); });
     return () => { current = false; };
   }, [runtime.readArchives]);
-  return <Dialog2 open onOpenChange={open => { if (!open) close(); }}>
-    <DialogContent2 onCloseAutoFocus={restoreFocus} className="max-w-lg overflow-y-auto rounded-2xl"
+  return <Dialog open onOpenChange={open => { if (!open) close(); }}>
+    <DialogContent onCloseAutoFocus={restoreFocus} className="max-w-lg overflow-y-auto rounded-2xl"
       style={{ width: 'calc(100vw - 2rem)', maxHeight: 'calc(100dvh - 2rem)' }}>
-      <DialogHeader><DialogTitle2>Solicitudes archivadas</DialogTitle2>
-        <DialogDescription2>Estos registros se conservan en este navegador y nunca se reenvían automáticamente. Descarga una copia antes de borrar los datos de la app.</DialogDescription2></DialogHeader>
+      <DialogHeader><DialogTitle>Solicitudes archivadas</DialogTitle>
+        <DialogDescription>Estos registros se conservan en este navegador y nunca se reenvían automáticamente. Descarga una copia antes de borrar los datos de la app.</DialogDescription></DialogHeader>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {!records && !error && <p role="status">Cargando registros…</p>}
       {records?.length === 0 && <p>No hay solicitudes archivadas.</p>}
@@ -125,8 +125,8 @@ function ArchivedRequests({ runtime, close, restoreFocus }) {
         <Button variant="outline" style={{ minHeight: 44 }} onClick={() => downloadRecord(record)}>Descargar registro</Button>
       </section>)}
       <Button style={{ minHeight: 44 }} variant="outline" onClick={close}>Cerrar</Button>
-    </DialogContent2>
-  </Dialog2>;
+    </DialogContent>
+  </Dialog>;
 }
 
 function ServiceNotice({ runtime }) {
@@ -155,7 +155,7 @@ function ServiceNotice({ runtime }) {
       {runtime.pending && !suppressPending && <p className="font-semibold">{changed ? 'La solicitud pendiente pertenece a otra base. Requiere revisión.' : runtime.recovering ? 'Comprobando la solicitud pendiente…' : 'Solicitud pendiente de confirmación'}</p>}
       {runtime.error && !saleHandlesFailure && <p>{runtime.error}</p>}
       {runtime.connection === 'unavailable' && !saleHandlesFailure && <p>Sin conexión al servicio. {runtime.mode === 'online' && 'La web y la PWA requieren conexión para confirmar operaciones.'}</p>}
-      {runtime.connection === 'unavailable' && runtime.lastSync && !saleHandlesFailure && <p>Datos desactualizados. Última sincronización el {syncTime.format(new Date(runtime.lastSync))}.</p>}
+      {runtime.connection === 'unavailable' && runtime.lastSync && !saleHandlesFailure && <p>Datos desactualizados. Última sincronización el {dateLabel(runtime.lastSync)}.</p>}
       <div className="flex flex-wrap gap-2">
         {changed ? <Button ref={reviewTrigger} style={{ minHeight: 44 }} variant="outline" disabled={runtime.busy || runtime.recovering}
           onClick={() => setReview({ packet: runtime.pending, databaseId: runtime.databaseId })}>Revisar solicitud</Button> :

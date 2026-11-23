@@ -126,7 +126,14 @@ export function receiptFromConfirmation(snapshot) {
     comprobante: doc.tipoComprobante, itbisRate: null,
     conditionLabel: doc.condicion === 'Credito' ? 'Crédito' : 'Contado',
     paymentLabel: { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia', credito: 'Crédito' }[doc.metodoPago],
-    totals: { subtotal: doc.base, discount: doc.descuento ?? 0, discountPercent: doc.descuentoPorcentaje ?? 0, itbis: doc.itbis, total: doc.total },
+    totals: {
+      subtotal: doc.base,
+      ...((doc.descuento ?? 0) > 0 ? { grossTotal: Math.round((doc.total + doc.descuento) * 100) / 100 } : {}),
+      discount: doc.descuento ?? 0,
+      discountPercent: doc.descuentoPorcentaje ?? 0,
+      itbis: doc.itbis,
+      total: doc.total,
+    },
     lines: doc.items.map(row => ({ key: row.id, product: { name: row.nombre }, quantity: row.cant,
       unitPrice: row.precioExacto ?? row.precio, subtotal: row.subtotal })) };
 }

@@ -2,7 +2,8 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { toast as ue } from 'sonner';
 import { usePosStore } from './pos-context.jsx';
 import { quoteSale, updateSaleLine, receiptFromConfirmation, saleRequest } from './operational-sales.js';
-import { ReceiptDialog } from '../polymet/components/receipt-dialog.jsx';
+import { ReceiptDialog } from '../components/pos/receipt-dialog.jsx';
+import { businessTodayIso } from '../lib/dates.js';
 
 const SaleDraftContext = createContext(null);
 export const useSaleDraft = () => useContext(SaleDraftContext);
@@ -68,13 +69,16 @@ export function SaleDraftProvider({ children }) {
     () => quoteSale(items, settings.itbisRate, discount),
     [items, settings.itbisRate, discount],
   );
-  const cartQuantities = {};
-  for (const item of items) {
-    cartQuantities[item.product.id] =
-      Math.round(
-        ((cartQuantities[item.product.id] ?? 0) + item.quantity) * 100,
-      ) / 100;
-  }
+  const cartQuantities = useMemo(() => {
+    const map = {};
+    for (const item of items) {
+      map[item.product.id] =
+        Math.round(
+          ((map[item.product.id] ?? 0) + item.quantity) * 100,
+        ) / 100;
+    }
+    return map;
+  }, [items]);
   // Another tab's confirmation or a catalog refresh must not freeze this draft.
   // Checkout still waits for the shared journal; an already-sent sale stays locked.
   const locked = sending || !!failure?.retry;
@@ -141,7 +145,7 @@ export function SaleDraftProvider({ children }) {
       isQuote: true,
       sale: {
         invoiceNumber: "Cotización",
-        dateOnly: new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santo_Domingo" }).format(new Date()),
+        dateOnly: businessTodayIso(),
         customerName: customer?.name ?? "Cliente Contado",
         customerRnc: customer?.rnc ?? "",
         ncf: null,

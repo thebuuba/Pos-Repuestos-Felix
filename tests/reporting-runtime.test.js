@@ -7,7 +7,7 @@ import test from 'node:test';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright-core';
 import pg from 'pg';
-import { businessDay, monthlyActivity, reportData, salesCsv, salesTotal } from '../frontend/src/polymet/lib/sales-analytics.js';
+import { businessDay, monthlyActivity, reportData, salesCsv, salesTotal } from '../frontend/src/lib/sales-analytics.js';
 import { buildOperational } from '../scripts/build-operational.mjs';
 import { migrateDatabase } from '../src/db/migrations.js';
 import { createApp } from '../src/server.js';

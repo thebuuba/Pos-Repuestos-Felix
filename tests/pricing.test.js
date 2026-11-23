@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { adjustedCost, pricesFromFormula } from '../frontend/src/polymet/lib/pricing.js';
+import { adjustedCost, pricesFromFormula } from '../frontend/src/lib/pricing.js';
 import { normalizeFormula, calculateFormula } from '../src/domain/pricing.js';
 
 const f = {costFactor:'1.18',margins:{p1:'35',p2:'25',p3:'15'}};

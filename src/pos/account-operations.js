@@ -32,6 +32,7 @@ export async function voidSale(client, saleId, body, actor, occurredAt = null) {
   const payments = (await client.query('SELECT 1 FROM abonos_cuentas WHERE venta_id=$1 LIMIT 1', [saleId])).rowCount;
   if (payments) fail('Esta factura tiene abonos registrados y no puede anularse.', 409);
 
+  let closedTurnAt = null;
   if (sale.metodo_pago === 'efectivo' && sale.caja_id !== null) {
     const turn = (await client.query('SELECT * FROM turnos_caja WHERE id=$1 FOR UPDATE', [sale.caja_id])).rows[0];
     if (!turn || turn.cerrado_en !== null) {
@@ -42,6 +43,14 @@ export async function voidSale(client, saleId, body, actor, occurredAt = null) {
       fail('La anulación dejaría el efectivo esperado de la caja en negativo.', 409);
     }
     await client.query('UPDATE turnos_caja SET version=version+1 WHERE id=$1', [turn.id]);
+  } else if (sale.caja_id !== null) {
+    const turn = (await client.query('SELECT cerrado_en FROM turnos_caja WHERE id=$1 FOR SHARE', [sale.caja_id])).rows[0];
+    if (turn?.cerrado_en !== null && turn?.cerrado_en !== undefined) {
+      closedTurnAt = turn.cerrado_en;
+      if (occurredAt && new Date(occurredAt).getTime() <= new Date(closedTurnAt).getTime()) {
+        fail('No se puede registrar una anulación con fecha anterior o igual al cierre de su turno de caja.', 409);
+      }
+    }
   }
 
   const details = (await client.query('SELECT * FROM venta_detalles WHERE venta_id=$1 ORDER BY producto_id, id', [saleId])).rows;
@@ -50,9 +59,12 @@ export async function voidSale(client, saleId, body, actor, occurredAt = null) {
     .rows.map(p => [Number(p.id), { ...p, stock: quantityUnits(p.stock, 'las existencias') }]));
 
   await client.query(
-    `UPDATE ventas SET estado='anulada', anulada_en=COALESCE($2::timestamptz,clock_timestamp()),
+    `UPDATE ventas SET estado='anulada',
+      anulada_en=CASE WHEN $5::timestamptz IS NOT NULL AND $2::timestamptz IS NULL
+        THEN GREATEST(clock_timestamp(), $5::timestamptz + interval '1 millisecond')
+        ELSE COALESCE($2::timestamptz,clock_timestamp()) END,
       anulada_por=$3, motivo_anulacion=$4, version=version+1 WHERE id=$1`,
-    [saleId, occurredAt, user, reason],
+    [saleId, occurredAt, user, reason, closedTurnAt],
   );
 
   for (const detail of details) {

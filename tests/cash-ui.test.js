@@ -12,8 +12,8 @@ before(async () => {
     import React from 'react'; import { createRoot } from 'react-dom/client';
     import { MemoryRouter } from 'react-router-dom'; import { Toaster } from 'sonner';
     import { PosStoreContext } from './frontend/src/data/pos-context.jsx';
-    import { CashRegisterPage } from './frontend/src/polymet/pages/cash-register-page.jsx';
-    import { OperationalPointOfSalePage } from './frontend/src/polymet/pages/point-of-sale-page.jsx';
+    import { CashRegisterPage } from './frontend/src/pages/cash-register-page.jsx';
+    import { OperationalPointOfSalePage } from './frontend/src/pages/point-of-sale-page.jsx';
     import { SaleDraftProvider } from './frontend/src/data/sale-draft.jsx';
     const root = createRoot(document.getElementById('root'));
     window.calls = []; window.mode = 'deferred';

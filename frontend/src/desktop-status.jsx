@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CircleCheck, CloudUpload, CloudOff, CloudAlert, RefreshCw, Download } from 'lucide-react';
-import { DialogTrigger } from '@radix-ui/react-dialog';
 import { Button } from './components/ui/button.jsx';
-import { Dialog2, DialogContent2, DialogHeader, DialogTitle2, DialogDescription2 } from './components/ui/dialog.jsx';
+import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './components/ui/dialog.jsx';
 import { cn } from './lib/utils.js';
-import { formatMoney } from './polymet/lib/format.js';
+import { formatMoney } from './lib/format.js';
+import { formatBusinessDateTime } from './lib/dates.js';
 
-const dateFormat = new Intl.DateTimeFormat('es-DO', { timeZone: 'America/Santo_Domingo', dateStyle: 'short', timeStyle: 'short' });
-const dateLabel = value => value && Number.isFinite(new Date(value).getTime()) ? dateFormat.format(new Date(value)) : 'No registrada';
+const dateLabel = value => formatBusinessDateTime(value);
 const connectionLabels = { offline: 'Sin conexión', online: 'Al día', conflict: 'Revisar sincronización', authentication: 'Iniciar sesión' };
 
 function validStatus(value) {
@@ -132,7 +131,7 @@ function DesktopStatus({ onSync }) {
   const stale = status && (status.connection !== 'online' || status.pending > 0 || needsReview);
   const summary = `${label}${status ? `. ${pendingLabel}. Última sincronización: ${dateLabel(status.lastSync)}.${stale ? ' Inventario y saldos sin actualizar.' : ''}` : ''}`;
 
-  return <Dialog2 open={open} onOpenChange={setOpen}>
+  return <Dialog open={open} onOpenChange={setOpen}>
     <span role="status" aria-atomic="true" className="sr-only">{summary}</span>
     <DialogTrigger asChild>
       <Button variant="outline" className={cn('h-10 rounded-xl bg-card', needsReview ? 'text-destructive' : stale ? 'text-amber-700 dark:text-amber-400' : status && 'text-emerald-700 dark:text-emerald-400')}
@@ -142,9 +141,9 @@ function DesktopStatus({ onSync }) {
         {status?.pending > 0 && <span className="rounded-full bg-muted px-1.5 text-xs font-semibold tabular-nums">{status.pending}</span>}
       </Button>
     </DialogTrigger>
-    {open && <DialogContent2 className="max-w-lg overflow-y-auto rounded-2xl" style={{ width: 'calc(100vw - 2rem)', maxHeight: 'calc(100dvh - 2rem)' }}>
-      <DialogHeader><DialogTitle2>Sincronización</DialogTitle2>
-        <DialogDescription2>Consulta cuándo se actualizaron tus datos y las operaciones pendientes.</DialogDescription2></DialogHeader>
+    {open && <DialogContent className="max-w-lg overflow-y-auto rounded-2xl" style={{ width: 'calc(100vw - 2rem)', maxHeight: 'calc(100dvh - 2rem)' }}>
+      <DialogHeader><DialogTitle>Sincronización</DialogTitle>
+        <DialogDescription>Consulta cuándo se actualizaron tus datos y las operaciones pendientes.</DialogDescription></DialogHeader>
       <div className="space-y-2 text-sm">
         <p className="font-semibold">{label}</p>
         {error && <p role="alert" className="text-destructive">{error}</p>}
@@ -186,8 +185,8 @@ function DesktopStatus({ onSync }) {
         </Button>}
         <Button variant="outline" onClick={() => setOpen(false)}>Cerrar</Button>
       </div>
-    </DialogContent2>}
-  </Dialog2>;
+    </DialogContent>}
+  </Dialog>;
 }
 
 function PendingOperations({ refreshKey }) {

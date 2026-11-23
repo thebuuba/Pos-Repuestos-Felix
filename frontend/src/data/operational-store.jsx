@@ -4,8 +4,11 @@ import { catalogCategories } from './catalog-options.js';
 import { purchaseOperation } from './operational-purchases.js';
 import { isOwner, normalizeRole } from '../../../src/pos/roles.js';
 
+const adaptedProductCache = new WeakMap();
 function productFromSnapshot(p, databaseId) {
-  return {
+  let cached = adaptedProductCache.get(p);
+  if (cached && cached.databaseId === databaseId) return cached;
+  cached = {
     id: p.id, version: p.version, databaseId, code: p.codigo, altCodes: p.codigosAlternativos ?? [],
     name: p.nombre, brand: p.marca, category: p.categoria, location: p.ubicacion, minStock: p.stockMinimo,
     taxable: p.gravado, notifyMinStock: p.notificarMinimo ?? true,
@@ -13,6 +16,8 @@ function productFromSnapshot(p, databaseId) {
     pricesExact: p.preciosExactos,
     prices: { p1: p.precio1, p2: p.precio2, p3: p.precio3 },
   };
+  adaptedProductCache.set(p, cached);
+  return cached;
 }
 
 const businessFields = { name: 'empresa', rnc: 'rnc', phone: 'tel', email: 'correo', address: 'direccion' };
@@ -35,10 +40,7 @@ const newestFirst = (a, b) => b.date.localeCompare(a.date) || b.id - a.id;
 const documentLine = row => ({ id: row.id, productId: row.productoId, code: row.codigo, name: row.nombre,
   quantity: row.cant, subtotal: row.subtotal });
 
-function presentation(snapshot) {
-  const state = snapshot?.state;
-  const databaseId = snapshot?.databaseId ?? null;
-  const config = state?.configuracion;
+function presentationDocsAndCash(state, databaseId) {
   const paymentsBySale = new Map();
   const paymentsByPurchase = new Map();
   for (const a of state?.abonos ?? []) {
@@ -111,17 +113,6 @@ function presentation(snapshot) {
     cashSummary: state?.caja?.summary ?? {},
     cashMovements,
     closures: state?.caja?.closures ?? [],
-    products: state?.productos.map(p => productFromSnapshot(p, databaseId)) ?? [],
-    categories: catalogCategories(state),
-    customers: state?.clientes.map(c => ({ ...recordIdentity(c, databaseId), ...readFields(c, customerFields),
-      isCashCustomer: c.esContado, balance: c.deuda })) ?? [],
-    suppliers: state?.suplidores.map(s => ({ ...recordIdentity(s, databaseId), ...readFields(s, supplierFields), balance: s.deuda ?? 0 })) ?? [],
-    formulas: state?.formulas.map(f => ({ ...recordIdentity(f, databaseId), name: f.nombre, costFactor: f.factorCosto,
-      margins: { p1: f.recargo1, p2: f.recargo2, p3: f.recargo3 } })) ?? [],
-    settings: { databaseId, version: config?.version ?? null, business: readFields(config, businessFields),
-      ...readFields(config, billingFields), allowNegativeStock: false,
-      ncf: (state?.secuenciasNcf ?? []).map(n => ({ id: n.id, type: n.tipo, prefix: n.prefijo,
-        start: n.inicio, end: n.fin, current: n.actual, expiresAt: n.vencimiento, active: n.activa, version: n.version })) },
     sales,
     purchases,
     receivables,
@@ -242,15 +233,50 @@ export function OperationalStoreProvider({ client, children }) {
     return () => { active = false; };
   }, [state.snapshot?.databaseId, state.authenticationRequired, state.connection]);
   const { snapshot } = state;
-  const data = useMemo(() => presentation(snapshot), [snapshot]);
+  const rawState = snapshot?.state;
+  const databaseId = snapshot?.databaseId ?? null;
+  const products = useMemo(
+    () => rawState?.productos.map(p => productFromSnapshot(p, databaseId)) ?? [],
+    [rawState?.productos, databaseId],
+  );
+  const categories = useMemo(() => catalogCategories(rawState), [rawState?.catalogo, rawState?.productos]);
+  const customers = useMemo(
+    () => rawState?.clientes.map(c => ({ ...recordIdentity(c, databaseId), ...readFields(c, customerFields),
+      isCashCustomer: c.esContado, balance: c.deuda })) ?? [],
+    [rawState?.clientes, databaseId],
+  );
+  const suppliers = useMemo(
+    () => rawState?.suplidores.map(s => ({ ...recordIdentity(s, databaseId), ...readFields(s, supplierFields), balance: s.deuda ?? 0 })) ?? [],
+    [rawState?.suplidores, databaseId],
+  );
+  const formulas = useMemo(
+    () => rawState?.formulas.map(f => ({ ...recordIdentity(f, databaseId), name: f.nombre, costFactor: f.factorCosto,
+      margins: { p1: f.recargo1, p2: f.recargo2, p3: f.recargo3 } })) ?? [],
+    [rawState?.formulas, databaseId],
+  );
+  const settings = useMemo(() => {
+    const config = rawState?.configuracion;
+    return {
+      databaseId, version: config?.version ?? null, business: readFields(config, businessFields),
+      ...readFields(config, billingFields), allowNegativeStock: false,
+      ncf: (rawState?.secuenciasNcf ?? []).map(n => ({ id: n.id, type: n.tipo, prefix: n.prefijo,
+        start: n.inicio, end: n.fin, current: n.actual, expiresAt: n.vencimiento, active: n.activa, version: n.version })),
+    };
+  }, [rawState?.configuracion, rawState?.secuenciasNcf, databaseId]);
+  const docsAndCash = useMemo(() => presentationDocsAndCash(rawState, databaseId), [
+    rawState?.facturas, rawState?.compras, rawState?.abonos, rawState?.caja, databaseId,
+  ]);
   const role = normalizeRole(account.role);
-  const runtime = {
-    ...state, mode: 'online', databaseId: snapshot?.databaseId ?? null, revision: snapshot?.revision ?? null,
+  const runtime = useMemo(() => ({
+    ...state, mode: 'online', databaseId, revision: snapshot?.revision ?? null,
     role, isOwner: isOwner(role), account,
     accountDetailsAvailable: true, reload: client.reload, retryPending: client.retryPending,
     readArchives: client.readArchives, archivePending: client.archivePending, logout: client.logout,
-  };
-  return <PosStoreContext.Provider value={{ runtime, ...data, ...writes }}>
+  }), [state, databaseId, snapshot?.revision, role, account, client]);
+  const value = useMemo(() => ({
+    runtime, products, categories, customers, suppliers, formulas, settings, ...docsAndCash, ...writes,
+  }), [runtime, products, categories, customers, suppliers, formulas, settings, docsAndCash, writes]);
+  return <PosStoreContext.Provider value={value}>
     {children}
   </PosStoreContext.Provider>;
 }

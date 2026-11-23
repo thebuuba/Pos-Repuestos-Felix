@@ -10,7 +10,7 @@ import { chromium } from 'playwright-core';
 import { temporaryPostgres } from '../tests/postgres.js';
 import { migrateDatabase } from '../src/db/migrations.js';
 import { createApp } from '../src/server.js';
-import { PRODUCTS } from '../frontend/src/polymet/data/pos-data.js';
+import { PRODUCTS } from '../frontend/src/reference/pos-data.js';
 
 const reference = JSON.parse(await readFile(new URL('../docs/design/polymet-reference.json', import.meta.url), 'utf8'));
 const html = await (await fetch(reference.preview, { signal: AbortSignal.timeout(30_000) })).text();

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { Button } from './components/ui/button.jsx';
-import { Dialog2, DialogContent2, DialogHeader, DialogTitle2, DialogDescription2 } from './components/ui/dialog.jsx';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './components/ui/dialog.jsx';
 
 const PwaContext = createContext(null);
 export const usePwa = () => useContext(PwaContext);
@@ -73,11 +73,11 @@ export function PwaProvider({ enabled, children }) {
   };
   return <PwaContext.Provider value={available ? { installed, waiting, error, openHelp: () => setHelp(true) } : null}>
     {children}
-    {available && <Dialog2 open={help} onOpenChange={setHelp}>
-      <DialogContent2 className="pwa-install-dialog">
+    {available && <Dialog open={help} onOpenChange={setHelp}>
+      <DialogContent className="pwa-install-dialog">
         <DialogHeader>
-          <DialogTitle2>Instalar Repuestos Félix</DialogTitle2>
-          <DialogDescription2>La misma aplicación, con todos sus módulos, desde la pantalla de inicio.</DialogDescription2>
+          <DialogTitle>Instalar Repuestos Félix</DialogTitle>
+          <DialogDescription>La misma aplicación, con todos sus módulos, desde la pantalla de inicio.</DialogDescription>
         </DialogHeader>
         {error && <p role="status" className="text-sm text-destructive">{error}</p>}
         {prompt && <Button onClick={install}>Instalar ahora</Button>}
@@ -87,8 +87,8 @@ export function PwaProvider({ enabled, children }) {
           <p><strong>Windows · Edge o Chrome:</strong> usa el icono de instalación de la barra de direcciones o la opción de instalar en el menú del navegador.</p>
           <p className="text-muted-foreground">En la web y la PWA, las ventas, compras, caja y demás cambios requieren conexión y confirmación del servidor. Sin conexión puedes abrir la interfaz; los datos y las operaciones no se guardan para trabajar sin internet.</p>
         </div>
-      </DialogContent2>
-    </Dialog2>}
+      </DialogContent>
+    </Dialog>}
   </PwaContext.Provider>;
 }
 

@@ -1,6 +1,6 @@
 import { normalizeFormula } from '../../../src/domain/pricing.js';
 import { costUnits, quantityUnits } from '../../../src/pos/operation-fields.js';
-import { archiveJournal, journalArchives, journalTransaction } from './operation-journal.js';
+import { archiveJournal, journalArchives, journalStatus, journalTransaction } from './operation-journal.js';
 import { clearCachedSnapshot, readCachedSnapshot, writeCachedSnapshot } from './state-cache.js';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -306,9 +306,28 @@ function checkSnapshot(snapshot) {
 
 function upsertById(existing, incoming) {
   if (!incoming.length) return existing;
-  const byId = new Map(existing.map(row => [row.id, row]));
-  for (const row of incoming) byId.set(row.id, row);
-  return [...byId.values()].sort((a, b) => a.id - b.id);
+  const incomingMap = new Map();
+  for (let i = 0; i < incoming.length; i++) incomingMap.set(incoming[i].id, incoming[i]);
+  const sortedIncoming = [...incomingMap.values()].sort((a, b) => a.id - b.id);
+  const out = [];
+  let i = 0, j = 0;
+  while (i < existing.length && j < sortedIncoming.length) {
+    const a = existing[i], b = sortedIncoming[j];
+    if (a.id < b.id) {
+      out.push(a);
+      i++;
+    } else if (a.id === b.id) {
+      out.push(b);
+      i++;
+      j++;
+    } else {
+      out.push(b);
+      j++;
+    }
+  }
+  while (i < existing.length) out.push(existing[i++]);
+  while (j < sortedIncoming.length) out.push(sortedIncoming[j++]);
+  return out;
 }
 function deleteById(existing, ids) {
   if (!ids.length) return existing;
@@ -501,6 +520,7 @@ export function createPosClient() {
   const retired = new Set();
   const changes = new BroadcastChannel('repuestos-felix-operaciones');
   let active = 0, issued = 0, latestConfirmed = 0, etag = null, disposed = false;
+  let lastConfirmedSync = null;
   let reading = null;
   let skipInitialCache = typeof performance !== 'undefined' &&
     performance.getEntriesByType?.('navigation')?.[0]?.type === 'reload';
@@ -563,13 +583,22 @@ export function createPosClient() {
     listeners.forEach(listener => listener());
   }
 
+  function samePending(a, b) {
+    if (a === b) return true;
+    if (!a || !b) return false;
+    return a.id === b.id && a.status === b.status && a.databaseId === b.databaseId &&
+      a.method === b.method && a.path === b.path && a.body === b.body && a.baseRevision === b.baseRevision;
+  }
+
   async function readPending() {
-    const [pending, archiveCount] = await Promise.all([journalTransaction(), journalArchives(true)]);
-    set({ pending, archiveCount });
-    return pending;
+    const [pending, archiveCount] = await journalStatus();
+    const nextPending = samePending(pending, state.pending) ? state.pending : pending;
+    set({ pending: nextPending, archiveCount });
+    return nextPending;
   }
   function lockSession() {
     etag = null;
+    lastConfirmedSync = null;
     operationError = null;
     clearCachedSnapshot().catch(() => {});
     try { sessionStorage.removeItem('repuestos-felix-venta-pendiente'); } catch { /* Optional receipt ownership. */ }
@@ -598,8 +627,9 @@ export function createPosClient() {
     }
     latestConfirmed = Math.max(latestConfirmed, request);
     etag = tag;
+    lastConfirmedSync = new Date().toISOString();
     if (tag && !skipCacheWrite) writeCachedSnapshot(snapshot, tag);
-    set({ snapshot, connection: 'connected', authenticationRequired: false, readErrorRetryable: false, error: operationError, lastSync: new Date().toISOString() });
+    set({ snapshot, connection: 'connected', authenticationRequired: false, readErrorRetryable: false, error: operationError, lastSync: lastConfirmedSync });
   }
 
   async function working(work, background = false, readSequence = null) {
@@ -659,7 +689,10 @@ export function createPosClient() {
             apply(previous, previousTag, sequence, { skipCacheWrite: true });
           } else if (previous === state.snapshot && previousTag === etag) {
             latestConfirmed = Math.max(latestConfirmed, sequence);
-            set({ connection: 'connected', authenticationRequired: false, readErrorRetryable: false, error: operationError, lastSync: new Date().toISOString() });
+            lastConfirmedSync = new Date().toISOString();
+            if (state.connection !== 'connected' || state.authenticationRequired || state.readErrorRetryable || state.error !== operationError) {
+              set({ connection: 'connected', authenticationRequired: false, readErrorRetryable: false, error: operationError, lastSync: lastConfirmedSync });
+            }
           }
           return previous;
         }
@@ -670,7 +703,7 @@ export function createPosClient() {
         return observed;
       } catch (error) {
         if (response && [400, 401, 403, 409].includes(response.status)) error.recoveryStopped = true;
-        if (sequence === issued) set({ connection: 'unavailable', readErrorRetryable: !response || response.status >= 500 ||
+        if (sequence === issued) set({ connection: 'unavailable', lastSync: lastConfirmedSync, readErrorRetryable: !response || response.status >= 500 ||
           [408, 429].includes(response.status) || error instanceof TypeError || ['TimeoutError', 'AbortError'].includes(error.name) });
         if (error instanceof TypeError || ['TimeoutError', 'AbortError'].includes(error.name)) throw new Error('No se pudo conectar con el servicio.');
         throw error;
@@ -746,6 +779,7 @@ export function createPosClient() {
           headers: {
             'Content-Type': 'application/json',
             'Idempotency-Key': sending.id,
+            'X-Felix-Compact': '1',
             ...(deltaRevision !== null ? { 'X-Felix-Delta': deltaRevision } : {}),
           },
           body: sending.body,
@@ -786,7 +820,7 @@ export function createPosClient() {
             responseTag = etag;
           }
         } else {
-          snapshot = checkSnapshot(raw);
+          snapshot = checkSnapshot(expandCompactSnapshot(raw));
         }
         if (snapshot.databaseId !== sending.databaseId) throw new Error(changedDatabase);
         checkConfirmation(snapshot, sending, resource, expected, payload);
@@ -800,7 +834,7 @@ export function createPosClient() {
         return snapshot;
       } catch (cause) {
         if ((!received || received.status >= 500 || [401, 403].includes(received.status)) && request >= latestConfirmed) {
-          set({ connection: 'unavailable' });
+          set({ connection: 'unavailable', lastSync: lastConfirmedSync });
         }
         if (definitive) {
           cause.definitive = true;

@@ -1,18 +1,15 @@
-// Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
-import { TooltipProvider } from "@radix-ui/react-tooltip";
-import { Tooltip } from "@radix-ui/react-tooltip";
-import { TooltipTrigger } from "@radix-ui/react-tooltip";
-import { TooltipPortal } from "@radix-ui/react-tooltip";
-import { TooltipContent } from "@radix-ui/react-tooltip";
-import { cn } from "../../lib/utils.js";
 import * as React from "react";
-var TooltipProvider2 = TooltipProvider;
-var Tooltip2 = Tooltip;
-var TooltipTrigger2 = TooltipTrigger;
-var TooltipContent2 = React.forwardRef(
+import * as TooltipPrimitive from "@radix-ui/react-tooltip";
+import { cn } from "../../lib/utils.js";
+
+const TooltipProvider = TooltipPrimitive.Provider;
+const Tooltip = TooltipPrimitive.Root;
+const TooltipTrigger = TooltipPrimitive.Trigger;
+
+const TooltipContent = React.forwardRef(
   ({ className, sideOffset = 4, ...props }, ref) => (
-    <TooltipPortal>
-      <TooltipContent
+    <TooltipPrimitive.Portal>
+      <TooltipPrimitive.Content
         ref={ref}
         sideOffset={sideOffset}
         className={cn(
@@ -21,8 +18,9 @@ var TooltipContent2 = React.forwardRef(
         )}
         {...props}
       />
-    </TooltipPortal>
+    </TooltipPrimitive.Portal>
   ),
 );
-TooltipContent2.displayName = TooltipContent.displayName;
-export { TooltipProvider2, Tooltip2, TooltipTrigger2, TooltipContent2 };
+TooltipContent.displayName = TooltipPrimitive.Content.displayName;
+
+export { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent };

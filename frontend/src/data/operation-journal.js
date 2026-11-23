@@ -68,3 +68,15 @@ export function journalArchives(countOnly = false) {
     read.onsuccess = guard(() => result(read.result));
   });
 }
+
+export function journalStatus() {
+  return transact(false, (store, result, guard) => {
+    const range = IDBKeyRange.bound('archivo:', 'archivo:\uffff');
+    let pending = null, archiveCount = 0, done = 0;
+    const finish = () => { if (++done === 2) result([pending, archiveCount]); };
+    const readPending = store.get('pendiente');
+    readPending.onsuccess = guard(() => { pending = readPending.result ?? null; finish(); });
+    const readCount = store.count(range);
+    readCount.onsuccess = guard(() => { archiveCount = readCount.result; finish(); });
+  });
+}
