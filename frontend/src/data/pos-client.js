@@ -80,6 +80,8 @@ function checkTarget(method, path) {
   if (method === 'PUT' && path === '/api/ncf') return { resource: 'ncf', target: null };
   const voidMatch = typeof path === 'string' && /^\/api\/ventas\/([1-9]\d*)\/anular$/.exec(path);
   if (method === 'POST' && voidMatch && id(Number(voidMatch[1]))) return { resource: 'ventas/anular', target: Number(voidMatch[1]) };
+  const voidPurchaseMatch = typeof path === 'string' && /^\/api\/compras\/([1-9]\d*)\/anular$/.exec(path);
+  if (method === 'POST' && voidPurchaseMatch && id(Number(voidPurchaseMatch[1]))) return { resource: 'compras/anular', target: Number(voidPurchaseMatch[1]) };
   if (method === 'POST' && path === '/api/taller') return { resource: 'taller', target: null };
   const workshopMatch = typeof path === 'string' && /^\/api\/taller\/([1-9]\d*)\/(despachar|devolver|cancelar|facturar)$/.exec(path);
   if (method === 'POST' && workshopMatch && id(Number(workshopMatch[1]))) return { resource: 'taller/' + workshopMatch[2], target: Number(workshopMatch[1]) };
@@ -96,7 +98,7 @@ function checkPayload(method, resource, payload) {
   const mutable = resourceFields[resource];
   const invalid = () => { throw new Error('Los campos de la solicitud no son válidos.'); };
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) invalid();
-  if (resource === 'ventas/anular') {
+  if (resource === 'ventas/anular' || resource === 'compras/anular') {
     const fields = { version: id, motivo: name };
     if (Object.keys(payload).length !== 2 || !complete(payload, fields)) invalid();
     return;
@@ -537,6 +539,13 @@ function checkConfirmation(snapshot, packet, resource, expected, payload) {
     }
     return;
   }
+  if (resource === 'compras/anular') {
+    if (!proof.replayed) {
+      const row = snapshot.state.compras.find(item => item.id === target);
+      if (!row || row.estado !== 'anulada') throw new Error(unconfirmed);
+    }
+    return;
+  }
   if (resource === 'taller' || resource.startsWith('taller/')) {
     if (resource === 'taller/facturar') {
       const saleId = snapshot.result?.ventaId;
@@ -795,7 +804,7 @@ export function createPosClient() {
         apply(observed, response.headers.get('ETag'), sequence);
         return observed;
       } catch (error) {
-        if (response && [400, 401, 403, 409].includes(response.status)) error.recoveryStopped = true;
+        if (response && [400, 401, 403, 404, 409].includes(response.status)) error.recoveryStopped = true;
         if (sequence === issued) set({ connection: 'unavailable', lastSync: lastConfirmedSync, readErrorRetryable: !response || response.status >= 500 ||
           [408, 429].includes(response.status) || error instanceof TypeError || ['TimeoutError', 'AbortError'].includes(error.name) });
         if (error instanceof TypeError || ['TimeoutError', 'AbortError'].includes(error.name)) throw new Error('No se pudo conectar con el servicio.');
@@ -881,7 +890,7 @@ export function createPosClient() {
         if (received.status !== 200) {
           if (received.status === 401 && request >= latestConfirmed) lockSession();
           const body = await serviceError(received);
-          const proven = [400, 409].includes(received.status) && matchesPacket(body?.rejection, sending);
+          const proven = [400, 404, 409].includes(received.status) && matchesPacket(body?.rejection, sending);
           // Even an unproven conflict may announce a restored generation.
           if (proven || received.status === 409) {
             const observed = await readSnapshot({ fresh: true }).catch(() => null);

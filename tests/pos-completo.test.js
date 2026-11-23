@@ -291,9 +291,9 @@ test('API transaccional v7: códigos alternativos, descuentos, anulaciones, abon
   });
   assert.equal(updatedCfg.state.configuracion.metaDiaria, 15000);
 
-  // 8. Respaldo relacional v8 y restauración completa en base desechable
+  // 8. Respaldo relacional v9 y restauración completa en base desechable
   const exported = await readSnapshot(pool, 'Prueba', true);
-  assert.equal(exported.version, 8);
+  assert.equal(exported.version, 9);
   assert.equal(exported.tables.productos_codigos.length, 2);
   assert.equal(exported.tables.abonos_cuentas.length, 2);
   assert.equal(exported.tables.secuencias_ncf.length, 1);

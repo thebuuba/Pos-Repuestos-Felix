@@ -99,7 +99,7 @@ test('la compra conserva códigos literales, precios exactos, totales por línea
   await history.getByText('Suplidor de prueba', { exact: true }).waitFor();
   await history.getByRole('button').focus();
   await page.keyboard.press('Enter');
-  await main.getByText(/999,999,999,998\.9876/).waitFor();
+  await page.getByRole('dialog').getByText(/999,999,999,998\.9876/).waitFor();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   assert.deepEqual(errors, []);
 });
@@ -226,4 +226,96 @@ test('dos altas simultáneas del mismo código solo confirman la compra que lo e
   const all = (await (await fetch(origin + '/api/state')).json()).state;
   assert.deepEqual(all.compras.filter(row => row.numero.startsWith('Disputa ')).map(row => row.numero), [product.nombre]);
   assert.equal(all.movimientos.filter(m => m.productoId === product.id && m.tipo === 'compra').length, 1);
+});
+
+test('compras permite buscar suplidor, buscar pieza por nombre y subir cantidad de 1 en 1', async t => {
+  await write('suplidores', { nombre: 'Importadora Cibao Express', rnc: '131444555', contacto: 'Ana' });
+  await write('productos', {
+    codigo: 'BUJ-NGK-9', nombre: 'Bujía NGK Punta Platino', marca: 'NGK',
+    costo: '125.0000', precio1: '250.0000', precio2: '225.0000', precio3: '200.0000', stock: '6',
+  });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  t.after(() => page.close());
+  await page.goto(origin + '/compras');
+  const main = page.getByRole('main');
+
+  // 1. Buscar suplidor por RNC en el combobox y elegir con Enter
+  await main.getByRole('combobox', { name: 'Suplidor', exact: true }).click();
+  const supSearch = main.getByLabel('Buscar suplidor');
+  await supSearch.fill('131444555');
+  await supSearch.press('Enter');
+  assert.match(await main.getByRole('combobox', { name: 'Suplidor', exact: true }).textContent(), /Importadora Cibao Express/);
+
+  // 2. Sin escribir código nuevo, Descripción no estorba; buscar pieza por nombre en el buscador único
+  assert.equal(await main.getByLabel('Descripción', { exact: true }).count(), 0);
+  await main.getByLabel('Código', { exact: true }).fill('Platino');
+  await main.getByRole('option', { name: /Bujía NGK Punta Platino/i }).click();
+  assert.equal(await main.getByLabel('Código', { exact: true }).inputValue(), 'BUJ-NGK-9');
+  assert.equal(await main.getByLabel('Costo unitario').inputValue(), '125.0000');
+  assert.equal(await main.getByLabel('Descripción', { exact: true }).count(), 0);
+
+  // 3. Flecha arriba en Cantidad debe subir 1 -> 2 -> 3 (no 1.01)
+  const qty = main.getByLabel('Cantidad', { exact: true });
+  assert.equal(await qty.inputValue(), '1');
+  await qty.press('ArrowUp');
+  assert.equal(await qty.inputValue(), '2');
+  await qty.press('ArrowUp');
+  assert.equal(await qty.inputValue(), '3');
+});
+
+test('ver factura de compra en modal, anular compra a crédito (restando inventario y deuda CxP) y re-subir con el mismo número', async t => {
+  const sup = await write('suplidores', { nombre: 'Suplidor Anulable', rnc: '130999111', diasCredito: 30 });
+  const prod = await write('productos', {
+    codigo: 'ANUL-COMP-1', nombre: 'Amortiguador delantero',
+    costo: '500.0000', precio1: '1000.0000', precio2: '900.0000', precio3: '800.0000', stock: '4',
+  });
+  const created = await write('compras', {
+    suplidorId: sup.result.id, numero: 'FAC-ERR-01', condicion: 'Credito', vencimiento: '2030-12-01',
+    items: [{
+      productoId: prod.result.id, versionProducto: 1, codigo: 'ANUL-COMP-1', nombre: 'Amortiguador delantero',
+      cantidad: '3', costo: '500.0000', precio1: '1000.0000', precio2: '900.0000', precio3: '800.0000',
+    }],
+  });
+  assert.equal(created.state.productos.find(p => p.id === prod.result.id).stock, 7);
+  assert.equal(created.state.suplidores.find(s => s.id === sup.result.id).deuda, 1500);
+
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  t.after(() => page.close());
+  await page.goto(origin + '/compras');
+  const main = page.getByRole('main');
+
+  // 1. Tocar la fila de FAC-ERR-01 -> se abre el modal con forma de factura completa
+  await main.getByRole('row').filter({ hasText: 'FAC-ERR-01' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('heading', { name: /Factura de compra FAC-ERR-01/i }).waitFor({ state: 'visible' });
+  await dialog.getByText('Suplidor Anulable').first().waitFor({ state: 'visible' });
+  await dialog.getByText('130999111').waitFor({ state: 'visible' });
+  await dialog.getByText('Amortiguador delantero').waitFor({ state: 'visible' });
+  await dialog.getByRole('button', { name: 'Imprimir' }).waitFor({ state: 'visible' });
+
+  // 2. Anular la compra desde el modal con motivo
+  await dialog.getByRole('button', { name: 'Anular compra' }).click();
+  await dialog.getByLabel('Motivo de anulación').fill('Cantidad equivocada en factura');
+  await dialog.getByRole('button', { name: 'Confirmar anulación' }).click();
+  await dialog.getByText('Compra anulada').waitFor({ state: 'visible' });
+  await dialog.getByText(/Cantidad equivocada en factura/).waitFor({ state: 'visible' });
+  await dialog.getByRole('button', { name: 'Cerrar' }).click();
+
+  // 3. Verificar inventario revertido (7 -> 4), deuda CxP en 0 y que permite re-subir FAC-ERR-01
+  const afterVoid = (await (await fetch(origin + '/api/state')).json()).state;
+  const prodAfter = afterVoid.productos.find(p => p.id === prod.result.id);
+  assert.equal(prodAfter.stock, 4);
+  assert.equal(afterVoid.suplidores.find(s => s.id === sup.result.id).deuda, 0);
+  assert.ok(afterVoid.movimientos.some(m => m.tipo === 'anulacion_compra' && m.cantidad === -3 && m.existencia_posterior === 4));
+
+  // Re-subir FAC-ERR-01 corregida con 2 unidades debe permitirse sin conflicto 409
+  const reuploaded = await write('compras', {
+    suplidorId: sup.result.id, numero: 'FAC-ERR-01', condicion: 'Credito', vencimiento: '2030-12-01',
+    items: [{
+      productoId: prod.result.id, versionProducto: prodAfter.version, codigo: 'ANUL-COMP-1', nombre: 'Amortiguador delantero',
+      cantidad: '2', costo: '500.0000', precio1: '1000.0000', precio2: '900.0000', precio3: '800.0000',
+    }],
+  });
+  assert.equal(reuploaded.state.productos.find(p => p.id === prod.result.id).stock, 6);
+  assert.equal(reuploaded.state.suplidores.find(s => s.id === sup.result.id).deuda, 1000);
 });

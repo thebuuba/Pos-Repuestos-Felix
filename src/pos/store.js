@@ -5,7 +5,7 @@ import { OperationError, fail, text, productCode, id, money, cents, quantityUnit
 import { contactOperation, settingsOperation } from './contact-operations.js';
 import { backupLayout, exportBackup, rows, tables } from './relational-backup.js';
 import { cashOperation, cashPresentation, lockCash, validateCashRestore } from './cash-operations.js';
-import { accountPayment, addDaysIso, ncfSequenceOperation, nextNcfIfActive, voidSale } from './account-operations.js';
+import { accountPayment, addDaysIso, ncfSequenceOperation, nextNcfIfActive, voidPurchase, voidSale } from './account-operations.js';
 import {
   billWorkshopAccount, cancelWorkshopAccount, dispatchWorkshopItems,
   openWorkshopAccount, presentWorkshopAccount, returnWorkshopItem,
@@ -79,6 +79,10 @@ function presentPurchase(c, items) {
     suplidor: c.suplidor_nombre, numero: c.numero, fecha: displayDate(c.fecha), fechaISO: date(c.fecha),
     condicion: c.condicion, vencimiento: c.vencimiento ? date(c.vencimiento) : null,
     total: Number(c.total), pagado: Number(c.pagado ?? 0),
+    estado: c.estado ?? 'activa',
+    anuladaEn: c.anulada_en ? iso(c.anulada_en) : null,
+    anuladaPor: c.anulada_por ?? null,
+    motivoAnulacion: c.motivo_anulacion ?? null,
     items,
   };
 }
@@ -160,12 +164,12 @@ export async function snapshot(client, databaseLabel, { compact = false } = {}) 
       WHERE v.condicion='Credito' AND v.estado='activa' GROUP BY v.cliente_id
     ),
     supplier_buys AS (
-      SELECT suplidor_id, sum(total) AS total FROM public.compras WHERE condicion='Credito' GROUP BY suplidor_id
+      SELECT suplidor_id, sum(total) AS total FROM public.compras WHERE condicion='Credito' AND estado='activa' GROUP BY suplidor_id
     ),
     supplier_paid AS (
       SELECT c.suplidor_id, sum(a.monto) AS pagado
       FROM public.abonos_cuentas a JOIN public.compras c ON c.id=a.compra_id
-      WHERE c.condicion='Credito' GROUP BY c.suplidor_id
+      WHERE c.condicion='Credito' AND c.estado='activa' GROUP BY c.suplidor_id
     ),
     sale_lines AS (
       SELECT venta_id, json_agg(json_build_object(
@@ -235,6 +239,7 @@ export async function snapshot(client, databaseLabel, { compact = false } = {}) 
         'id', c.id, 'version', c.version, 'suplidor_id', c.suplidor_id, 'suplidor_nombre', c.suplidor_nombre,
         'numero', c.numero, 'fecha', c.fecha::text, 'condicion', c.condicion, 'vencimiento', c.vencimiento::text,
         'total', c.total::text, 'pagado', COALESCE(pp.pagado, 0)::double precision,
+        'estado', c.estado, 'anulada_en', c.anulada_en, 'anulada_por', c.anulada_por, 'motivo_anulacion', c.motivo_anulacion,
         'items', COALESCE(pl.items, '[]'::json)
       ) ORDER BY c.id) FROM public.compras c LEFT JOIN purchase_paid pp ON pp.compra_id=c.id LEFT JOIN purchase_lines pl ON pl.compra_id=c.id), '[]'::json),
       'abonos_cuentas', COALESCE((SELECT json_agg(json_build_object(
@@ -353,8 +358,8 @@ async function fetchSuppliersSlice(client, ids) {
       'id', s.id, 'version', s.version, 'nombre', s.nombre, 'rnc', s.rnc, 'tel', s.tel,
       'correo', s.correo, 'contacto', s.contacto, 'diasCredito', s.dias_credito, 'formulaId', s.formula_id,
       'deuda', (
-        COALESCE((SELECT sum(c.total) FROM public.compras c WHERE c.suplidor_id=s.id AND c.condicion='Credito'), 0)
-        - COALESCE((SELECT sum(a.monto) FROM public.abonos_cuentas a JOIN public.compras c ON c.id=a.compra_id WHERE c.suplidor_id=s.id AND c.condicion='Credito'), 0)
+        COALESCE((SELECT sum(c.total) FROM public.compras c WHERE c.suplidor_id=s.id AND c.condicion='Credito' AND c.estado='activa'), 0)
+        - COALESCE((SELECT sum(a.monto) FROM public.abonos_cuentas a JOIN public.compras c ON c.id=a.compra_id WHERE c.suplidor_id=s.id AND c.condicion='Credito' AND c.estado='activa'), 0)
       )::double precision
     ) ORDER BY s.id), '[]'::json) AS rows
     FROM public.suplidores s WHERE s.id = ANY($1::bigint[]) AND s.activo
@@ -393,6 +398,7 @@ async function fetchPurchasesSlice(client, ids) {
       'numero', c.numero, 'fecha', c.fecha::text, 'condicion', c.condicion, 'vencimiento', c.vencimiento::text,
       'total', c.total::text,
       'pagado', COALESCE((SELECT sum(a.monto) FROM public.abonos_cuentas a WHERE a.compra_id=c.id), 0)::double precision,
+      'estado', c.estado, 'anulada_en', c.anulada_en, 'anulada_por', c.anulada_por, 'motivo_anulacion', c.motivo_anulacion,
       'items', COALESCE((SELECT json_agg(json_build_object(
         'id', d.id, 'productoId', d.producto_id, 'codigo', d.codigo, 'nombre', d.nombre,
         'cant', d.cantidad::double precision, 'subtotal', d.total::double precision,
@@ -486,6 +492,15 @@ async function buildDelta(client, method, path, body, result, databaseLabel, bas
     changes.suplidoresUpsert = await fetchSuppliersSlice(client, [Number(body.suplidorId)]);
     changes.productosUpsert = await fetchProductsSlice(client, productIds);
     changes.catalogo = (await client.query('SELECT pos_privado.netpos_opciones() AS opciones')).rows[0].opciones;
+    if (priorMovementId !== null) changes.movimientosUpsert = await fetchMovementsSince(client, priorMovementId);
+  } else if (method === 'POST' && /^\/api\/compras\/\d+\/anular$/.test(path)) {
+    const [buyRow] = await fetchPurchasesSlice(client, [result.id]);
+    const productIds = [...new Set((buyRow?.items ?? []).map(i => Number(i.productoId)))];
+    if (buyRow) {
+      changes.comprasUpsert = [buyRow];
+      changes.suplidoresUpsert = await fetchSuppliersSlice(client, [buyRow.suplidorId]);
+    }
+    changes.productosUpsert = await fetchProductsSlice(client, productIds);
     if (priorMovementId !== null) changes.movimientosUpsert = await fetchMovementsSince(client, priorMovementId);
   } else if (/^\/api\/productos(?:\/\d+)?$/.test(path)) {
     if (method === 'DELETE') changes.productosDelete = [result.id];
@@ -833,7 +848,7 @@ async function restore(client, body) {
       UNION ALL SELECT 1 FROM movimientos_inventario m JOIN venta_detalles d ON d.id=m.venta_detalle_id WHERE m.producto_id<>d.producto_id OR m.cantidad<>-d.cantidad
       UNION ALL SELECT 1 FROM movimientos_inventario m JOIN compra_detalles d ON d.id=m.compra_detalle_id WHERE m.producto_id<>d.producto_id OR m.cantidad<>d.cantidad
       UNION ALL SELECT 1 FROM ventas v JOIN (SELECT venta_id,sum(monto) AS pagado FROM abonos_cuentas WHERE venta_id IS NOT NULL GROUP BY venta_id) a ON a.venta_id=v.id WHERE v.condicion<>'Credito' OR v.estado<>'activa' OR a.pagado>v.total
-      UNION ALL SELECT 1 FROM compras c JOIN (SELECT compra_id,sum(monto) AS pagado FROM abonos_cuentas WHERE compra_id IS NOT NULL GROUP BY compra_id) a ON a.compra_id=c.id WHERE c.condicion<>'Credito' OR a.pagado>c.total
+      UNION ALL SELECT 1 FROM compras c JOIN (SELECT compra_id,sum(monto) AS pagado FROM abonos_cuentas WHERE compra_id IS NOT NULL GROUP BY compra_id) a ON a.compra_id=c.id WHERE c.condicion<>'Credito' OR c.estado<>'activa' OR a.pagado>c.total
       LIMIT 1`);
     if (invalid.rowCount) fail('El respaldo contiene totales o movimientos inconsistentes.');
     await validateCashRestore(client);
@@ -849,6 +864,8 @@ async function execute(client, method, path, body, actor, occurredAt, context) {
   if (method === 'POST' && ['/api/caja/abrir','/api/caja/cerrar','/api/caja/movimiento'].includes(path)) return cashOperation(client, path, body, actor, occurredAt);
   const voidMatch = path.match(/^\/api\/ventas\/(\d+)\/anular$/);
   if (method === 'POST' && voidMatch) return voidSale(client, id(Number(voidMatch[1]), 'la factura'), body, actor, occurredAt);
+  const voidPurchaseMatch = path.match(/^\/api\/compras\/(\d+)\/anular$/);
+  if (method === 'POST' && voidPurchaseMatch) return voidPurchase(client, id(Number(voidPurchaseMatch[1]), 'la compra'), body, actor, occurredAt);
   if (method === 'POST' && path === '/api/taller') return openWorkshopAccount(client, body, actor, occurredAt);
   const workshopMatch = path.match(/^\/api\/taller\/(\d+)\/(despachar|devolver|cancelar|facturar)$/);
   if (method === 'POST' && workshopMatch) {
@@ -901,7 +918,7 @@ export async function writeOperation(pool, method, path, body, key, databaseLabe
     } else {
       if (body.databaseId !== system.database_id) fail('La base cambió. Actualiza los datos antes de guardar.', 409);
       if (Number.isSafeInteger(context.deltaBaseRevision) && !context.versionOnly && !context.represent &&
-          (path === '/api/ventas' || path === '/api/compras' || /^\/api\/ventas\/\d+\/anular$/.test(path) || /^\/api\/productos(?:\/\d+)?$/.test(path) ||
+          (path === '/api/ventas' || path === '/api/compras' || /^\/api\/ventas\/\d+\/anular$/.test(path) || /^\/api\/compras\/\d+\/anular$/.test(path) || /^\/api\/productos(?:\/\d+)?$/.test(path) ||
            path === '/api/taller' || /^\/api\/taller\/\d+\/(despachar|devolver|cancelar)$/.test(path))) {
         priorMovementId = Number((await client.query('SELECT COALESCE(max(id),0) AS id FROM public.movimientos_inventario')).rows[0].id);
       }

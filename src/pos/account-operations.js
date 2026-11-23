@@ -83,6 +83,60 @@ export async function voidSale(client, saleId, body, actor, occurredAt = null) {
   return { id: saleId, voided: true };
 }
 
+export async function voidPurchase(client, purchaseId, body, actor, occurredAt = null) {
+  const expectedVersion = id(body.version, 'la versión de la compra');
+  const reason = text(body.motivo, 'el motivo de anulación');
+  const user = text(actor?.name || actor?.id, 'el usuario');
+
+  const purchase = (await client.query('SELECT * FROM compras WHERE id=$1 FOR UPDATE', [purchaseId])).rows[0];
+  if (!purchase) fail('La compra no existe.', 404);
+  if (purchase.estado === 'anulada') fail('Esta compra ya fue anulada.', 409);
+  if (Number(purchase.version) !== expectedVersion) fail('La compra cambió. Actualiza antes de anular.', 409);
+
+  const payments = (await client.query('SELECT 1 FROM abonos_cuentas WHERE compra_id=$1 LIMIT 1', [purchaseId])).rowCount;
+  if (payments) fail('Esta compra tiene pagos registrados y no puede anularse.', 409);
+
+  const details = (await client.query('SELECT * FROM compra_detalles WHERE compra_id=$1 ORDER BY producto_id, id', [purchaseId])).rows;
+  const needed = new Map();
+  for (const d of details) {
+    const pid = Number(d.producto_id);
+    const qty = quantityUnits(d.cantidad, 'la cantidad', 0.01);
+    needed.set(pid, (needed.get(pid) ?? 0n) + qty);
+  }
+  const productIds = [...needed.keys()].sort((a, b) => a - b);
+  const products = new Map((await client.query('SELECT * FROM productos WHERE id=ANY($1::bigint[]) ORDER BY id FOR UPDATE', [productIds]))
+    .rows.map(p => [Number(p.id), { ...p, stock: quantityUnits(p.stock, 'las existencias') }]));
+
+  for (const [pid, qty] of needed) {
+    const product = products.get(pid);
+    if (!product) fail('Falta un producto asociado a la compra.', 409);
+    if (product.stock < qty) {
+      fail(`No hay existencias suficientes de «${product.nombre}» para revertir esta compra (parte de la mercancía ya salió del inventario).`, 409);
+    }
+  }
+
+  await client.query(
+    `UPDATE compras SET estado='anulada',
+      anulada_en=COALESCE($2::timestamptz,clock_timestamp()),
+      anulada_por=$3, motivo_anulacion=$4, version=version+1 WHERE id=$1`,
+    [purchaseId, occurredAt, user, reason],
+  );
+
+  for (const detail of details) {
+    const product = products.get(Number(detail.producto_id));
+    const qty = quantityUnits(detail.cantidad, 'la cantidad', 0.01);
+    product.stock -= qty;
+    const stockText = quantityText(product.stock);
+    await client.query('UPDATE productos SET stock=$2, version=version+1, actualizado_en=now() WHERE id=$1', [product.id, stockText]);
+    await client.query(
+      `INSERT INTO movimientos_inventario(producto_id,cantidad,existencia_posterior,tipo,venta_detalle_id,compra_detalle_id,motivo,creado_en)
+       VALUES($1,$2,$3,'anulacion_compra',NULL,NULL,$4,COALESCE($5::timestamptz,clock_timestamp()))`,
+      [product.id, quantityText(-qty), stockText, `Anulación compra #${purchaseId}: ${reason}`.slice(0, 2000), occurredAt],
+    );
+  }
+  return { id: purchaseId, voided: true };
+}
+
 export async function accountPayment(client, kind, body, actor, occurredAt = null) {
   if (!['cobro', 'pago'].includes(kind)) fail('Tipo de abono inválido.');
   const amount = cents(body.monto, 'el monto');
@@ -116,9 +170,9 @@ export async function accountPayment(client, kind, body, actor, occurredAt = nul
   } else {
     docId = id(body.compraId, 'la compra');
     const expectedVersion = id(body.version, 'la versión de la compra');
-    const purchase = (await client.query('SELECT id,total,condicion,version FROM compras WHERE id=$1 FOR UPDATE', [docId])).rows[0];
+    const purchase = (await client.query('SELECT id,total,condicion,estado,version FROM compras WHERE id=$1 FOR UPDATE', [docId])).rows[0];
     if (!purchase) fail('La compra no existe.', 404);
-    if (purchase.condicion !== 'Credito') fail('Solo se pueden registrar pagos en compras a crédito.', 409);
+    if (purchase.estado !== 'activa' || purchase.condicion !== 'Credito') fail('Solo se pueden registrar pagos en compras activas a crédito.', 409);
     if (Number(purchase.version) !== expectedVersion) fail('La compra cambió. Actualiza antes de registrar el pago.', 409);
     const paidRow = (await client.query('SELECT COALESCE(sum(monto),0)::text AS pagado FROM abonos_cuentas WHERE compra_id=$1', [docId])).rows[0];
     const remaining = cents(purchase.total) - cents(paidRow.pagado);

@@ -199,7 +199,7 @@ test('cuentas abiertas de taller: inventario en despacho, precio congelado, devo
 
   // 9. Respaldo v8 y restauración íntegra en db2 + compatibilidad hacia atrás con respaldo v7
   const backupV8 = await readSnapshot(pool, 'Taller', true);
-  assert.equal(backupV8.version, 8);
+  assert.equal(backupV8.version, 9);
   assert.equal(backupV8.tables.cuentas_taller.length, 3);
   assert.equal(backupV8.tables.cuentas_taller_items.length, 5);
   const init2 = await readSnapshot(pool2, 'Restaurada');

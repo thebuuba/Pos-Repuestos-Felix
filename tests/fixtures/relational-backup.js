@@ -11,11 +11,17 @@ function centAmount(value) {
 }
 
 export function historicalBackup(backup, version) {
-  assert.equal(backup.version, 8);
-  assert.ok([2, 3, 4, 5, 6, 7].includes(version));
+  assert.equal(backup.version, 9);
+  assert.ok([2, 3, 4, 5, 6, 7, 8].includes(version));
   const historical = structuredClone(backup);
   historical.version = version;
   const { tables } = historical;
+  if (version < 9) {
+    for (const row of tables.compras) {
+      for (const col of ['estado', 'anulada_en', 'anulada_por', 'motivo_anulacion']) delete row[col];
+    }
+  }
+  if (version === 8) return historical;
   if (version < 8) {
     delete tables.cuentas_taller;
     delete tables.cuentas_taller_items;

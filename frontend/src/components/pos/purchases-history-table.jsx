@@ -1,19 +1,23 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
 import { SectionCard } from "./section-card.jsx";
-import { ReceiptText } from "lucide-react";
+import { Eye, ReceiptText } from "lucide-react";
 import { EmptyState } from "./section-card.jsx";
 import { formatDate } from "../../lib/accounts.js";
 import { cn } from "../../lib/utils.js";
-import { formatMoney, formatUnitMoney, formatNumber } from "../../lib/format.js";
-import { ChevronDown } from "lucide-react";
-import { Fragment, useMemo, useState } from "react";
+import { formatMoney } from "../../lib/format.js";
+import { useMemo, useState } from "react";
 import { Button } from "../ui/button.jsx";
+import { PurchaseInvoiceDialog } from "./purchase-invoice-dialog.jsx";
 const PAGE_SIZE = 50;
-function PurchasesHistoryTable({ purchases, suppliers }) {
-  const [expanded, setExpanded] = useState(null);
+function PurchasesHistoryTable({ purchases, suppliers, business, canVoid = false, onVoidPurchase }) {
+  const [selectedId, setSelectedId] = useState(null);
   const [page, setPage] = useState(1);
-  const supplierNames = useMemo(() => new Map(suppliers.map((s) => [s.id, s.name])), [suppliers]);
-  const supplierName = (id) => supplierNames.get(id) ?? "—";
+  const suppliersById = useMemo(() => new Map(suppliers.map((s) => [s.id, s])), [suppliers]);
+  const supplierName = (id) => suppliersById.get(id)?.name ?? "—";
+  const selectedPurchase = useMemo(
+    () => purchases.find((p) => p.id === selectedId) ?? null,
+    [purchases, selectedId],
+  );
   const totalPages = Math.max(1, Math.ceil(purchases.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const visible = useMemo(
@@ -23,7 +27,7 @@ function PurchasesHistoryTable({ purchases, suppliers }) {
   return (
     <SectionCard
       title="Compras registradas"
-      description="Toca una compra para ver sus artículos."
+      description="Toca una compra para ver su factura, imprimirla o anularla."
       icon={ReceiptText}
       bodyClassName="p-0 pt-4"
     >
@@ -47,81 +51,63 @@ function PurchasesHistoryTable({ purchases, suppliers }) {
             </thead>
             <tbody>
               {visible.map((p) => {
-                const open = expanded === p.id;
+                const isVoided = p.status === "anulada";
                 return (
-                  <Fragment key={p.id}>
-                    <tr
-                      onClick={() => setExpanded(open ? null : p.id)}
-                      className="cursor-pointer border-b border-border hover:bg-muted/30"
-                    >
-                      <td className="px-5 py-3 font-medium">
-                        <button type="button" aria-expanded={open} aria-label={`Artículos de ${p.number}`}>{p.number}</button>
-                      </td>
-                      <td className="px-3 py-3 text-muted-foreground">
-                        {formatDate(p.date)}
-                      </td>
-                      <td className="px-3 py-3">
-                        {p.supplierName ?? supplierName(p.supplierId)}
-                      </td>
-                      <td className="px-3 py-3 font-mono text-xs text-muted-foreground">
-                        {p.supplierInvoice || "—"}
-                      </td>
-                      <td className="px-3 py-3">
-                        <span
-                          className={cn(
-                            "rounded-full border px-2.5 py-0.5 text-[11px] font-medium",
-                            p.condition === "credito"
-                              ? "border-foreground/50"
-                              : p.condition === "contado" ? "border-emerald-600/40 text-emerald-700 dark:text-emerald-400" : "text-muted-foreground",
-                          )}
-                        >
-                          {p.condition === "credito" ? "Crédito" : p.condition === "contado" ? "Pagada" : "Sin registrar"}
-                        </span>
-                      </td>
-                      <td className="px-3 py-3 text-right font-semibold tabular-nums">
-                        {formatMoney(p.total)}
-                      </td>
-                      <td className="px-5 py-3">
-                        <ChevronDown
-                          className={cn(
-                            "h-4 w-4 text-muted-foreground transition-transform",
-                            open && "rotate-180",
-                          )}
-                        />
-                      </td>
-                    </tr>
-                    {open && (
-                      <tr className="border-b border-border bg-muted/30">
-                        <td colSpan={7} className="px-5 py-3">
-                          <div className="grid gap-1.5">
-                            {p.lines.map((l, index) => (
-                              <div
-                                className="flex flex-wrap items-center justify-between gap-2 text-xs"
-                                key={l.id ?? index}
-                              >
-                                <span>
-                                  <span className="font-mono text-muted-foreground">
-                                    {l.code}
-                                  </span>{" "}
-                                  {l.name}
-                                </span>
-                                <span className="tabular-nums text-muted-foreground">
-                                  {formatNumber(l.quantity)}
-                                  {" × "}
-                                  {formatUnitMoney(l.costExact ?? l.cost)}
-                                  {" · P1 "}
-                                  {formatUnitMoney(l.pricesExact?.p1 ?? l.prices.p1)}
-                                  {" · P2"} {formatUnitMoney(l.pricesExact?.p2 ?? l.prices.p2)}
-                                  {" · P3 "}
-                                  {formatUnitMoney(l.pricesExact?.p3 ?? l.prices.p3)}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </td>
-                      </tr>
+                  <tr
+                    key={p.id}
+                    onClick={() => setSelectedId(p.id)}
+                    className={cn(
+                      "cursor-pointer border-b border-border hover:bg-muted/30",
+                      isVoided && "opacity-65",
                     )}
-                  </Fragment>
+                  >
+                    <td className="px-5 py-3 font-medium">
+                      <button
+                        type="button"
+                        aria-label={`Ver factura de ${p.number}`}
+                        className="text-left hover:text-primary"
+                      >
+                        {p.number}
+                      </button>
+                    </td>
+                    <td className="px-3 py-3 text-muted-foreground">
+                      {formatDate(p.date)}
+                    </td>
+                    <td className="px-3 py-3">
+                      {p.supplierName ?? supplierName(p.supplierId)}
+                    </td>
+                    <td className="px-3 py-3 font-mono text-xs text-muted-foreground">
+                      {p.supplierInvoice || "—"}
+                    </td>
+                    <td className="px-3 py-3">
+                      <span
+                        className={cn(
+                          "rounded-full border px-2.5 py-0.5 text-[11px] font-medium",
+                          isVoided
+                            ? "border-destructive/40 bg-destructive/10 text-destructive"
+                            : p.condition === "credito"
+                              ? "border-foreground/50"
+                              : p.condition === "contado"
+                                ? "border-emerald-600/40 text-emerald-700 dark:text-emerald-400"
+                                : "text-muted-foreground",
+                        )}
+                      >
+                        {isVoided
+                          ? "Anulada"
+                          : p.condition === "credito"
+                            ? "Crédito"
+                            : p.condition === "contado"
+                              ? "Pagada"
+                              : "Sin registrar"}
+                      </span>
+                    </td>
+                    <td className={cn("px-3 py-3 text-right font-semibold tabular-nums", isVoided && "line-through text-muted-foreground")}>
+                      {formatMoney(p.total)}
+                    </td>
+                    <td className="px-5 py-3">
+                      <Eye className="h-4 w-4 text-muted-foreground" />
+                    </td>
+                  </tr>
                 );
               })}
             </tbody>
@@ -141,6 +127,15 @@ function PurchasesHistoryTable({ purchases, suppliers }) {
           )}
         </div>
       )}
+      <PurchaseInvoiceDialog
+        purchase={selectedPurchase}
+        supplier={selectedPurchase ? suppliersById.get(selectedPurchase.supplierId) : null}
+        business={business}
+        open={Boolean(selectedPurchase)}
+        onOpenChange={(open) => { if (!open) setSelectedId(null); }}
+        canVoid={canVoid}
+        onVoid={onVoidPurchase}
+      />
     </SectionCard>
   );
 }

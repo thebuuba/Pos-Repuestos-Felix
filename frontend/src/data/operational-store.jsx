@@ -73,6 +73,8 @@ function presentationDocsAndCash(state, databaseId) {
     id: c.id, version: c.version ?? 1, databaseId, supplierId: c.suplidorId, supplierName: c.suplidor,
     number: 'Registro ' + c.id, supplierInvoice: c.numero, date: c.fechaISO,
     condition: c.condicion === 'Credito' ? 'credito' : 'contado', dueDate: c.vencimiento ?? null,
+    status: c.estado === 'anulada' ? 'anulada' : c.condicion === 'Credito' ? ((c.pagado ?? 0) >= c.total ? 'pagada' : 'pendiente') : 'pagada',
+    voidedAt: c.anuladaEn ?? null, voidedBy: c.anuladaPor ?? null, voidReason: c.motivoAnulacion ?? null,
     total: c.total, paid: c.pagado ?? 0, payments: paymentsByPurchase.get(c.id) ?? [],
     lines: c.items.map(line => ({ ...documentLine(line),
       cost: line.costo, costExact: line.costoExacto ?? line.costo.toFixed(4),
@@ -84,7 +86,7 @@ function presentationDocsAndCash(state, databaseId) {
       partyId: s.customerId, partyName: s.customerName, date: s.date, dueDate: s.dueDate,
       amount: s.total, paid: s.paid, payments: s.payments }));
   const payables = purchases
-    .filter(c => c.condition === 'credito')
+    .filter(c => c.condition === 'credito' && c.status !== 'anulada')
     .map(c => ({ id: c.id, version: c.version, databaseId, document: c.supplierInvoice,
       partyId: c.supplierId, partyName: c.supplierName, date: c.date, dueDate: c.dueDate,
       amount: c.total, paid: c.paid, payments: c.payments }));
@@ -185,6 +187,9 @@ function actions(client) {
       payload: { tipo: type, inicio: Number(start), fin: Number(end), actual: Number(current), vencimiento: expiresAt, activa: Boolean(active), ...(version ? { version } : {}) },
     })),
     registerPurchase: durableAction(client, purchaseOperation),
+    voidPurchase: durableAction(client, ({ databaseId, purchaseId, version, reason }) => ({
+      databaseId, method: 'POST', path: '/api/compras/' + purchaseId + '/anular', payload: { version, motivo: reason },
+    })),
     saveProduct: record('productos', productPayload), deleteProduct: record('productos'),
     saveCustomer: record('clientes', c => writeFields(c, customerFields)), deleteCustomer: record('clientes'),
     saveSupplier: record('suplidores', s => writeFields(s, supplierFields)), deleteSupplier: record('suplidores'),

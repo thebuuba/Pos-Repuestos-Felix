@@ -48,7 +48,7 @@ export function redactSnapshotForRole(snapshot, role) {
           ? { abonosUpsert: snapshot.changes.abonosUpsert.filter(a => a.tipo !== 'pago') }
           : {}),
         ...(snapshot.changes.movimientosUpsert
-          ? { movimientosUpsert: snapshot.changes.movimientosUpsert.filter(m => m.tipo !== 'compra') }
+          ? { movimientosUpsert: snapshot.changes.movimientosUpsert.filter(m => m.tipo !== 'compra' && m.tipo !== 'anulacion_compra') }
           : {}),
       },
     };
@@ -64,7 +64,7 @@ export function redactSnapshotForRole(snapshot, role) {
       suplidores: (snapshot.state.suplidores || []).map(s => ({ ...s, deuda: 0 })),
       compras: [],
       abonos: (snapshot.state.abonos || []).filter(a => a.tipo !== 'pago'),
-      movimientos: (snapshot.state.movimientos || []).filter(m => m.tipo !== 'compra'),
+      movimientos: (snapshot.state.movimientos || []).filter(m => m.tipo !== 'compra' && m.tipo !== 'anulacion_compra'),
     },
   };
 }
@@ -87,7 +87,7 @@ export function redactBootstrapForRole(download, role) {
     .map(d => ({ ...d, nombre: 'Restringido' }));
   const keptDetailIds = new Set(keptDetails.map(d => String(d.id)));
   const movimientos = (src.movimientos_inventario || []).map(m => {
-    if (m.tipo === 'compra' && !keptDetailIds.has(String(m.compra_detalle_id))) {
+    if ((m.tipo === 'compra' && !keptDetailIds.has(String(m.compra_detalle_id))) || m.tipo === 'anulacion_compra') {
       return { ...m, tipo: 'ajuste', compra_detalle_id: null, motivo: '' };
     }
     return m;

@@ -30,6 +30,7 @@ const columnDefaults = {
   },
   compras: {
     condicion: 'Contado',
+    estado: 'activa',
     version: '1',
   },
 };
@@ -41,7 +42,7 @@ const legacyEffectDefaults = (method, path) => {
     };
   }
   if (method === 'POST' && path === '/api/compras') {
-    return { condicion: 'Contado', vencimiento: null };
+    return { condicion: 'Contado', vencimiento: null, estado: 'activa', anulada_en: null, anulada_por: null, motivo_anulacion: null };
   }
   if ((method === 'POST' && path === '/api/productos') || (method === 'PUT' && /^\/api\/productos\/\d+$/.test(path))) {
     return { altCodes: [] };
@@ -119,7 +120,7 @@ export class DesktopLedger {
       data[table] = this.database.prepare(`SELECT * FROM local_${table} ORDER BY CAST(id AS INTEGER)`).all().map(row =>
         Object.fromEntries(columns.map(column => [column, row[column] !== null && booleans.has(column) ? Boolean(row[column]) : row[column]])));
     }
-    return { version: 8, format: 'repuestos-felix-relacional', exportedAt: new Date().toISOString(), tables: data };
+    return { version: 9, format: 'repuestos-felix-relacional', exportedAt: new Date().toISOString(), tables: data };
   }
   // Fixed relational columns retain NUMERIC strings; no JSON snapshot is the business authority.
   tableIds() {

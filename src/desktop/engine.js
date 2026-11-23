@@ -167,6 +167,8 @@ export class DesktopEngine {
     let path = record.path;
     const voidMatch = path.match(/^\/api\/ventas\/(\d+)\/anular$/);
     if (voidMatch) path = `/api/ventas/${map('ventas', voidMatch[1])}/anular`;
+    const voidPurchaseMatch = path.match(/^\/api\/compras\/(\d+)\/anular$/);
+    if (voidPurchaseMatch) path = `/api/compras/${map('compras', voidPurchaseMatch[1])}/anular`;
     const workshopMatch = path.match(/^\/api\/taller\/(\d+)\/(despachar|devolver|cancelar|facturar)$/);
     if (workshopMatch) path = `/api/taller/${map('cuentas_taller', workshopMatch[1])}/${workshopMatch[2]}`;
     const resource = path.match(/^\/api\/(productos|clientes|suplidores|formulas)\/(\d+)$/);

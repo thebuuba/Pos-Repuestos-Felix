@@ -25,6 +25,7 @@ function PurchasesPage() {
     payables,
     settings,
     registerPurchase,
+    voidPurchase,
     runtime,
   } = usePosStore();
   const { monthCount, monthTotal } = useMemo(() => {
@@ -33,6 +34,7 @@ function PurchasesPage() {
     let sum = 0n;
     for (let i = 0; i < purchases.length; i++) {
       const p = purchases[i];
+      if (p.status === "anulada") continue;
       const pMonth = p.date.length === 10 ? p.date.slice(0, 7) : businessMonthIso(new Date(p.date));
       if (pMonth === month) {
         count++;
@@ -97,7 +99,23 @@ function PurchasesPage() {
           });
         }}
       />
-      <PurchasesHistoryTable purchases={purchases} suppliers={suppliers} />
+      <PurchasesHistoryTable
+        purchases={purchases}
+        suppliers={suppliers}
+        business={settings.business}
+        canVoid={Boolean(runtime?.isOwner && voidPurchase)}
+        onVoidPurchase={voidPurchase ? async (purchase, reason) => {
+          await voidPurchase({
+            databaseId: purchase.databaseId,
+            purchaseId: purchase.id,
+            version: purchase.version,
+            reason,
+          });
+          ue.success(`Compra ${purchase.supplierInvoice || purchase.number} anulada`, {
+            description: "Se revirtió el inventario y se liberó el número de factura.",
+          });
+        } : undefined}
+      />
     </div>
   );
 }

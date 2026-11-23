@@ -15,7 +15,7 @@ export const isCashSyncOperation = (path, body) =>
 const tableFor = resource => ({
   formulas: 'formulas_precios', 'caja/abrir': 'turnos_caja',
   'caja/cerrar': 'turnos_caja', 'caja/movimiento': 'movimientos_caja',
-  'ventas/anular': 'ventas', 'cuentas/cobros': 'abonos_cuentas',
+  'ventas/anular': 'ventas', 'compras/anular': 'compras', 'cuentas/cobros': 'abonos_cuentas',
   'cuentas/pagos': 'abonos_cuentas', ncf: 'secuencias_ncf',
   taller: 'cuentas_taller', 'taller/despachar': 'cuentas_taller',
   'taller/devolver': 'cuentas_taller', 'taller/cancelar': 'cuentas_taller',
@@ -23,6 +23,7 @@ const tableFor = resource => ({
 })[resource] ?? resource;
 function resourceFor(path) {
   if (/^\/api\/ventas\/\d+\/anular$/.test(path)) return 'ventas/anular';
+  if (/^\/api\/compras\/\d+\/anular$/.test(path)) return 'compras/anular';
   const workshopMatch = path.match(/^\/api\/taller\/\d+\/(despachar|devolver|cancelar|facturar)$/);
   if (workshopMatch) return `taller/${workshopMatch[1]}`;
   return path.slice('/api/'.length).replace(/\/\d+$/, '');
@@ -113,6 +114,7 @@ function validateEnvelope(envelope) {
   const validRoute = method === 'POST' && (
       /^\/api\/(productos|clientes|suplidores|formulas|ventas|compras|taller|caja\/(abrir|cerrar|movimiento)|cuentas\/(cobros|pagos))$/.test(path) ||
       /^\/api\/ventas\/[1-9]\d*\/anular$/.test(path) ||
+      /^\/api\/compras\/[1-9]\d*\/anular$/.test(path) ||
       /^\/api\/taller\/[1-9]\d*\/(despachar|devolver|cancelar|facturar)$/.test(path)
     ) ||
     ['PUT', 'DELETE'].includes(method) && /^\/api\/(productos|clientes|suplidores|formulas)\/[1-9]\d*$/.test(path) ||
@@ -244,6 +246,10 @@ async function operationBackup(client, method, path, result, priorMovement, prio
     data.movimientos_inventario = await rows(client, 'movimientos_inventario', true, {
       sql: 'id>$1 AND tipo=$2', values: [priorMovement, 'anulacion'],
     });
+  } else if (resource === 'compras/anular') {
+    data.movimientos_inventario = await rows(client, 'movimientos_inventario', true, {
+      sql: 'id>$1 AND tipo=$2', values: [priorMovement, 'anulacion_compra'],
+    });
   } else if (resource === 'productos') {
     data.movimientos_inventario = await rows(client, 'movimientos_inventario', true, {
       sql: 'producto_id=$1 AND id>$2', values: [result.id, priorMovement],
@@ -283,6 +289,9 @@ function createdRows(method, path, body, result, backup, priorProducts, priorMov
   if (resource === 'ncf' && !hadNcf) add('secuencias_ncf', selected('secuencias_ncf'));
   if (resource === 'ventas/anular') {
     add('movimientos_inventario', tbl.movimientos_inventario.filter(row => Number(row.id) > priorMovement && row.tipo === 'anulacion'));
+  }
+  if (resource === 'compras/anular') {
+    add('movimientos_inventario', tbl.movimientos_inventario.filter(row => Number(row.id) > priorMovement && row.tipo === 'anulacion_compra'));
   }
   if (resource === 'taller') {
     add('cuentas_taller', selected('cuentas_taller'));
@@ -355,7 +364,7 @@ export async function writeSyncOperation(pool, envelope, databaseLabel, actor, {
       }
       if (path === '/api/compras') priorProducts = new Set((await client.query('SELECT id FROM productos WHERE codigo=ANY($1::text[])',
         [body.items.map(line => line.codigo)])).rows.map(row => String(row.id)));
-      if (['productos', 'ventas/anular', 'taller', 'taller/despachar', 'taller/devolver', 'taller/cancelar'].includes(resource)) {
+      if (['productos', 'ventas/anular', 'compras/anular', 'taller', 'taller/despachar', 'taller/devolver', 'taller/cancelar'].includes(resource)) {
         priorMovement = Number((await client.query('SELECT COALESCE(max(id),0) AS id FROM movimientos_inventario')).rows[0].id);
       }
       if (resource === 'taller/despachar') {

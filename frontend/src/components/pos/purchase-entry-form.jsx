@@ -12,7 +12,7 @@ import { Input } from "../ui/input.jsx";
 import { formulaSummary } from "../../lib/pricing.js";
 import { cn } from "../../lib/utils.js";
 import { Button } from "../ui/button.jsx";
-import { Plus } from "lucide-react";
+import { Check, ChevronDown, Plus, Search, X } from "lucide-react";
 import { CircleCheck } from "lucide-react";
 import { formatMoney, formatNumber, formatUnitMoney } from "../../lib/format.js";
 import { CATEGORIES } from "../../data/catalog-options.js";
@@ -22,9 +22,9 @@ import { PRICE_KEYS } from "../../lib/pricing.js";
 import { Trash2 } from "lucide-react";
 import { MoneyDisplay } from "./money-display.jsx";
 import { Upload } from "lucide-react";
-import { Fragment, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { businessTodayIso } from "../../lib/dates.js";
-import { indexedProducts } from "../../data/product-search.js";
+import { searchTopProducts } from "../../data/product-search.js";
 var EMPTY_ENTRY = {
   code: "",
   name: "",
@@ -66,6 +66,14 @@ function PurchaseEntryForm({
   const [lines, setLines] = useState([]);
   const [tried, setTried] = useState(false);
   const codeRef = useRef(null);
+  const qtyRef = useRef(null);
+  const supplierBoxRef = useRef(null);
+  const supplierSearchRef = useRef(null);
+  const [supplierOpen, setSupplierOpen] = useState(false);
+  const [supplierQuery, setSupplierQuery] = useState("");
+  const [supplierHighlight, setSupplierHighlight] = useState(0);
+  const [productMenuOpen, setProductMenuOpen] = useState(false);
+  const [productHighlight, setProductHighlight] = useState(0);
   const [error, setError] = useState(null);
   const [retryInput, setRetryInput] = useState(null);
   const [sending, setSending] = useState(false);
@@ -100,18 +108,55 @@ function PurchaseEntryForm({
   }, [entry.code, altCodeMap]);
   const match = findProduct(entry.code);
   const entryChanged = runtime && entry.code && catalogChanged(entry, match);
-  const suggestions = useMemo(() => {
-    const query = entry.code.toLowerCase();
-    const indexed = indexedProducts(products);
-    const out = [];
-    for (let i = 0; i < indexed.length; i++) {
-      if (!query || indexed[i].codeLower.includes(query)) {
-        out.push(indexed[i].p);
-        if (out.length >= 100) break;
+  const filteredSuppliers = useMemo(() => {
+    const q = supplierQuery.trim().toLowerCase();
+    if (!q) return suppliers;
+    return suppliers.filter((s) =>
+      (s.name || "").toLowerCase().includes(q) ||
+      (s.rnc || "").toLowerCase().includes(q) ||
+      (s.contact || "").toLowerCase().includes(q),
+    );
+  }, [suppliers, supplierQuery]);
+  useEffect(() => {
+    if (!supplierOpen) return;
+    requestAnimationFrame(() => supplierSearchRef.current?.focus());
+    const onOutside = (e) => {
+      if (supplierBoxRef.current && !supplierBoxRef.current.contains(e.target)) {
+        setSupplierOpen(false);
       }
-    }
-    return out;
-  }, [entry.code, products]);
+    };
+    document.addEventListener("mousedown", onOutside);
+    return () => document.removeEventListener("mousedown", onOutside);
+  }, [supplierOpen]);
+  const selectSupplier = (s) => {
+    setSupplierId(String(s.id));
+    setFormulaId(String(s?.formulaId ?? "manual"));
+    setDueDate(defaultDueDate(s?.creditDays ?? 30));
+    setSupplierOpen(false);
+    setSupplierQuery("");
+    setSupplierHighlight(0);
+  };
+  const productResults = useMemo(() => {
+    if (!entry.code.trim()) return [];
+    return searchTopProducts(products, entry.code, 8);
+  }, [products, entry.code]);
+  const pickProduct = (product) => {
+    setEntry((e) => ({
+      ...e,
+      code: product.code,
+      ...catalogFields(product),
+      name: product.name,
+      category: product.category || e.category,
+      cost: product.costExact ?? String(product.cost),
+    }));
+    setProductMenuOpen(false);
+    setProductHighlight(0);
+    requestAnimationFrame(() => {
+      qtyRef.current?.focus();
+      qtyRef.current?.select();
+    });
+  };
+  const showNewDescription = Boolean(entry.code.trim() && !match && !altCodeOwner && !(productMenuOpen && productResults.length > 0));
   const evaluate = (line, catalogPrices) => {
     let prices = {}, amounts = {};
     try {
@@ -236,26 +281,108 @@ function PurchaseEntryForm({
             className="md:col-span-2"
             error={tried && !supplier ? "Selecciona el suplidor" : undefined}
           >
-            <Select
-              disabled={locked} value={supplierId}
-              onValueChange={(id) => {
-                setSupplierId(id);
-                const s = suppliers.find((x) => String(x.id) === id);
-                setFormulaId(String(s?.formulaId ?? "manual"));
-                setDueDate(defaultDueDate(s?.creditDays ?? 30));
-              }}
-            >
-              <SelectTrigger aria-label="Suplidor" className={inputClass}>
-                <SelectValue placeholder="Selecciona un suplidor" />
-              </SelectTrigger>
-              <SelectContent>
-                {suppliers.map((s) => (
-                  <SelectItem value={String(s.id)} key={s.id}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div ref={supplierBoxRef} className="relative">
+              <button
+                type="button"
+                role="combobox"
+                aria-label="Suplidor"
+                aria-expanded={supplierOpen}
+                aria-haspopup="listbox"
+                disabled={locked}
+                onClick={() => {
+                  setSupplierOpen((v) => !v);
+                  setSupplierQuery("");
+                  setSupplierHighlight(0);
+                }}
+                className={cn(
+                  inputClass,
+                  "flex w-full items-center justify-between gap-2 border border-input px-3 text-left text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+                  !supplier && "text-muted-foreground",
+                )}
+              >
+                <span className="truncate">{supplier ? supplier.name : "Selecciona un suplidor"}</span>
+                <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+              </button>
+              {supplierOpen && (
+                <div className="absolute left-0 right-0 top-full z-30 mt-1.5 overflow-hidden rounded-xl border border-border bg-popover shadow-lg">
+                  <div className="relative border-b border-border p-2">
+                    <Search className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      ref={supplierSearchRef}
+                      value={supplierQuery}
+                      onChange={(e) => {
+                        setSupplierQuery(e.target.value);
+                        setSupplierHighlight(0);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "ArrowDown") {
+                          e.preventDefault();
+                          setSupplierHighlight((h) => Math.min(h + 1, Math.max(0, filteredSuppliers.length - 1)));
+                        } else if (e.key === "ArrowUp") {
+                          e.preventDefault();
+                          setSupplierHighlight((h) => Math.max(h - 1, 0));
+                        } else if (e.key === "Enter") {
+                          e.preventDefault();
+                          const picked = filteredSuppliers[supplierHighlight] ?? filteredSuppliers[0];
+                          if (picked) selectSupplier(picked);
+                        } else if (e.key === "Escape") {
+                          e.preventDefault();
+                          setSupplierOpen(false);
+                        }
+                      }}
+                      placeholder="Buscar por nombre, RNC o contacto…"
+                      aria-label="Buscar suplidor"
+                      className="h-9 rounded-lg bg-card pl-8 pr-8 text-sm"
+                    />
+                    {supplierQuery && (
+                      <button
+                        type="button"
+                        aria-label="Limpiar búsqueda de suplidor"
+                        onClick={() => { setSupplierQuery(""); setSupplierHighlight(0); supplierSearchRef.current?.focus(); }}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  <ul role="listbox" aria-label="Suplidores" className="max-h-60 overflow-y-auto py-1">
+                    {filteredSuppliers.length === 0 ? (
+                      <li className="px-3 py-4 text-center text-xs text-muted-foreground">
+                        Sin suplidores para “{supplierQuery}”
+                      </li>
+                    ) : (
+                      filteredSuppliers.map((s, idx) => {
+                        const selected = String(s.id) === supplierId;
+                        const sub = [s.rnc && `RNC ${s.rnc}`, s.contact].filter(Boolean).join(" · ");
+                        return (
+                          <li key={s.id}>
+                            <button
+                              type="button"
+                              role="option"
+                              aria-label={s.name}
+                              aria-selected={selected}
+                              onMouseDown={(e) => e.preventDefault()}
+                              onMouseEnter={() => setSupplierHighlight(idx)}
+                              onClick={() => selectSupplier(s)}
+                              className={cn(
+                                "flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors",
+                                idx === supplierHighlight && "bg-accent",
+                              )}
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate font-medium text-foreground">{s.name}</p>
+                                {sub && <p className="truncate text-xs text-muted-foreground">{sub}</p>}
+                              </div>
+                              {selected && <Check className="h-4 w-4 shrink-0 text-primary" />}
+                            </button>
+                          </li>
+                        );
+                      })
+                    )}
+                  </ul>
+                </div>
+              )}
+            </div>
           </Field>
           <Field label="No. factura del suplidor" htmlFor="purchase-invoice" error={tried && runtime && !invoice.trim() ? "Escribe el número de factura" : undefined}>
             <Input
@@ -311,42 +438,90 @@ function PurchaseEntryForm({
             </Select>
           </Field>
         </div>
-        <div className="rounded-xl bg-muted/60 p-3">
-          <div className="grid gap-3 md:grid-cols-[150px_minmax(0,1fr)_90px_120px_auto] md:items-end">
-            <Field label="Código">
-              <Input
-                maxLength={2000} ref={codeRef} aria-label="Código"
-                value={entry.code}
-                onChange={(e) => onCodeChange(e.target.value)}
-                placeholder="Código"
-                list="purchase-codes"
-                className={cn(inputClass, "font-mono", !runtime && "uppercase")}
-              />
-              <datalist id="purchase-codes">
-                {suggestions.map((p) => (
-                  <option value={p.code} key={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </datalist>
-            </Field>
-            <Field label="Descripción">
-              <Input
-                maxLength={2000} aria-label="Descripción" value={entry.name}
-                onChange={(e) =>
-                  setEntry({
-                    ...entry,
-                    name: e.target.value,
-                  })
-                }
-                placeholder="Descripción"
-                className={inputClass}
-              />
+        <div className="space-y-3 rounded-xl bg-muted/60 p-3">
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_104px_132px_auto] md:items-end">
+            <Field label="Buscar pieza o código nuevo">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  maxLength={2000} ref={codeRef} aria-label="Código"
+                  autoComplete="off"
+                  value={entry.code}
+                  onFocus={() => { setProductMenuOpen(true); setProductHighlight(0); }}
+                  onBlur={() => setTimeout(() => setProductMenuOpen(false), 150)}
+                  onChange={(e) => {
+                    onCodeChange(e.target.value);
+                    setProductMenuOpen(true);
+                    setProductHighlight(0);
+                  }}
+                  onKeyDown={(e) => {
+                    if (productMenuOpen && productResults.length > 0) {
+                      if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        setProductHighlight((h) => Math.min(h + 1, productResults.length - 1));
+                      } else if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        setProductHighlight((h) => Math.max(h - 1, 0));
+                      } else if (e.key === "Enter") {
+                        const exact = findProduct(entry.code);
+                        if (exact) {
+                          e.preventDefault();
+                          pickProduct(exact);
+                        } else if (productResults[productHighlight]) {
+                          e.preventDefault();
+                          pickProduct(productResults[productHighlight]);
+                        }
+                      } else if (e.key === "Escape") {
+                        setProductMenuOpen(false);
+                      }
+                    }
+                  }}
+                  placeholder="Código"
+                  className={cn(inputClass, "pl-9 font-mono", !runtime && "uppercase")}
+                />
+                {productMenuOpen && entry.code.trim() && productResults.length > 0 && !(match && productResults.length === 1 && productResults[0].id === match.id) && (
+                  <div className="absolute left-0 right-0 top-full z-30 mt-1.5 overflow-hidden rounded-xl border border-border bg-popover shadow-lg">
+                    <ul role="listbox" aria-label="Artículos encontrados" className="max-h-64 overflow-y-auto py-1">
+                      {productResults.map((p, idx) => (
+                        <li key={p.id}>
+                          <button
+                            type="button"
+                            role="option"
+                            aria-selected={idx === productHighlight}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onMouseEnter={() => setProductHighlight(idx)}
+                            onClick={() => pickProduct(p)}
+                            className={cn(
+                              "flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors",
+                              idx === productHighlight && "bg-accent",
+                            )}
+                          >
+                            <span className="w-24 shrink-0 truncate font-mono text-xs text-muted-foreground sm:w-28">
+                              {p.code}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+                              {p.name}
+                            </span>
+                            <span className="hidden shrink-0 text-xs text-muted-foreground tabular-nums sm:inline">
+                              Stock {p.stock}
+                            </span>
+                            <span className="w-20 shrink-0 text-right text-xs font-semibold text-foreground tabular-nums sm:w-24">
+                              {formatUnitMoney(p.costExact ?? p.cost)}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
             </Field>
             <Field label="Cant.">
               <Input
+                ref={qtyRef}
                 type="number"
-                min="0.01" step="0.01" aria-label="Cantidad"
+                inputMode="decimal"
+                min="1" step="1" aria-label="Cantidad"
                 value={entry.quantity}
                 onChange={(e) =>
                   setEntry({
@@ -354,7 +529,8 @@ function PurchaseEntryForm({
                     quantity: e.target.value,
                   })
                 }
-                className={inputClass}
+                onKeyDown={(e) => e.key === "Enter" && addLine()}
+                className={cn(inputClass, "tabular-nums")}
               />
             </Field>
             <Field label="Costo unit.">
@@ -371,7 +547,7 @@ function PurchaseEntryForm({
                 }
                 onKeyDown={(e) => e.key === "Enter" && addLine()}
                 placeholder="0.00"
-                className={inputClass}
+                className={cn(inputClass, "tabular-nums")}
               />
             </Field>
             <Button
@@ -383,22 +559,26 @@ function PurchaseEntryForm({
               {"Agregar"}
             </Button>
           </div>
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            {entry.code.trim() &&
-              (match ? (
-                <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-2 py-1 font-medium text-emerald-700 dark:text-emerald-400">
-                  <CircleCheck className="h-3 w-3" />
-                  {"Ya existe · stock "}
-                  {match.stock}
-                  {" · costo anterior "}
-                  {formatUnitMoney(match.costExact ?? match.cost)}
-                </span>
-              ) : (
-                <Fragment>
-                  <span className="rounded-md bg-accent px-2 py-1 font-medium text-accent-foreground">
-                    {"Artículo nuevo"}
-                  </span>
-                  {!runtime && <Select
+          {showNewDescription && (
+            <div className="grid gap-3 border-t border-border/60 pt-2.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+              <Field label="Descripción del artículo nuevo">
+                <Input
+                  maxLength={2000} aria-label="Descripción" value={entry.name}
+                  autoComplete="off"
+                  onChange={(e) =>
+                    setEntry({
+                      ...entry,
+                      name: e.target.value,
+                    })
+                  }
+                  onKeyDown={(e) => e.key === "Enter" && addLine()}
+                  placeholder="Descripción"
+                  className={inputClass}
+                />
+              </Field>
+              {!runtime && (
+                <Field label="Categoría">
+                  <Select
                     value={entry.category}
                     onValueChange={(v) =>
                       setEntry({
@@ -407,7 +587,7 @@ function PurchaseEntryForm({
                       })
                     }
                   >
-                    <SelectTrigger className="h-7 w-[140px] rounded-lg bg-card text-xs">
+                    <SelectTrigger className="h-10 w-[160px] rounded-xl bg-card text-sm">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -417,8 +597,26 @@ function PurchaseEntryForm({
                         </SelectItem>
                       ))}
                     </SelectContent>
-                  </Select>}
-                </Fragment>
+                  </Select>
+                </Field>
+              )}
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            {entry.code.trim() &&
+              (match ? (
+                <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/10 px-2 py-1 font-medium text-emerald-700 dark:text-emerald-400">
+                  <CircleCheck className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{match.name}</span>
+                  {" · stock "}
+                  {match.stock}
+                  {" · costo ant. "}
+                  {formatUnitMoney(match.costExact ?? match.cost)}
+                </span>
+              ) : (
+                <span className="rounded-md bg-accent px-2 py-1 font-medium text-accent-foreground">
+                  {"Artículo nuevo · escribe su descripción arriba"}
+                </span>
               ))}
             {entryError && (
               <span role="alert" className="font-medium text-primary">
@@ -522,14 +720,15 @@ function PurchaseEntryForm({
                       <td className="px-2 py-2.5">
                         <Input
                           type="number"
-                          min="0.01" step="0.01" aria-label="Cantidad de la línea"
+                          inputMode="decimal"
+                          min="1" step="1" aria-label="Cantidad de la línea"
                           value={l.quantity}
                           onChange={(e) =>
                             updateLine(l.key, {
                               quantity: e.target.value,
                             })
                           }
-                          className="mx-auto h-8 w-16 rounded-lg text-center"
+                          className="mx-auto h-8 w-20 rounded-lg text-center tabular-nums"
                         />
                       </td>
                       <td className="px-2 py-2.5">

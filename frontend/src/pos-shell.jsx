@@ -13,7 +13,7 @@ import { formatBusinessDateTime } from './lib/dates.js';
 import { PwaProvider, PwaNotice } from './pwa.jsx';
 
 const dateLabel = value => formatBusinessDateTime(value);
-const operations = { ventas: 'Venta', 'ventas/anular': 'Anulación de venta', compras: 'Compra', productos: 'Artículo',
+const operations = { ventas: 'Venta', 'ventas/anular': 'Anulación de venta', compras: 'Compra', 'compras/anular': 'Anulación de compra', productos: 'Artículo',
   clientes: 'Cliente', suplidores: 'Suplidor', formulas: 'Fórmula de precios', configuracion: 'Configuración',
   ncf: 'Secuencia NCF', 'cuentas/cobros': 'Cobro a cliente', 'cuentas/pagos': 'Pago a suplidor',
   taller: 'Cuenta de taller', 'taller/despachar': 'Despacho de taller', 'taller/devolver': 'Devolución de taller',
