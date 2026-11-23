@@ -20,6 +20,48 @@ function writeHeldSales(databaseId, list) {
   try { localStorage.setItem('felix-ventas-espera:' + databaseId, JSON.stringify(list.slice(0, 20))); } catch { /* Optional local storage. */ }
 }
 
+const DRAFT_PREFIX = 'felix-venta-borrador:';
+function readSavedDraft(databaseId) {
+  if (!databaseId) return null;
+  try {
+    const raw = JSON.parse(sessionStorage.getItem(DRAFT_PREFIX + databaseId) || 'null');
+    return raw && typeof raw === 'object' && Array.isArray(raw.items) && raw.items.length > 0 ? raw : null;
+  } catch { return null; }
+}
+function writeSavedDraft(databaseId, draft) {
+  if (!databaseId) return;
+  try {
+    if (!draft || !draft.items?.length) sessionStorage.removeItem(DRAFT_PREFIX + databaseId);
+    else sessionStorage.setItem(DRAFT_PREFIX + databaseId, JSON.stringify(draft));
+  } catch { /* Optional session storage. */ }
+}
+function restoreDraftState(saved, products, customers, cashCustomer, defaultPriceLevel) {
+  if (!saved) return null;
+  const byId = new Map(products.map(p => [p.id, p]));
+  let items = [];
+  for (const entry of saved.items) {
+    const live = byId.get(entry?.productId);
+    if (!live) continue;
+    try {
+      items = updateSaleLine(items, live, entry.priceLevel || 'p1', entry.quantity, false);
+    } catch { /* Skip lines that no longer fit current stock or rules. */ }
+  }
+  if (!items.length) return null;
+  const customerId = customers.some(c => c.id === saved.customerId) ? saved.customerId : (cashCustomer?.id ?? null);
+  return {
+    items,
+    customerId,
+    comprobante: ['B01', 'B02', 'B14'].includes(saved.comprobante) ? saved.comprobante : 'B02',
+    condition: saved.condition === 'credito' ? 'credito' : 'contado',
+    paymentMethod: ['efectivo', 'tarjeta', 'transferencia'].includes(saved.paymentMethod) ? saved.paymentMethod : 'efectivo',
+    discountMode: saved.discountMode === 'amount' ? 'amount' : 'percent',
+    discountValue: typeof saved.discountValue === 'string' ? saved.discountValue : '',
+    received: typeof saved.received === 'string' ? saved.received : '',
+    priceLevel: ['p1', 'p2', 'p3'].includes(saved.priceLevel) ? saved.priceLevel : (defaultPriceLevel ?? 'p1'),
+    activeHoldLabel: typeof saved.activeHoldLabel === 'string' ? saved.activeHoldLabel : '',
+  };
+}
+
 // The draft and its exact retry stay together above route boundaries. A session
 // loss unmounts this provider. A database change resets only the sale, preserving
 // other modules' open forms so their original versions can still be rejected.
@@ -27,15 +69,21 @@ export function SaleDraftProvider({ children }) {
   const { products, customers, settings, cashSession, runtime, registerSale } =
     usePosStore();
   const cashCustomer = customers.find((row) => row.isCashCustomer);
+  const initialRecovery = useRef(runtime.pending?.path === '/api/ventas' && runtime.pending.id === runtime.saleOperationId ? runtime.pending.id : null);
+  const initialDraft = useRef(
+    initialRecovery.current
+      ? null
+      : restoreDraftState(readSavedDraft(runtime.databaseId), products, customers, cashCustomer, settings.defaultPriceLevel),
+  );
   const [draftDatabase, setDraftDatabase] = useState(runtime.databaseId);
   const currentDatabase = useRef(runtime.databaseId);
   currentDatabase.current = runtime.databaseId;
-  const [customerId, setCustomerId] = useState(() => cashCustomer?.id ?? null);
-  const [comprobante, setComprobante] = useState("B02");
-  const [condition, setCondition] = useState("contado");
-  const [paymentMethod, setPaymentMethod] = useState("efectivo");
-  const [discountMode, setDiscountMode] = useState("percent");
-  const [discountValue, setDiscountValue] = useState("");
+  const [customerId, setCustomerId] = useState(() => initialDraft.current?.customerId ?? cashCustomer?.id ?? null);
+  const [comprobante, setComprobante] = useState(() => initialDraft.current?.comprobante ?? "B02");
+  const [condition, setCondition] = useState(() => initialDraft.current?.condition ?? "contado");
+  const [paymentMethod, setPaymentMethod] = useState(() => initialDraft.current?.paymentMethod ?? "efectivo");
+  const [discountMode, setDiscountMode] = useState(() => initialDraft.current?.discountMode ?? "percent");
+  const [discountValue, setDiscountValue] = useState(() => initialDraft.current?.discountValue ?? "");
   const discount = useMemo(
     () => ({ mode: discountMode, value: discountValue }),
     [discountMode, discountValue],
@@ -46,20 +94,19 @@ export function SaleDraftProvider({ children }) {
     const num = Number(value);
     setDiscountValue(!value || !Number.isFinite(num) || num <= 0 ? "" : String(value));
   };
-  const [received, setReceived] = useState("");
+  const [received, setReceived] = useState(() => initialDraft.current?.received ?? "");
   const [priceLevel, setPriceLevel] = useState(
-    settings.defaultPriceLevel ?? "p1",
+    () => initialDraft.current?.priceLevel ?? settings.defaultPriceLevel ?? "p1",
   );
-  const [items, updateItems] = useState([]);
+  const [items, updateItems] = useState(() => initialDraft.current?.items ?? []);
   const itemsRef = useRef(items);
   itemsRef.current = items;
   const [heldSales, setHeldSales] = useState(() => readHeldSales(runtime.databaseId));
-  const [activeHoldLabel, setActiveHoldLabel] = useState("");
+  const [activeHoldLabel, setActiveHoldLabel] = useState(() => initialDraft.current?.activeHoldLabel ?? "");
   const [receipt, setReceipt] = useState(null);
   const [failure, setFailure] = useState(null);
   const [sending, setSending] = useState(false);
   const inFlight = useRef(false);
-  const initialRecovery = useRef(runtime.pending?.path === '/api/ventas' && runtime.pending.id === runtime.saleOperationId ? runtime.pending.id : null);
   const resolved = useRef(null);
   const customer = customers.find((row) => row.id === customerId);
   const catalog = useMemo(
@@ -127,7 +174,31 @@ export function SaleDraftProvider({ children }) {
     setReceived("");
     setActiveHoldLabel("");
     setFailure(null);
+    writeSavedDraft(currentDatabase.current, null);
   }
+  useEffect(() => {
+    if (draftDatabase !== runtime.databaseId) return;
+    if (!items.length) {
+      writeSavedDraft(runtime.databaseId, null);
+      return;
+    }
+    writeSavedDraft(runtime.databaseId, {
+      customerId,
+      comprobante,
+      condition,
+      paymentMethod,
+      discountMode,
+      discountValue,
+      received,
+      priceLevel,
+      activeHoldLabel,
+      items: items.map((item) => ({
+        productId: item.product.id,
+        priceLevel: item.priceLevel,
+        quantity: item.quantity,
+      })),
+    });
+  }, [draftDatabase, runtime.databaseId, items, customerId, comprobante, condition, paymentMethod, discountMode, discountValue, received, priceLevel, activeHoldLabel]);
   function showReceipt(snapshot, cashReceived) {
     const config = snapshot.state.configuracion;
     const baseSale = receiptFromConfirmation(snapshot);

@@ -3,7 +3,7 @@ import { TooltipProvider } from "../ui/tooltip.jsx";
 import { Button } from "../ui/button.jsx";
 import { Link, useNavigate } from "react-router-dom";
 import { BrandLogo } from "./brand-logo.jsx";
-import { Search, RefreshCw, Download, Sun, Moon, Bell, LogOut, Box, Users, Truck, ReceiptText, AlertTriangle } from "lucide-react";
+import { Search, RefreshCw, Download, Sun, Moon, Bell, Box, Users, Truck, ReceiptText, AlertTriangle } from "lucide-react";
 import { Input } from "../ui/input.jsx";
 import { cn } from "../../lib/utils.js";
 import { Tooltip, TooltipTrigger, TooltipContent } from "../ui/tooltip.jsx";
@@ -316,8 +316,6 @@ function TopBar({ onBrandClick } = {}) {
             <Bell />
             {(notifications.length > 0 || runtime?.error) && <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-primary ring-2 ring-card" />}
           </Button>
-          {runtime?.logout && <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl bg-card" aria-label="Cerrar sesión"
-            onClick={() => runtime.logout().catch(error => toast.error(error.message))}><LogOut /></Button>}
         </div>
       </header>
       <Dialog open={notifOpen} onOpenChange={setNotifOpen}>

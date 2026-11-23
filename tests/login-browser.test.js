@@ -95,6 +95,10 @@ test(
       const secondTab = await reopened.newPage();
       await secondTab.goto(origin + "/inventario");
       await secondTab.getByRole("heading", { name: "Catálogo de artículos e inventario", exact: true }).waitFor();
+      assert.equal(await next.getByRole("button", { name: "Cerrar sesión", exact: true }).count(), 0);
+      await next.goto(origin + "/configuracion");
+      await next.getByRole("heading", { name: "Configuración", exact: true }).waitFor();
+      await next.getByRole("tab", { name: "Mi cuenta", exact: true }).click();
       await next
         .getByRole("button", { name: "Cerrar sesión", exact: true })
         .click();

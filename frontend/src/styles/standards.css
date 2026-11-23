@@ -74,6 +74,11 @@ label {
 .pos-sale .sale-catalog-pagination button:disabled { opacity: .45; }
 .pos-sale .sale-catalog-pagination button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
 .pos-sale .sale-cart table { min-width: 0; }
+.pos-sale .sale-cart tbody tr:nth-child(odd) { background-color: hsl(var(--card)); }
+.pos-sale .sale-cart tbody tr:nth-child(even) { background-color: hsl(var(--accent) / 0.75); }
+.dark .pos-sale .sale-cart tbody tr:nth-child(even) { background-color: hsl(var(--accent) / 0.45); }
+.pos-sale .sale-cart tbody tr:hover { background-color: hsl(var(--accent)); }
+.pos-sale .sale-cart .sale-cart-quantity > div { background-color: hsl(var(--card)); }
 .pos-sale .sale-cart-product { overflow-wrap: anywhere; }
 .pos-sale .sale-cart-product > div { flex-wrap: wrap; }
 .pos-sale .sale-cart-product > div > span { min-width: 0; max-width: 100%; }
@@ -176,17 +181,48 @@ label {
 }
 @media (min-width: 1536px) {
   .pos-sale .sale-items {
-    grid-template-columns: 280px minmax(0, 1fr);
+    grid-template-columns: 304px minmax(0, 1fr);
     gap: 20px;
   }
+  .pos-sale .sale-invoice-wrap .sale-invoice-card,
+  .pos-sale .sale-selection {
+    padding: 20px;
+  }
+  .pos-sale .sale-invoice-wrap .sale-invoice-header {
+    margin-bottom: 14px;
+  }
+  .pos-sale .sale-invoice-wrap .sale-invoice-header h2,
+  .pos-sale .sale-selection-heading h1,
+  .pos-sale .sale-selection-heading h2 {
+    font-size: 16px;
+    line-height: 24px;
+  }
   .pos-sale .sale-invoice-wrap .sale-invoice-fields {
-    grid-template-columns: minmax(0, 1fr) 98px;
-    gap: 10px 8px;
+    grid-template-columns: minmax(0, 1fr) 104px;
+    gap: 12px 10px;
+  }
+  .pos-sale .sale-invoice-wrap .sale-invoice-trigger {
+    height: 40px;
+    padding-inline: 12px;
+    font-size: 14px;
+  }
+  .pos-sale .sale-selection-actions {
+    gap: 8px;
+  }
+  .pos-sale .sale-selection-actions button {
+    height: 40px;
+    padding-inline: 14px;
+    font-size: 14px;
+    gap: 8px;
+  }
+  .pos-sale .sale-selection-actions button.sale-history-btn {
+    width: 40px;
+    padding-inline: 0;
   }
   .pos-sale .sale-product-search {
-    grid-template-columns: 124px minmax(0, 1fr) auto;
-    gap: 10px;
-    padding: 14px;
+    grid-template-columns: 132px minmax(0, 1fr) auto;
+    gap: 12px;
+    padding: 16px;
   }
 }
 

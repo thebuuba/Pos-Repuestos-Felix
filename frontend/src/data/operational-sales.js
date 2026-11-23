@@ -210,12 +210,16 @@ export function workshopBillRequest(account, settings, customerId, condition, co
   };
 }
 
+export function formatSaleNumber(saleId) {
+  return 'F-' + String(saleId).padStart(6, '0');
+}
+
 export function receiptFromConfirmation(snapshot) {
   const saleId = snapshot.result?.ventaId ?? snapshot.result?.id;
   const doc = snapshot.state.facturas.find(row => row.id === saleId);
   if (!doc) throw new Error('Falta la factura en la confirmación del servidor.');
   const localReference = typeof snapshot.localReceipt === 'string' ? snapshot.localReceipt : null;
-  return { invoiceNumber: localReference ? 'Local ' + localReference.slice(0, 8) : 'Registro ' + doc.id,
+  return { invoiceNumber: localReference ? 'Local ' + localReference.slice(0, 8) : formatSaleNumber(doc.id),
     ...(localReference ? { localReference } : {}), dateOnly: doc.fechaISO, dueDate: doc.vencimiento ?? null,
     customerName: doc.cliente, customerRnc: doc.clienteRnc, ncf: localReference ? null : doc.ncf,
     comprobante: doc.tipoComprobante, itbisRate: null,
@@ -253,7 +257,7 @@ export function receiptFromStoredSale(sale) {
   const methodKey = sale.condition === 'credito' ? 'credito' : (sale.paymentMethod ?? sale.method);
   const paymentLabel = STORED_PAYMENT_LABELS[methodKey] ?? (sale.condition === 'credito' ? 'Crédito' : null);
   return {
-    invoiceNumber: sale.number || ('Registro ' + sale.id),
+    invoiceNumber: sale.number || formatSaleNumber(sale.id),
     ...(validDate ? { date: validDate } : { dateOnly: rawDate.slice(0, 10) }),
     useExactUnitMoney: true,
     dueDate: sale.dueDate ?? null,

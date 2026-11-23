@@ -616,7 +616,7 @@ test('E2E navegador: Ctrl K, notificaciones, códigos alternativos, espera, coti
       await route.continue();
     });
     await page.getByRole('button', { name: /Registrar venta/ }).click();
-    await page.getByRole('dialog').getByText(/Registro /).first().waitFor();
+    await page.getByRole('dialog').getByText(/F-\d{6}/).first().waitFor();
     await page.unroute('**/api/ventas');
     assert.equal(sawPendingBannerDuringSend, false, 'No debe mostrarse el aviso de pendiente durante un envío normal');
     assert.equal(deltaResponseSeen, true, 'POST /api/ventas debe confirmar con respuesta compacta delta');
@@ -630,7 +630,7 @@ test('E2E navegador: Ctrl K, notificaciones, códigos alternativos, espera, coti
     await page.getByRole('combobox', { name: 'Condición' }).click();
     await page.getByRole('option', { name: 'Crédito' }).click();
     await page.getByRole('button', { name: /Registrar venta/ }).click();
-    await page.getByRole('dialog').getByText(/Registro /).first().waitFor();
+    await page.getByRole('dialog').getByText(/F-\d{6}/).first().waitFor();
     await page.keyboard.press('Escape');
 
     await page.goto(origin + '/cuentas-por-cobrar');

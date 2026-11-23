@@ -35,7 +35,9 @@ function writeFields(dto, fields) {
   return Object.fromEntries(Object.entries(fields).filter(([key]) => Object.hasOwn(dto, key))
     .map(([key, api]) => [api, dto[key]]));
 }
+import { formatSaleNumber } from './operational-sales.js';
 const recordIdentity = (row, databaseId) => ({ id: row.id, version: row.version, databaseId });
+const formatPurchaseNumber = id => 'C-' + String(id).padStart(6, '0');
 const newestFirst = (a, b) => b.date.localeCompare(a.date) || b.id - a.id;
 const documentLine = row => ({ id: row.id, productId: row.productoId, code: row.codigo, name: row.nombre,
   quantity: row.cant, subtotal: row.subtotal });
@@ -59,7 +61,7 @@ function presentationDocsAndCash(state, databaseId) {
   }
   const sales = state?.facturas.map(s => ({
     id: s.id, version: s.version ?? 1, databaseId, customerId: s.clienteId, customerName: s.cliente, customerRnc: s.clienteRnc,
-    number: 'Registro ' + s.id, date: s.fechaISO, dueDate: s.vencimiento ?? null,
+    number: formatSaleNumber(s.id), date: s.fechaISO, dueDate: s.vencimiento ?? null,
     ncf: s.ncf, comprobante: s.tipoComprobante, condition: s.condicion === 'Credito' ? 'credito' : 'contado',
     method: s.metodoPago, paymentMethod: s.metodoPago, cashSessionId: s.cajaId,
     status: s.estado === 'anulada' ? 'anulada' : s.condicion === 'Credito' ? ((s.pagado ?? 0) >= s.total ? 'pagada' : 'pendiente') : 'pagada',
@@ -71,7 +73,7 @@ function presentationDocsAndCash(state, databaseId) {
   })).sort(newestFirst) ?? [];
   const purchases = state?.compras.map(c => ({
     id: c.id, version: c.version ?? 1, databaseId, supplierId: c.suplidorId, supplierName: c.suplidor,
-    number: 'Registro ' + c.id, supplierInvoice: c.numero, date: c.fechaISO,
+    number: formatPurchaseNumber(c.id), supplierInvoice: c.numero, date: c.fechaISO,
     condition: c.condicion === 'Credito' ? 'credito' : 'contado', dueDate: c.vencimiento ?? null,
     status: c.estado === 'anulada' ? 'anulada' : c.condicion === 'Credito' ? ((c.pagado ?? 0) >= c.total ? 'pagada' : 'pendiente') : 'pagada',
     voidedAt: c.anuladaEn ?? null, voidedBy: c.anuladaPor ?? null, voidReason: c.motivoAnulacion ?? null,

@@ -99,7 +99,7 @@ test('el POS abre caja, recupera una venta confirmada, registra movimientos y co
     resumeReplay.resolve();
     const dialog = page.getByRole('dialog');
     await dialog.getByRole('heading', { name: 'Venta registrada' }).waitFor();
-    assert.match(await dialog.innerText(), /Registro 1/);
+    assert.match(await dialog.innerText(), /F-000001/);
     assert.match(await dialog.innerText(), /25\.01/);
     assert.match(await dialog.innerText(), /3\.82/);
     assert.match(await dialog.innerText(), /Sin emisión de NCF/);

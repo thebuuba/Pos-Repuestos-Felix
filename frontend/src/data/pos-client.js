@@ -703,6 +703,7 @@ export function createPosClient() {
     lastConfirmedSync = null;
     operationError = null;
     clearCachedSnapshot().catch(() => {});
+    clearDraftStorage();
     try { sessionStorage.removeItem('repuestos-felix-venta-pendiente'); } catch { /* Optional receipt ownership. */ }
     set({ authenticationRequired: true, snapshot: null, resolution: null, saleOperationId: null, lastSync: null, connection: 'unavailable' });
   }
@@ -1038,7 +1039,16 @@ export function createPosClient() {
     });
   }
 
+  function clearDraftStorage() {
+    try {
+      for (let i = sessionStorage.length - 1; i >= 0; i -= 1) {
+        const key = sessionStorage.key(i);
+        if (key && key.startsWith('felix-venta-borrador:')) sessionStorage.removeItem(key);
+      }
+    } catch { /* Optional session storage. */ }
+  }
   async function logout() {
+    clearDraftStorage();
     const response = await fetch('/logout', { method: 'POST', credentials: 'same-origin', mode: 'same-origin', redirect: 'error' });
     if (response.status !== 200) throw new Error('No se pudo cerrar la sesión. Inténtalo de nuevo.');
     lockSession();

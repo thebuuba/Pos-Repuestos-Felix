@@ -131,7 +131,8 @@ test('E2E reimpresión de facturas de venta: Ventas, Panel, Reportes, Cuentas x 
     await historyDialog.getByText('Facturas recientes', { exact: true }).waitFor();
     await page.waitForTimeout(250);
     await page.screenshot({ path: join(evidence, 'ventas-history-1440-light.png'), fullPage: true });
-    await historyDialog.getByRole('button', { name: `Reimprimir Registro ${sale1Id}`, exact: true }).click();
+    const fNum = id => 'F-' + String(id).padStart(6, '0');
+    await historyDialog.getByRole('button', { name: `Reimprimir ${fNum(sale1Id)}`, exact: true }).click();
 
     const receiptDialog = page.getByRole('dialog');
     await receiptDialog.getByText('Factura de venta', { exact: true }).waitFor();
@@ -146,10 +147,20 @@ test('E2E reimpresión de facturas de venta: Ventas, Panel, Reportes, Cuentas x 
     // El borrador actual sigue intacto después de reimprimir otra factura
     assert.equal(await page.locator('.sale-cart tbody tr', { hasText: 'Bujía NGK Reimpresión' }).count(), 1);
 
+    // Autoguardado del borrador ante recarga accidental (F5)
+    await page.reload();
+    await page.getByRole('heading', { name: 'Agregar productos', exact: true }).waitFor();
+    assert.equal(await page.locator('.sale-cart tbody tr', { hasText: 'Bujía NGK Reimpresión' }).count(), 1);
+    await page.getByRole('button', { name: 'Nueva venta', exact: true }).click();
+    assert.equal(await page.locator('.sale-cart tbody tr').count(), 0);
+    await page.reload();
+    await page.getByRole('heading', { name: 'Agregar productos', exact: true }).waitFor();
+    assert.equal(await page.locator('.sale-cart tbody tr').count(), 0);
+
     // ② Panel (/): reimprimir desde Ventas recientes
     await page.goto(appOrigin + '/');
     await page.getByRole('heading', { name: 'Ventas recientes', exact: true }).waitFor();
-    await page.getByRole('button', { name: `Reimprimir Registro ${sale1Id}`, exact: true }).click();
+    await page.getByRole('button', { name: `Reimprimir ${fNum(sale1Id)}`, exact: true }).click();
     const panelReceipt = page.getByRole('dialog');
     await panelReceipt.getByText('Factura de venta', { exact: true }).waitFor();
     await panelReceipt.getByRole('button', { name: 'Cerrar', exact: true }).click();
@@ -158,7 +169,7 @@ test('E2E reimpresión de facturas de venta: Ventas, Panel, Reportes, Cuentas x 
     // ③ Reportes (/reportes): reimprimir factura anulada mostrando sello FACTURA ANULADA y motivo
     await page.goto(appOrigin + '/reportes');
     await page.getByRole('heading', { name: 'Facturas del período', exact: true }).waitFor();
-    await page.getByRole('button', { name: `Reimprimir Registro ${sale3Id}`, exact: true }).click();
+    await page.getByRole('button', { name: `Reimprimir ${fNum(sale3Id)}`, exact: true }).click();
     const voidReceipt = page.getByRole('dialog');
     await voidReceipt.getByText('Factura anulada', { exact: true }).waitFor();
     await voidReceipt.getByText('*** FACTURA ANULADA ***', { exact: true }).waitFor();
@@ -169,7 +180,7 @@ test('E2E reimpresión de facturas de venta: Ventas, Panel, Reportes, Cuentas x 
     // ④ Cuentas x cobrar (/cuentas-por-cobrar): reimprimir factura a crédito
     await page.goto(appOrigin + '/cuentas-por-cobrar');
     await page.getByRole('heading', { name: 'Cuentas x cobrar', exact: true }).waitFor();
-    await page.getByRole('button', { name: `Reimprimir Registro ${sale2Id}`, exact: true }).click();
+    await page.getByRole('button', { name: `Reimprimir ${fNum(sale2Id)}`, exact: true }).click();
     const creditReceipt = page.getByRole('dialog');
     await creditReceipt.getByText('Factura de venta', { exact: true }).waitFor();
     assert.match(await creditReceipt.innerText(), /Taller Hermanos Crédito/);
@@ -197,12 +208,12 @@ test('E2E reimpresión de facturas de venta: Ventas, Panel, Reportes, Cuentas x 
 
     await cashierPage.goto(appOrigin + '/ventas');
     await cashierPage.getByRole('button', { name: 'Facturas recientes y reimpresión', exact: true }).click();
-    await cashierPage.getByRole('dialog').getByRole('button', { name: `Reimprimir Registro ${sale1Id}`, exact: true }).click();
+    await cashierPage.getByRole('dialog').getByRole('button', { name: `Reimprimir ${fNum(sale1Id)}`, exact: true }).click();
     await cashierPage.getByRole('dialog').getByText('— Reimpresión —', { exact: true }).waitFor();
     await cashierPage.getByRole('dialog').getByRole('button', { name: 'Cerrar', exact: true }).click();
 
     await cashierPage.goto(appOrigin + '/');
-    await cashierPage.getByRole('button', { name: `Reimprimir Registro ${sale1Id}`, exact: true }).click();
+    await cashierPage.getByRole('button', { name: `Reimprimir ${fNum(sale1Id)}`, exact: true }).click();
     await cashierPage.getByRole('dialog').getByText('Factura de venta', { exact: true }).waitFor();
     await cashierCtx.close();
 

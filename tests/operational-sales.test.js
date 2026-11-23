@@ -50,7 +50,7 @@ test('el recibo usa el registro confirmado por el servidor, sin inventar tiempo,
     items: [{ id: 5, codigo: 'R', nombre: 'Nombre histórico', cant: 2.5, precioExacto: '10.0030', subtotal: 25.01 }] };
   const snapshot = { result: { id: 91 }, state: { facturas: [{ id: 90 }, doc] } };
   const receipt = receiptFromConfirmation(snapshot);
-  assert.equal(receipt.invoiceNumber, 'Registro 91');
+  assert.equal(receipt.invoiceNumber, 'F-000091');
   assert.equal(receipt.dateOnly, '2026-11-22');
   assert.equal(receipt.customerName, 'Cliente confirmado');
   assert.deepEqual(receipt.totals, { subtotal: 21.2, discount: 0, discountPercent: 0, itbis: 3.81, total: 25.01 });

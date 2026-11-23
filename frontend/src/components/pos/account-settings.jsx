@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Save, UserRound } from 'lucide-react';
+import { LogOut, Save, UserRound } from 'lucide-react';
 import { SectionCard } from './section-card.jsx';
 import { Field, inputClass } from './form-field.jsx';
 import { Input } from '../ui/input.jsx';
 import { Button } from '../ui/button.jsx';
+import { usePosStore } from '../../data/pos-context.jsx';
 
 // Account credentials go directly to Auth; never through the operation journal.
 async function accountRequest(body, signal) {
@@ -23,6 +24,7 @@ async function accountRequest(body, signal) {
 }
 
 export function AccountSettings() {
+  const { runtime } = usePosStore();
   const [account, setAccount] = useState(null);
   const [username, setUsername] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
@@ -30,6 +32,7 @@ export function AccountSettings() {
   const [confirmation, setConfirmation] = useState('');
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [retry, setRetry] = useState(0);
   const sending = useRef(false);
   useEffect(() => {
@@ -113,9 +116,37 @@ export function AccountSettings() {
           </Field>
         </fieldset>
         <p className="mt-4 text-xs text-muted-foreground">Al guardar volverás a iniciar sesión con tus nuevos datos.</p>
-        <Button type="submit" className="mt-6 rounded-xl" disabled={busy || (!newPassword && username.trim().toLowerCase() === account.username)}>
+        <Button type="submit" className="mt-6 rounded-xl" disabled={busy || loggingOut || (!newPassword && username.trim().toLowerCase() === account.username)}>
           <Save />{busy ? 'Confirmando…' : 'Guardar mi cuenta'}
         </Button>
       </form>}
+    {runtime?.logout && (
+      <div className="mt-6 flex flex-col items-start justify-between gap-3 border-t border-border pt-5 sm:flex-row sm:items-center">
+        <div>
+          <p className="text-sm font-medium text-foreground">Sesión en este dispositivo</p>
+          <p className="text-xs text-muted-foreground">Cierra tu sesión para entrar con otra cuenta o proteger el equipo.</p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="rounded-xl text-primary hover:bg-accent hover:text-primary"
+          disabled={busy || loggingOut}
+          onClick={async () => {
+            if (loggingOut) return;
+            setError(null);
+            setLoggingOut(true);
+            try {
+              await runtime.logout();
+            } catch (cause) {
+              setError(cause?.message || 'No se pudo cerrar la sesión.');
+              setLoggingOut(false);
+            }
+          }}
+        >
+          <LogOut className="h-4 w-4" />
+          <span>{loggingOut ? 'Cerrando sesión…' : 'Cerrar sesión'}</span>
+        </Button>
+      </div>
+    )}
   </SectionCard>;
 }
