@@ -13,6 +13,26 @@ const bannerUpdateStates = new Set(['available', 'downloading', 'installing', 'e
 
 let latestUpdate = null;
 const updateListeners = new Set();
+let latestSyncSnapshot = null;
+const syncSnapshotListeners = new Set();
+function publishSyncSnapshot(next) {
+  const summary = next
+    ? { connection: next.connection, pending: next.pending, lastSync: next.lastSync, initialized: next.initialized }
+    : null;
+  if (JSON.stringify(summary) === JSON.stringify(latestSyncSnapshot)) return;
+  latestSyncSnapshot = summary;
+  syncSnapshotListeners.forEach(listener => listener(summary));
+}
+export function useDesktopSyncSnapshot() {
+  const [snap, setSnap] = useState(() => (window.__FELIX_DESKTOP__ ? latestSyncSnapshot : null));
+  useEffect(() => {
+    if (!window.__FELIX_DESKTOP__) return undefined;
+    setSnap(latestSyncSnapshot);
+    syncSnapshotListeners.add(setSnap);
+    return () => { syncSnapshotListeners.delete(setSnap); };
+  }, []);
+  return snap;
+}
 function normalizeUpdate(value) {
   if (!value || typeof value !== 'object' || !validUpdateStates.has(value.state)) return null;
   return {
@@ -191,6 +211,7 @@ function DesktopStatus({ onSync }) {
       const previous = current.current;
       current.current = next;
       setStatus(next); setError('');
+      publishSyncSnapshot(next);
       publishUpdate(next.update ?? null);
       if (previous?.connection === 'offline' && next.connection === 'online' && Date.now() - lastSilentCheck.current > 60_000) {
         lastSilentCheck.current = Date.now();

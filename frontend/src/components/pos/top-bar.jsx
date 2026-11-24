@@ -3,19 +3,17 @@ import { TooltipProvider } from "../ui/tooltip.jsx";
 import { Button } from "../ui/button.jsx";
 import { Link, useNavigate } from "react-router-dom";
 import { BrandLogo } from "./brand-logo.jsx";
-import { Search, RefreshCw, Download, Sun, Moon, Bell, Box, Users, Truck, ReceiptText, AlertTriangle, CornerDownLeft } from "lucide-react";
+import { Search, RefreshCw, Download, Sun, Moon, Box, Users, Truck, ReceiptText, CornerDownLeft } from "lucide-react";
 import { Input } from "../ui/input.jsx";
 import { cn } from "../../lib/utils.js";
 import { Tooltip, TooltipTrigger, TooltipContent } from "../ui/tooltip.jsx";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../ui/dialog.jsx";
-import { toast } from "sonner";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { usePosStore } from "../../data/pos-context.jsx";
 import { usePwa } from "../../pwa.jsx";
 import { DesktopSyncStatus } from "../../desktop-status.jsx";
 import { SalesScanner } from './sales-scanner.jsx';
+import { NotificationsCenter } from "./notifications-center.jsx";
 import { formatMoney } from "../../lib/format.js";
-import { businessTodayIso } from "../../lib/dates.js";
 import { searchTopProducts } from "../../data/product-search.js";
 import { EXTRA_MODULES, MODULE_SHORTCUTS } from "../../data/keyboard-shortcuts.js";
 
@@ -50,7 +48,7 @@ function TopBarClock() {
 }
 
 function TopBar({ onBrandClick } = {}) {
-  const { runtime, products = [], customers = [], suppliers = [], sales = [], settings, cashSession } = usePosStore();
+  const { runtime, products = [], customers = [], suppliers = [], sales = [] } = usePosStore();
   const navigate = useNavigate();
   const pwa = usePwa();
   const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'));
@@ -59,14 +57,13 @@ function TopBar({ onBrandClick } = {}) {
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const [searchOpen, setSearchOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
-  const [notifOpen, setNotifOpen] = useState(false);
   const searchRef = useRef(null);
   const searchBoxRef = useRef(null);
   const optionRefs = useRef([]);
   const syncing = runtime ? runtime.busy : demoSyncing;
   const connected = !runtime || runtime.connection === "connected";
   const desktop = !!window.__FELIX_DESKTOP__;
-  const isOwner = !runtime || runtime.isOwner !== false;
+  const isOwner = !runtime || (runtime.isOwner !== false && (!runtime.accountDetailsAvailable || Boolean(runtime.account?.username)));
   const serviceStatus = connected ? "Conectado" : runtime.connection === "checking" ? "Verificando…" : "Sin conexión al servicio";
 
   useEffect(() => {
@@ -156,66 +153,6 @@ function TopBar({ onBrandClick } = {}) {
     if (!searchOpen) return;
     optionRefs.current[highlight]?.scrollIntoView?.({ block: "nearest" });
   }, [highlight, searchOpen]);
-
-  const stockAlerts = useMemo(() => {
-    const outNames = [];
-    let outCount = 0;
-    let lowCount = 0;
-    for (let i = 0; i < products.length; i++) {
-      const p = products[i];
-      if (p.notifyMinStock === false || p.stock > p.minStock) continue;
-      if (p.stock <= 0) {
-        outCount++;
-        if (outNames.length < 3) outNames.push(p.name);
-      } else {
-        lowCount++;
-      }
-    }
-    const list = [];
-    if (outCount) {
-      list.push({ id: 'out', tone: 'primary', title: `${outCount} ${outCount === 1 ? 'artículo agotado' : 'artículos agotados'}`,
-        description: outNames.join(', '), to: '/inventario?existencia=out' });
-    }
-    if (lowCount) {
-      list.push({ id: 'low', tone: 'warning', title: `${lowCount} ${lowCount === 1 ? 'artículo bajo mínimo' : 'artículos bajo mínimo'}`,
-        description: 'Revisa las alertas de reposición en Inventario.', to: '/inventario?existencia=low' });
-    }
-    return list;
-  }, [products]);
-
-  const hasRuntime = Boolean(runtime);
-  const pendingId = runtime?.pending?.id ?? null;
-  const inFlightId = runtime?.inFlightOperationId ?? null;
-  const notifications = useMemo(() => {
-    const list = [];
-    if (hasRuntime && !cashSession?.open) {
-      list.push({ id: 'cash-closed', tone: 'warning', title: 'Caja cerrada',
-        description: 'Abre la caja para registrar ventas y cobros en efectivo.', to: '/caja' });
-    }
-    list.push(...stockAlerts);
-    if (isOwner) {
-      const todayIso = businessTodayIso();
-      for (const seq of (settings?.ncf || [])) {
-        if (!seq.active) continue;
-        const remaining = seq.end - seq.current;
-        if (seq.expiresAt < todayIso) {
-          list.push({ id: 'ncf-exp-' + seq.type, tone: 'primary', title: `Secuencia NCF ${seq.type} vencida`,
-            description: `Venció el ${seq.expiresAt}. Actualízala en Configuración.`, to: '/configuracion' });
-        } else if (remaining <= 0) {
-          list.push({ id: 'ncf-empty-' + seq.type, tone: 'primary', title: `Secuencia NCF ${seq.type} agotada`,
-            description: 'No quedan comprobantes disponibles. Configura un nuevo rango.', to: '/configuracion' });
-        } else if (remaining <= 20) {
-          list.push({ id: 'ncf-low-' + seq.type, tone: 'warning', title: `Secuencia NCF ${seq.type} por agotarse`,
-            description: `Quedan ${remaining} comprobantes disponibles.`, to: '/configuracion' });
-        }
-      }
-    }
-    if (pendingId && inFlightId !== pendingId) {
-      list.push({ id: 'pending', tone: 'primary', title: 'Solicitud pendiente de confirmación',
-        description: 'Revisa el aviso en la parte superior para confirmar o archivar.', to: '/ventas' });
-    }
-    return list;
-  }, [stockAlerts, settings?.ncf, pendingId, inFlightId, hasRuntime, cashSession?.open, isOwner]);
 
   const handleSync = () => {
     if (runtime) {
@@ -365,47 +302,9 @@ function TopBar({ onBrandClick } = {}) {
             </TooltipContent>
           </Tooltip>
           {runtime && <SalesScanner />}
-          <Button
-            variant="outline"
-            size="icon"
-            className="desktop-notifications relative h-10 w-10 rounded-xl bg-card"
-            aria-label="Notificaciones"
-            onClick={() => setNotifOpen(true)}
-          >
-            <Bell />
-            {(notifications.length > 0 || runtime?.error) && <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-primary ring-2 ring-card" />}
-          </Button>
+          <NotificationsCenter onNavigate={onBrandClick} />
         </div>
       </header>
-      <Dialog open={notifOpen} onOpenChange={setNotifOpen}>
-        <DialogContent className="max-w-md rounded-2xl">
-          <DialogHeader>
-            <DialogTitle>Notificaciones</DialogTitle>
-            <DialogDescription>Alertas actuales de inventario, comprobantes y estado del servicio.</DialogDescription>
-          </DialogHeader>
-          {notifications.length === 0 ? (
-            <p className="py-4 text-center text-sm text-muted-foreground">Todo está al día. No hay alertas activas.</p>
-          ) : (
-            <ul className="space-y-2">
-              {notifications.map(n => (
-                <li key={n.id}>
-                  <button
-                    type="button"
-                    onClick={() => { setNotifOpen(false); navigate(n.to); }}
-                    className="flex w-full items-start gap-3 rounded-xl border border-border bg-card p-3 text-left text-sm hover:bg-muted"
-                  >
-                    <AlertTriangle className={cn("mt-0.5 h-4 w-4 shrink-0", n.tone === 'primary' ? 'text-primary' : 'text-amber-600')} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block font-medium">{n.title}</span>
-                      <span className="block text-xs text-muted-foreground">{n.description}</span>
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </DialogContent>
-      </Dialog>
     </TooltipProvider>
   );
 }

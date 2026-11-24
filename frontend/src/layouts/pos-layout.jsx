@@ -62,6 +62,14 @@ function PosLayout({ children }) {
         }
         return;
       }
+      if (isPlainAlt(event) && event.code === "KeyA") {
+        const notifDialogOpen = Boolean(document.querySelector('.notif-dialog[data-state="open"]'));
+        if (notifDialogOpen || (!hasOpenModal() && !menuOpen)) {
+          event.preventDefault();
+          if (!event.repeat) dispatchShortcut("toggle-notifications");
+        }
+        return;
+      }
       if (menuOpen || hasOpenModal()) return;
       if (event.key === "F1" && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey) {
         event.preventDefault();

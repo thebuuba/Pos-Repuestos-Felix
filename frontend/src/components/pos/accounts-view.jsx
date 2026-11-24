@@ -48,6 +48,7 @@ function AccountsView({
   partyLabel,
   verb,
   initialPartyId,
+  initialBucket = "all",
   onPay,
   onViewDocument,
   business,
@@ -55,7 +56,7 @@ function AccountsView({
   ticketFooter = "¡Gracias por su pago!",
 }) {
   const [partyId, setPartyId] = useState(initialPartyId ?? "all");
-  const [bucket, setBucket] = useState("all");
+  const [bucket, setBucket] = useState(initialBucket ?? "all");
   const [query, setQuery] = useState("");
   const [showPaid, setShowPaid] = useState(false);
   const [paying, setPaying] = useState(null);
@@ -80,7 +81,10 @@ function AccountsView({
       .filter((d) => partyId === "all" || String(d.partyId) === partyId)
       .filter(
         (d) =>
-          bucket === "all" || (d.dueDate && balanceOf(d) > 0 && agingBucket(d, now, todayDate) === bucket),
+          bucket === "all" ||
+          (bucket === "overdue"
+            ? d.dueDate && balanceOf(d) > 0 && daysOverdue(d, now, todayDate) > 0
+            : d.dueDate && balanceOf(d) > 0 && agingBucket(d, now, todayDate) === bucket),
       )
       .filter(
         (d) =>
@@ -140,7 +144,7 @@ function AccountsView({
                 onClick={() => setBucket("all")}
                 className="text-xs font-medium text-primary"
               >
-                {"Quitar filtro"}
+                {bucket === "overdue" ? "Solo vencidas · Quitar filtro" : "Quitar filtro"}
               </button>
             )}
           </div>

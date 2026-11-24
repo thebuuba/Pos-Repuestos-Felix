@@ -21,6 +21,7 @@ function PayablesPage() {
   const [selectedPurchaseId, setSelectedPurchaseId] = useState(null);
   const [params] = useSearchParams();
   const initial = params.get("suplidor") ?? undefined;
+  const initialBucket = params.get("filtro") === "vencidas" ? "overdue" : "all";
   const selectedPurchase = selectedPurchaseId != null
     ? (purchases.find((p) => p.id === selectedPurchaseId) ?? null)
     : null;
@@ -39,6 +40,7 @@ function PayablesPage() {
         partyLabel="Suplidor"
         verb="Pagar"
         initialPartyId={initial}
+        initialBucket={initialBucket}
         operational={Boolean(runtime)}
         cashOpen={Boolean(cashSession?.open)}
         business={settings.business}
@@ -63,7 +65,7 @@ function PayablesPage() {
             await payPayable(doc.id, amount, method, note);
           }
         }}
-        key={initial ?? "all"}
+        key={`${initial ?? "all"}:${initialBucket}`}
       />
       <PurchaseInvoiceDialog
         purchase={selectedPurchase}

@@ -14,6 +14,7 @@ function ReceivablesPage() {
   const [reprintSale, setReprintSale] = useState(null);
   const [params] = useSearchParams();
   const initial = params.get("cliente") ?? undefined;
+  const initialBucket = params.get("filtro") === "vencidas" ? "overdue" : "all";
   const openingSummary = useMemo(() => {
     if (!runtime) return { count: 0, total: 0 };
     const invoiceDebtByCustomer = new Map();
@@ -68,6 +69,7 @@ function ReceivablesPage() {
         partyLabel="Cliente"
         verb="Cobrar"
         initialPartyId={initial}
+        initialBucket={initialBucket}
         operational={Boolean(runtime)}
         cashOpen={Boolean(cashSession?.open)}
         business={settings.business}
@@ -92,7 +94,7 @@ function ReceivablesPage() {
             await payReceivable(doc.id, amount, method, note);
           }
         }}
-        key={initial ?? "all"}
+        key={`${initial ?? "all"}:${initialBucket}`}
       />
       <ReceiptDialog
         sale={receiptFromStoredSale(reprintSale)}

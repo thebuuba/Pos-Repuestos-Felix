@@ -1,6 +1,6 @@
 [package]
 name = "repuestos-felix"
-version = "1.2.15"
+version = "1.2.16"
 description = "Punto de venta Repuestos Félix para Windows"
 edition = "2021"
 publish = false

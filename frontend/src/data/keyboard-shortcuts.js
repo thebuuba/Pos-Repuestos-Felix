@@ -125,6 +125,7 @@ export const SHORTCUT_SECTIONS = [
       { keys: "Ctrl+K", label: "Buscador rápido (productos, clientes, facturas y módulos)" },
       { keys: "F1", label: "Abrir Punto de venta desde cualquier módulo" },
       { keys: "Alt+1 … Alt+0", label: "Cambiar entre módulos del menú principal y cuentas" },
+      { keys: "Alt+A", label: "Abrir o cerrar el centro de notificaciones" },
       { keys: "Alt+H", label: "Mostrar u ocultar esta guía de atajos" },
     ],
   },

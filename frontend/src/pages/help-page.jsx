@@ -110,6 +110,7 @@ function HelpPage({ reference }) {
         ["Alt+N", "Nuevo artículo / cliente / venta"],
         ["Ctrl+Enter", "Guardar diálogo abierto"],
         ["Ctrl+K", "Búsqueda general y módulos"],
+        ["Alt+A", "Centro de notificaciones"],
         ["Alt+H", "Ver todos los atajos"],
       ]
     : null;

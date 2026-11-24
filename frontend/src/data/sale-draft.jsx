@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { toast as ue } from 'sonner';
 import { usePosStore } from './pos-context.jsx';
 import { quoteSale, updateSaleLine, receiptFromConfirmation, saleRequest } from './operational-sales.js';
+import { detectPostSaleStockCrossings } from './smart-notifications.js';
 import { ReceiptDialog } from '../components/pos/receipt-dialog.jsx';
 import { businessTodayIso } from '../lib/dates.js';
 
@@ -408,9 +409,30 @@ export function SaleDraftProvider({ children }) {
           );
       if (requestDatabase !== currentDatabase.current) return;
       resolved.current = snapshot.confirmation.operationId;
+      const soldItems = itemsRef.current;
       const cashReceived = condition === "contado" && paymentMethod === "efectivo" && received !== "" ? Number(received) : undefined;
       showReceipt(snapshot, cashReceived);
       clearSale();
+      const { newlyOut, newlyLow } = detectPostSaleStockCrossings(soldItems, snapshot.state?.productos ?? []);
+      if (newlyOut.length > 0) {
+        const title = newlyOut.length === 1
+          ? `Se agotó: ${newlyOut[0].name}`
+          : `${newlyOut.length} artículos quedaron agotados`;
+        ue.warning(title, {
+          description: newlyOut.length === 1
+            ? "Quedó en 0 unidades tras esta venta."
+            : newlyOut.slice(0, 3).map((x) => x.name).join(", "),
+        });
+      } else if (newlyLow.length > 0) {
+        const title = newlyLow.length === 1
+          ? `Bajo mínimo: ${newlyLow[0].name}`
+          : `${newlyLow.length} artículos cayeron bajo mínimo`;
+        ue.warning(title, {
+          description: newlyLow.length === 1
+            ? `Quedan ${newlyLow[0].stock} (mín. ${newlyLow[0].minStock}).`
+            : newlyLow.slice(0, 3).map((x) => `${x.name} (${x.stock})`).join(", "),
+        });
+      }
     } catch (error) {
       if (requestDatabase !== currentDatabase.current) return;
       setFailure({
