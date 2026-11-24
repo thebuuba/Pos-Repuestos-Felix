@@ -5,8 +5,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
-import pg from 'pg';
-import { temporaryPostgres } from './postgres.js';
+import { memoryPool } from '../src/desktop/memory-pool.js';
 import { migrateDatabase } from '../src/db/migrations.js';
 import { readSyncBootstrap, writeSyncOperation } from '../src/pos/sync-operations.js';
 import {
@@ -166,10 +165,9 @@ test('fallback Linux a credentials/master.key sin keyring, clave borrada/corrupt
 
 test('re-login tras pérdida de clave Linux recupera sincronización conservando operaciones pendientes sin duplicados', { timeout: 120000 }, async () => {
   const dir = await mkdtemp(join(tmpdir(), 'felix-linux-relogin-'));
-  let database, cloud, ledger, engine, server;
+  let cloud, ledger, engine, server;
   try {
-    database = await temporaryPostgres();
-    cloud = new pg.Pool({ connectionString: database.connectionString });
+    cloud = await memoryPool();
     await migrateDatabase(cloud);
     const actor = { id: 'u-owner', name: 'felix', role: 'dueno' };
 
@@ -267,7 +265,13 @@ test('re-login tras pérdida de clave Linux recupera sincronización conservando
     const finalStatus = await syncRecovered.json();
     assert.equal(finalStatus.connection, 'online');
     assert.equal(finalStatus.pending, 0);
-    const cloudTurns = (await cloud.query('SELECT COUNT(*)::int AS total FROM turnos_caja WHERE cerrado_en IS NULL')).rows[0].total;
+    const client = await cloud.connect();
+    let cloudTurns;
+    try {
+      cloudTurns = Number((await client.query('SELECT COUNT(*)::int AS total FROM turnos_caja WHERE cerrado_en IS NULL')).rows[0].total);
+    } finally {
+      client.release();
+    }
     assert.equal(cloudTurns, 1, 'La apertura de caja offline debe haberse sincronizado exactamente una vez');
   } finally {
     if (server) {
@@ -276,7 +280,6 @@ test('re-login tras pérdida de clave Linux recupera sincronización conservando
     }
     await engine?.close().catch(() => {});
     await cloud?.end().catch(() => {});
-    await database?.stop().catch(() => {});
     await rm(dir, { recursive: true, force: true });
   }
 });

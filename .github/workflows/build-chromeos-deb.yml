@@ -69,18 +69,18 @@ jobs:
       - name: Instalar dependencias JS (--frozen-lockfile)
         run: pnpm install --frozen-lockfile
 
-      - name: Ejecutar pruebas unitarias Linux y Rust (--locked)
-        run: |
-          set -euo pipefail
-          node --test tests/linux-desktop.test.js tests/remote-credentials.test.js
-          cargo test --manifest-path src-tauri/Cargo.toml --locked
-
       - name: Compilar frontend operativo y preparar payload Linux verificado
         run: |
           set -euo pipefail
           pnpm build
           node scripts/build-linux.mjs
           node scripts/build-linux.mjs --verify
+
+      - name: Ejecutar pruebas unitarias Linux y Rust (--locked)
+        run: |
+          set -euo pipefail
+          node --test tests/linux-desktop.test.js tests/remote-credentials.test.js
+          cargo test --manifest-path src-tauri/Cargo.toml --locked
 
       - name: Compilar paquete .deb con Tauri v2
         run: |
