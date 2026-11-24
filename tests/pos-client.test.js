@@ -168,7 +168,7 @@ test('an open form replays its own packet after another tab recovers and renames
   await page.getByRole('button', { name: 'Nuevo artículo' }).click();
   const form = page.getByRole('dialog');
   await form.getByLabel('Código', { exact: true }).fill('BORRADOR-FIJO');
-  await form.getByLabel('Descripción', { exact: true }).fill('Producto confirmado en dos pestañas');
+  await form.getByLabel('Nombre', { exact: true }).fill('Producto confirmado en dos pestañas');
   await form.getByLabel('Costo base RD$', { exact: true }).fill('2');
   await form.getByLabel('Precio 1 · Detalle', { exact: true }).fill('3');
   await form.getByLabel('Existencia', { exact: true }).fill('4');

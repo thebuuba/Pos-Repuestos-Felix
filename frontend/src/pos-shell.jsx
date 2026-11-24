@@ -11,6 +11,7 @@ import { PosLayout } from './layouts/pos-layout.jsx';
 import { formatMoney, formatUnitMoney } from './lib/format.js';
 import { formatBusinessDateTime } from './lib/dates.js';
 import { PwaProvider, PwaNotice } from './pwa.jsx';
+import { DesktopUpdateNotice } from './desktop-status.jsx';
 
 const dateLabel = value => formatBusinessDateTime(value);
 const operations = { ventas: 'Venta', 'ventas/anular': 'Anulación de venta', compras: 'Compra', 'compras/anular': 'Anulación de compra', productos: 'Artículo',
@@ -290,6 +291,7 @@ export function PosShell({ pages, homePath }) {
   return (
     <PwaProvider enabled={!!runtime}><BrowserRouter>
       {runtime && !runtime.snapshot ? <InitialLoad runtime={runtime} /> : <Draft><PosLayout>
+        <DesktopUpdateNotice />
         <PwaNotice runtime={runtime} />
         <ServiceNotice runtime={runtime} />
         <ModuleContent><Routes>

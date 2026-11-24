@@ -2,18 +2,41 @@
 
 use std::{
     fs,
-    io::{BufRead, BufReader, Read},
+    io::{BufRead, BufReader, Read, Write},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
-    sync::{mpsc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc, Mutex,
+    },
     time::{Duration, Instant},
 };
 use tauri::{webview::NewWindowResponse, Manager, RunEvent, Url, WebviewUrl, WebviewWindowBuilder};
-use tauri_plugin_updater::UpdaterExt;
+use tauri_plugin_updater::{Update, UpdaterExt};
+
+enum HostCommand {
+    ApplyUpdate,
+}
+
+struct UpdateController {
+    pending: Mutex<Option<Update>>,
+    busy: AtomicBool,
+    sender: mpsc::Sender<HostCommand>,
+}
 
 struct LocalServer(Mutex<Option<Child>>);
 
 impl LocalServer {
+    fn send_line(&self, line: &str) -> bool {
+        if let Ok(mut guard) = self.0.lock() {
+            if let Some(child) = guard.as_mut() {
+                if let Some(stdin) = child.stdin.as_mut() {
+                    return writeln!(stdin, "{line}").is_ok() && stdin.flush().is_ok();
+                }
+            }
+        }
+        false
+    }
     fn replace(&self, next: LocalServer) {
         self.stop();
         if let (Ok(mut dst), Ok(mut src)) = (self.0.lock(), next.0.lock()) {
@@ -104,6 +127,14 @@ fn record_native_startup_error(data_dir: Option<&Path>, detail: &str) -> Option<
 }
 
 fn start_server(resources: &Path, data_dir: &Path) -> Result<(LocalServer, Url), String> {
+    start_server_with_commands(resources, data_dir, None)
+}
+
+fn start_server_with_commands(
+    resources: &Path,
+    data_dir: &Path,
+    command_tx: Option<mpsc::Sender<HostCommand>>,
+) -> Result<(LocalServer, Url), String> {
     // Tauri returns canonical Windows paths. Node's CLI rejects the \\?\ prefix.
     let resources = dunce::simplified(resources);
     let app = resources.join("app");
@@ -163,6 +194,10 @@ fn start_server(resources: &Path, data_dir: &Path) -> Result<(LocalServer, Url),
                 } else if let Some(message) = error_message(&line) {
                     reported_error = Some(message);
                     break;
+                }
+            } else if line.trim() == "FELIX_APPLY_UPDATE" {
+                if let Some(tx) = command_tx.as_ref() {
+                    let _ = tx.send(HostCommand::ApplyUpdate);
                 }
             }
         }
@@ -224,23 +259,6 @@ fn show_startup_error(detail: &str, log_path: Option<&Path>) {
     }
 }
 
-fn ask_update(version: &str) -> bool {
-    #[cfg(windows)]
-    {
-        // MB_YESNO (0x04) | MB_ICONINFORMATION (0x40) | MB_DEFBUTTON2 (0x100) | MB_SETFOREGROUND (0x10000)
-        // "No" por defecto evita que un escaneo de código de barras (Enter) acepte la actualización por error.
-        let msg = format!(
-            "Hay una nueva versión de Repuestos Félix disponible (v{version}).\n\n¿Deseas descargarla e instalarla ahora? Tus datos y ventas pendientes se conservan."
-        );
-        return message_box("Actualización disponible — Repuestos Félix", &msg, 0x0001_0144) == 6;
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = version;
-        false
-    }
-}
-
 fn show_update_error(detail: &str) {
     #[cfg(windows)]
     {
@@ -252,40 +270,109 @@ fn show_update_error(detail: &str) {
     }
 }
 
-async fn check_and_apply_update(app: tauri::AppHandle) {
+fn format_update_event(state: &str, version: &str, error: Option<&str>) -> String {
+    let payload = serde_json::json!({
+        "state": state,
+        "version": version,
+        "error": error,
+    });
+    format!("FELIX_UPDATE={payload}")
+}
+
+fn emit_update_event(app: &tauri::AppHandle, state: &str, version: &str, error: Option<&str>) {
+    if let Some(server) = app.try_state::<LocalServer>() {
+        server.send_line(&format_update_event(state, version, error));
+    }
+}
+
+async fn check_for_update(app: tauri::AppHandle) {
     let Ok(updater) = app.updater() else { return; };
     let Ok(Some(update)) = updater.check().await else { return; };
     let version = update.version.clone();
-    if !ask_update(&version) {
+    if let Some(controller) = app.try_state::<UpdateController>() {
+        if let Ok(mut pending) = controller.pending.lock() {
+            *pending = Some(update);
+        }
+    }
+    emit_update_event(&app, "available", &version, None);
+}
+
+async fn apply_pending_update(app: tauri::AppHandle) {
+    let Some(controller) = app.try_state::<UpdateController>() else { return; };
+    if controller
+        .busy
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
         return;
     }
+    let update = {
+        let taken = controller.pending.lock().ok().and_then(|mut guard| guard.take());
+        if let Some(found) = taken {
+            found
+        } else {
+            let checked = match app.updater() {
+                Ok(updater) => updater.check().await.ok().flatten(),
+                Err(_) => None,
+            };
+            match checked {
+                Some(found) => found,
+                None => {
+                    controller.busy.store(false, Ordering::SeqCst);
+                    emit_update_event(
+                        &app,
+                        "error",
+                        "",
+                        Some("No se pudo verificar la actualización. Revisa tu conexión e inténtalo de nuevo."),
+                    );
+                    return;
+                }
+            }
+        }
+    };
+    let version = update.version.clone();
+    emit_update_event(&app, "downloading", &version, None);
     let bytes = match update.download(|_, _| {}, || {}).await {
         Ok(bytes) => bytes,
         Err(_) => {
-            show_update_error(
-                "No se pudo descargar la actualización automática. Puedes seguir trabajando con normalidad y volver a intentarlo al reabrir el POS.",
+            if let Ok(mut pending) = controller.pending.lock() {
+                *pending = Some(update);
+            }
+            controller.busy.store(false, Ordering::SeqCst);
+            emit_update_event(
+                &app,
+                "error",
+                &version,
+                Some("No se pudo descargar la actualización automática. Puedes seguir trabajando y reintentar."),
             );
             return;
         }
     };
+    emit_update_event(&app, "installing", &version, None);
+    std::thread::sleep(Duration::from_millis(150));
     // Cerrar el servidor local Node/SQLite antes de que NSIS reemplace app/ y runtime/node.exe.
     if let Some(server) = app.try_state::<LocalServer>() {
         server.stop();
     }
     if update.install(bytes).is_err() {
         // Intentar recuperar el servidor local en el mismo puerto guardado para no dejar la ventana muerta.
+        let sender = controller.sender.clone();
         let restarted = (|| -> Result<(), String> {
             let resources = app.path().resource_dir().map_err(|e| e.to_string())?;
             let data_dir = default_data_dir().ok_or_else(|| "Falta LOCALAPPDATA.".to_string())?;
-            let (next_server, _) = start_server(&resources, &data_dir)?;
+            let (next_server, _) = start_server_with_commands(&resources, &data_dir, Some(sender))?;
             if let Some(server) = app.try_state::<LocalServer>() {
                 server.replace(next_server);
             }
             Ok(())
         })();
+        controller.busy.store(false, Ordering::SeqCst);
         if restarted.is_ok() {
-            show_update_error(
-                "No se pudo completar la instalación de la actualización. El servicio local se reinició y puedes seguir trabajando con normalidad.",
+            emit_update_event(
+                &app,
+                "error",
+                &version,
+                Some("No se pudo completar la instalación. El servicio local se reinició y puedes seguir trabajando."),
             );
         } else {
             show_update_error(
@@ -306,8 +393,14 @@ fn main() {
             let configured: Result<(), Box<dyn std::error::Error>> = (|| {
                 let resources = app.path().resource_dir()?;
                 let dir = data_dir.as_deref().ok_or("Falta la carpeta local del usuario (LOCALAPPDATA).")?;
-                let (server, url) = start_server(&resources, dir)?;
+                let (cmd_tx, cmd_rx) = mpsc::channel::<HostCommand>();
+                let (server, url) = start_server_with_commands(&resources, dir, Some(cmd_tx.clone()))?;
                 app.manage(server);
+                app.manage(UpdateController {
+                    pending: Mutex::new(None),
+                    busy: AtomicBool::new(false),
+                    sender: cmd_tx,
+                });
                 let origin = url.origin();
                 let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
                     .title("Repuestos Félix")
@@ -321,10 +414,19 @@ fn main() {
                     .build()
                     .map_err(|err| format!("No se pudo abrir la ventana del POS (WebView2): {err}"))?;
                 let _ = window.maximize();
+                let command_handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    for cmd in cmd_rx {
+                        if matches!(cmd, HostCommand::ApplyUpdate) {
+                            let handle = command_handle.clone();
+                            tauri::async_runtime::spawn(apply_pending_update(handle));
+                        }
+                    }
+                });
                 let update_handle = app.handle().clone();
                 std::thread::spawn(move || {
                     std::thread::sleep(Duration::from_secs(4));
-                    tauri::async_runtime::block_on(check_and_apply_update(update_handle));
+                    tauri::async_runtime::block_on(check_for_update(update_handle));
                 });
                 Ok(())
             })();
@@ -356,7 +458,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{error_message, ready_url, start_server};
+    use super::{error_message, format_update_event, ready_url, start_server};
 
     #[test]
     #[cfg(windows)]
@@ -407,5 +509,22 @@ mod tests {
         );
         assert_eq!(error_message("FELIX_ERROR=   "), None);
         assert_eq!(error_message("otro mensaje"), None);
+    }
+
+    #[test]
+    fn formats_single_line_json_update_events() {
+        let line = format_update_event("available", "1.2.9", None);
+        assert!(line.starts_with("FELIX_UPDATE="));
+        assert!(!line.contains('\n'));
+        let parsed: serde_json::Value = serde_json::from_str(line.strip_prefix("FELIX_UPDATE=").unwrap()).unwrap();
+        assert_eq!(parsed["state"], "available");
+        assert_eq!(parsed["version"], "1.2.9");
+        assert!(parsed["error"].is_null());
+
+        let err_line = format_update_event("error", "1.2.9", Some("Fallo de red\nreintenta"));
+        assert!(!err_line.contains('\n'));
+        let err_parsed: serde_json::Value = serde_json::from_str(err_line.strip_prefix("FELIX_UPDATE=").unwrap()).unwrap();
+        assert_eq!(err_parsed["state"], "error");
+        assert_eq!(err_parsed["error"], "Fallo de red\nreintenta");
     }
 }

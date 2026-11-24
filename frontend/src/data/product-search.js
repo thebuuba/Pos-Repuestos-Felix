@@ -1,5 +1,10 @@
 // Índice en minúsculas memoizado por referencia de catálogo (WeakMap) para búsquedas <1 ms en ~7,700 productos.
 const cache = new WeakMap();
+const SEPARATOR_RE = /[-\s/_]+/g;
+
+export function compactSearchText(value) {
+  return typeof value === 'string' ? value.toLowerCase().replace(SEPARATOR_RE, '') : '';
+}
 
 export function indexedProducts(products) {
   if (!Array.isArray(products)) return [];
@@ -10,17 +15,28 @@ export function indexedProducts(products) {
       const p = products[i];
       const alts = p.altCodes;
       let altLowers = null;
+      let altCompacts = null;
       if (alts && alts.length) {
         altLowers = new Array(alts.length);
-        for (let j = 0; j < alts.length; j++) altLowers[j] = alts[j].toLowerCase();
+        altCompacts = new Array(alts.length);
+        for (let j = 0; j < alts.length; j++) {
+          const lower = alts[j].toLowerCase();
+          altLowers[j] = lower;
+          altCompacts[j] = lower.replace(SEPARATOR_RE, '');
+        }
       }
+      const codeLower = p.code.toLowerCase();
+      const nameLower = p.name.toLowerCase();
       index[i] = {
         p,
         code: p.code,
-        codeLower: p.code.toLowerCase(),
-        nameLower: p.name.toLowerCase(),
+        codeLower,
+        codeCompact: codeLower.replace(SEPARATOR_RE, ''),
+        nameLower,
+        nameCompact: nameLower.replace(SEPARATOR_RE, ''),
         brandLower: p.brand ? p.brand.toLowerCase() : '',
         altLowers,
+        altCompacts,
       };
     }
     cache.set(products, index);
@@ -28,7 +44,7 @@ export function indexedProducts(products) {
   return index;
 }
 
-export function matchesIndexed(entry, q) {
+export function matchesIndexed(entry, q, qCompact = compactSearchText(q)) {
   if (entry.codeLower.includes(q) || entry.nameLower.includes(q) || (entry.brandLower && entry.brandLower.includes(q))) {
     return true;
   }
@@ -38,12 +54,24 @@ export function matchesIndexed(entry, q) {
       if (alts[i].includes(q)) return true;
     }
   }
+  if (qCompact) {
+    if (entry.codeCompact.includes(qCompact) || entry.nameCompact.includes(qCompact)) {
+      return true;
+    }
+    const altC = entry.altCompacts;
+    if (altC) {
+      for (let i = 0; i < altC.length; i++) {
+        if (altC[i].includes(qCompact)) return true;
+      }
+    }
+  }
   return false;
 }
 
 export function searchTopProducts(products, rawQuery, limit = 6) {
   const q = rawQuery.trim().toLowerCase();
   if (!q) return [];
+  const qCompact = q.replace(SEPARATOR_RE, '');
   const index = indexedProducts(products);
   const exact = [];
   const exactCi = [];
@@ -57,16 +85,20 @@ export function searchTopProducts(products, rawQuery, limit = 6) {
       if (exact.length >= limit) break;
       continue;
     }
-    if (entry.codeLower === q || (entry.altLowers && entry.altLowers.includes(q))) {
+    if (
+      entry.codeLower === q ||
+      (entry.altLowers && entry.altLowers.includes(q)) ||
+      (qCompact && (entry.codeCompact === qCompact || (entry.altCompacts && entry.altCompacts.includes(qCompact))))
+    ) {
       if (exact.length + exactCi.length < limit) exactCi.push(p);
       continue;
     }
     if (exact.length + exactCi.length >= limit) continue;
-    if (entry.codeLower.startsWith(q)) {
+    if (entry.codeLower.startsWith(q) || (qCompact && entry.codeCompact.startsWith(qCompact))) {
       if (prefix.length < limit) prefix.push(p);
       continue;
     }
-    if (prefix.length < limit && matchesIndexed(entry, q)) {
+    if (prefix.length < limit && matchesIndexed(entry, q, qCompact)) {
       if (contains.length < limit) contains.push(p);
     }
   }

@@ -96,8 +96,9 @@ test('la compra conserva códigos literales, precios exactos, totales por línea
   await write('suplidores/' + supplierId, { version: supplier.version, nombre: 'Nombre modificado' }, 'PUT');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
-  await history.getByText('Suplidor de prueba', { exact: true }).waitFor();
-  await history.getByRole('button').focus();
+  const mobileCard = main.getByRole('button', { name: /Ver factura de C-/i }).filter({ hasText: 'REC-004' });
+  await mobileCard.getByText('Suplidor de prueba', { exact: true }).waitFor();
+  await mobileCard.focus();
   await page.keyboard.press('Enter');
   await page.getByRole('dialog').getByText(/999,999,999,998\.9876/).waitFor();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
@@ -115,7 +116,7 @@ test('una compra sin fórmula exige los tres precios y mantiene el borrador al r
   assert.match(await main.getByLabel('Fórmula de precios').textContent(), /Precios manuales/);
   await main.getByLabel('No. factura del suplidor').fill('MAN-1');
   await main.getByLabel('Código', { exact: true }).fill('nuevo-manual');
-  await main.getByLabel('Descripción', { exact: true }).fill('Primera entrada');
+  await main.getByLabel('Nombre', { exact: true }).fill('Primera entrada');
   await main.getByLabel('Costo unitario').fill('9.0005');
   await main.getByRole('button', { name: 'Agregar', exact: true }).click();
   const submit = main.getByRole('button', { name: 'Subir factura al inventario' });
@@ -133,7 +134,7 @@ test('una compra sin fórmula exige los tres precios y mantiene el borrador al r
   assert.equal(await main.getByLabel('No. factura del suplidor').inputValue(), 'MAN-1');
   await main.getByLabel('No. factura del suplidor').fill('MAN-2');
   await submit.click();
-  await main.getByRole('row').filter({ hasText: 'MAN-2' }).getByText('RD$ 9.00', { exact: true }).waitFor();
+  await main.getByRole('button', { name: /Ver factura de C-/i }).filter({ hasText: 'MAN-2' }).getByText('RD$ 9.00', { exact: true }).waitFor();
   const state = (await (await fetch(origin + '/api/state')).json()).state;
   assert.deepEqual(state.compras.filter(p => p.suplidorId === supplier.result.id).map(p => p.numero).sort(), ['MAN-1','MAN-2']);
   assert.equal(state.productos.find(p => p.codigo === 'nuevo-manual').preciosExactos.p3, '10.0088');
@@ -160,7 +161,7 @@ test('dos sesiones que crean o editan un código obligan a revisar la compra ant
   await add.click();
   const newCode = 'creado-en-otra-caja';
   await main.getByLabel('Código', { exact: true }).fill(newCode);
-  await main.getByLabel('Descripción', { exact: true }).fill('Nombre propuesto');
+  await main.getByLabel('Nombre', { exact: true }).fill('Nombre propuesto');
   await main.getByLabel('Costo unitario').fill('0.125');
   await add.click();
   for (const k of ['P1','P2','P3']) await main.getByLabel(k, { exact: true }).last().fill('2');
@@ -247,12 +248,12 @@ test('compras permite buscar suplidor, buscar pieza por nombre y subir cantidad 
   assert.match(await main.getByRole('combobox', { name: 'Suplidor', exact: true }).textContent(), /Importadora Cibao Express/);
 
   // 2. Sin escribir código nuevo, Descripción no estorba; buscar pieza por nombre en el buscador único
-  assert.equal(await main.getByLabel('Descripción', { exact: true }).count(), 0);
+  assert.equal(await main.getByLabel('Nombre', { exact: true }).count(), 0);
   await main.getByLabel('Código', { exact: true }).fill('Platino');
   await main.getByRole('option', { name: /Bujía NGK Punta Platino/i }).click();
   assert.equal(await main.getByLabel('Código', { exact: true }).inputValue(), 'BUJ-NGK-9');
   assert.equal(await main.getByLabel('Costo unitario').inputValue(), '125.0000');
-  assert.equal(await main.getByLabel('Descripción', { exact: true }).count(), 0);
+  assert.equal(await main.getByLabel('Nombre', { exact: true }).count(), 0);
 
   // 3. Flecha arriba en Cantidad debe subir 1 -> 2 -> 3 (no 1.01)
   const qty = main.getByLabel('Cantidad', { exact: true });

@@ -14,7 +14,7 @@ const security = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosni
 const error = (message, status = 400) => Object.assign(new Error(message), { status });
 const labels = { productos: 'Producto', clientes: 'Cliente', suplidores: 'Suplidor', formulas: 'Fórmula', configuracion: 'Configuración', ventas: 'Venta', compras: 'Compra', caja: 'Caja', cuentas: 'Abono', ncf: 'Comprobante NCF', taller: 'Cuenta taller' };
 
-export function desktopServer(engine, remote, assetsDirectory) {
+export function desktopServer(engine, remote, assetsDirectory, desktopHost = null) {
   const ledger = engine.ledger;
   let syncing = null, authenticationAttempt = null, stopped = false;
   const sameProfile = (current, expected) => current?.id === expected?.id && current?.generation === expected?.generation;
@@ -233,7 +233,14 @@ export function desktopServer(engine, remote, assetsDirectory) {
           status.connection = 'checking';
           status.error = null;
         }
+        status.update = desktopHost?.updateStatus?.() ?? null;
         return send(200, status);
+      }
+      if (path === '/api/desktop/update' && request.method === 'POST') {
+        requireAccess();
+        const next = desktopHost?.applyUpdate?.();
+        if (!next) throw error('No hay una actualización lista para instalar en este momento.', 409);
+        return send(200, { update: next });
       }
       if (path === '/api/desktop/sync' && request.method === 'POST') return send(200, await synchronize(true));
       if (path === '/api/desktop/pending' && request.method === 'GET') return send(200, pendingRows());

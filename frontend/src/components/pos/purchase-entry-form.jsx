@@ -571,9 +571,9 @@ function PurchaseEntryForm({
           </div>
           {showNewDescription && (
             <div className="grid gap-3 border-t border-border/60 pt-2.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-              <Field label="Descripción del artículo nuevo">
+              <Field label="Nombre del artículo nuevo">
                 <Input
-                  maxLength={2000} aria-label="Descripción" value={entry.name}
+                  maxLength={2000} aria-label="Nombre" value={entry.name}
                   autoComplete="off"
                   onChange={(e) =>
                     setEntry({
@@ -582,7 +582,7 @@ function PurchaseEntryForm({
                     })
                   }
                   onKeyDown={(e) => e.key === "Enter" && addLine()}
-                  placeholder="Descripción"
+                  placeholder="Nombre del artículo"
                   className={inputClass}
                 />
               </Field>
@@ -625,7 +625,7 @@ function PurchaseEntryForm({
                 </span>
               ) : (
                 <span className="rounded-md bg-accent px-2 py-1 font-medium text-accent-foreground">
-                  {"Artículo nuevo · escribe su descripción arriba"}
+                  {"Artículo nuevo · escribe su nombre arriba"}
                 </span>
               ))}
             {entryError && (

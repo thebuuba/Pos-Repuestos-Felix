@@ -70,7 +70,7 @@ async function newProduct(code, description) {
   await page.getByRole('button', { name: 'Nuevo artículo', exact: true }).click();
   const sheet = page.getByRole('dialog');
   await sheet.getByLabel('Código', { exact: true }).fill(code);
-  await sheet.getByLabel('Descripción', { exact: true }).fill(description);
+  await sheet.getByLabel('Nombre', { exact: true }).fill(description);
   await sheet.getByLabel('Costo base RD$', { exact: true }).fill('95.50');
   await sheet.getByLabel('Existencia', { exact: true }).fill('10');
   await sheet.getByLabel('Mínimo', { exact: true }).fill('3');
@@ -140,7 +140,7 @@ test('rendered product form saves case-sensitive codes and reopens the exact cos
   assert.equal(await sheet.getByLabel('Costo base RD$', { exact: true }).inputValue(), '999999999999.9898');
   assert.equal(await sheet.getByLabel('Precio 2 · Por mayor', { exact: true }).inputValue(), '10.0030');
   assert.equal(await sheet.getByLabel('Precio 3 · Taller', { exact: true }).inputValue(), '999999999999.9898');
-  await sheet.getByLabel('Descripción', { exact: true }).fill('Código editado');
+  await sheet.getByLabel('Nombre', { exact: true }).fill('Código editado');
   await sheet.getByRole('button', { name: 'Guardar cambios', exact: true }).click();
   await sheet.waitFor({ state: 'hidden', timeout: 5000 });
   await page.reload();
@@ -161,7 +161,7 @@ for (const cost of [10, 0]) test('metadata-only edit preserves empty attributes 
   const row = page.getByRole('row').filter({ hasText: code });
   await row.getByRole('button', { name: 'Editar', exact: true }).click();
   const sheet = page.getByRole('dialog');
-  await sheet.getByLabel('Descripción', { exact: true }).fill('Descripción revisada');
+  await sheet.getByLabel('Nombre', { exact: true }).fill('Descripción revisada');
   await sheet.getByRole('button', { name: 'Guardar cambios' }).click();
   await sheet.waitFor({ state: 'hidden', timeout: 5_000 });
   await page.reload();
@@ -193,12 +193,12 @@ test('a real concurrent edit rejects the stale version and retains the rendered 
   const original = await confirmedProduct('UI-CATALOGO');
   await page.getByRole('row').filter({ hasText: 'UI-CATALOGO' }).getByRole('button', { name: 'Editar', exact: true }).click();
   const sheet = page.getByRole('dialog');
-  await sheet.getByLabel('Descripción', { exact: true }).fill('Mi borrador conservado');
+  await sheet.getByLabel('Nombre', { exact: true }).fill('Mi borrador conservado');
   const response = await write(`productos/${productId}`, { ...original, nombre: 'Cambio confirmado en otro equipo' }, 'PUT');
   assert.equal(response.status, 200, await response.clone().text());
   await sheet.getByRole('button', { name: 'Guardar cambios', exact: true }).click();
   await sheet.getByText(/El producto cambió/).waitFor();
-  assert.equal(await sheet.getByLabel('Descripción', { exact: true }).inputValue(), 'Mi borrador conservado');
+  assert.equal(await sheet.getByLabel('Nombre', { exact: true }).inputValue(), 'Mi borrador conservado');
   const confirmed = await confirmedProduct('UI-CATALOGO');
   assert.equal(confirmed.nombre, 'Cambio confirmado en otro equipo');
   assert.equal(confirmed.version, original.version + 1);
@@ -282,7 +282,7 @@ test('restoring another generation rejects an open draft without rewriting its i
   assert.notEqual((await response.json()).databaseId, beforeRestore.databaseId);
   await sheet.getByRole('button', { name: 'Guardar artículo', exact: true }).click();
   await sheet.getByRole('alert').waitFor();
-  assert.equal(await sheet.getByLabel('Descripción', { exact: true }).inputValue(), 'Borrador de generación anterior');
+  assert.equal(await sheet.getByLabel('Nombre', { exact: true }).inputValue(), 'Borrador de generación anterior');
   assert.equal(await confirmedProduct('UI-GENERACION'), undefined);
 });
 

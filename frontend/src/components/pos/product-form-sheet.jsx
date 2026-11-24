@@ -66,6 +66,7 @@ function fromProduct(p) {
   };
 }
 const normalizeDecimal = value => value.replace(/^\./, "0.").replace(/^0+(?=\d)/, "");
+const normalizeNonNegativeDraft = value => /^0\d/.test(value) ? value.replace(/^0+(?=\d)/, "") : value;
 function validQuantity(value) {
   return /^(?:\d+(?:\.\d{1,2})?|\.\d{1,2})$/.test(value) && Number(value) <= 2147483647;
 }
@@ -88,9 +89,6 @@ function ProductFormSheet({
 }) {
   const product = draft?.product;
   const categories = draft?.categories ?? [];
-  const defaultCategory = categories[0] ?? "";
-  const defaultCategoryRef = useRef(defaultCategory);
-  defaultCategoryRef.current = defaultCategory;
   const categoryChoices = product?.category && !categories.includes(product.category)
     ? [product.category, ...categories]
     : categories;
@@ -108,7 +106,7 @@ function ProductFormSheet({
   const locked = sending || retryPayload !== null;
   useEffect(() => {
     if (open) {
-      setForm(product ? fromProduct(product) : { ...EMPTY, category: defaultCategoryRef.current });
+      setForm(product ? fromProduct(product) : { ...EMPTY, category: "" });
       setAltDraft("");
       setSubmitted(false);
       setError(null);
@@ -210,7 +208,7 @@ function ProductFormSheet({
         code: form.code,
         name,
         brand,
-        category: form.category,
+        category: form.category === product?.category ? form.category : form.category.trim(),
         location,
         cost: costDecimal,
         stock: Number(form.stock),
@@ -292,7 +290,7 @@ function ProductFormSheet({
               />
             </Field>
             <Field
-              label="Descripción"
+              label="Nombre"
               htmlFor={fieldId("name")}
               className="col-span-2"
               error={submitted ? errors.name : undefined}
@@ -375,32 +373,22 @@ function ProductFormSheet({
               htmlFor={fieldId("category")}
               error={submitted ? errors.category : undefined}
             >
-              {categoryChoices.length > 0 ? (
-                <Select
-                  value={form.category}
-                  onValueChange={(v) => set("category", v)}
-                  disabled={locked}
-                >
-                  <SelectTrigger id={fieldId("category")} className={inputClass}>
-                    <SelectValue placeholder="Sin categoría" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categoryChoices.map((c) => (
-                      <SelectItem value={c} key={c}>
-                        {c}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <Input
-                  id={fieldId("category")}
-                  disabled={locked}
-                  value={form.category}
-                  onChange={(e) => set("category", e.target.value)}
-                  className={inputClass}
-                  aria-invalid={submitted && !!errors.category}
-                />
+              <Input
+                id={fieldId("category")}
+                list={categoryChoices.length > 0 ? fieldId("category-list") : undefined}
+                disabled={locked}
+                value={form.category}
+                onChange={(e) => set("category", e.target.value)}
+                placeholder="Sin categoría"
+                className={inputClass}
+                aria-invalid={submitted && !!errors.category}
+              />
+              {categoryChoices.length > 0 && (
+                <datalist id={fieldId("category-list")}>
+                  {categoryChoices.map((c) => (
+                    <option value={c} key={c} />
+                  ))}
+                </datalist>
               )}
             </Field>
             <Field
@@ -451,7 +439,14 @@ function ProductFormSheet({
                 inputMode="decimal"
                 step="0.01"
                 value={form.stock}
-                onChange={(e) => set("stock", e.target.value)}
+                onFocus={(e) => {
+                  if (e.currentTarget.value === "0") set("stock", "");
+                  else e.currentTarget.select();
+                }}
+                onBlur={() => {
+                  if (form.stock === "") set("stock", "0");
+                }}
+                onChange={(e) => set("stock", normalizeNonNegativeDraft(e.target.value))}
                 placeholder="0"
                 className={inputClass}
               />
@@ -470,7 +465,15 @@ function ProductFormSheet({
                 inputMode="decimal"
                 step="0.01"
                 value={form.minStock}
-                onChange={(e) => set("minStock", e.target.value)}
+                onFocus={(e) => {
+                  if (e.currentTarget.value === "0") set("minStock", "");
+                  else e.currentTarget.select();
+                }}
+                onBlur={() => {
+                  if (form.minStock === "") set("minStock", "0");
+                }}
+                onChange={(e) => set("minStock", normalizeNonNegativeDraft(e.target.value))}
+                placeholder="0"
                 className={inputClass}
               />
             </Field>

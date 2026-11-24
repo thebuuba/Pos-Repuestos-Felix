@@ -4,10 +4,26 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer as createPipeServer } from 'node:net';
 import { createHash } from 'node:crypto';
+import { createInterface } from 'node:readline';
 import { DesktopLedger } from './ledger.js';
 import { DesktopEngine } from './engine.js';
 import { RemoteClient } from './credentials.js';
 import { desktopServer } from './server.js';
+
+const validUpdateStates = new Set(['available', 'downloading', 'installing', 'error']);
+
+export function parseHostUpdateLine(line) {
+  if (typeof line !== 'string' || !line.startsWith('FELIX_UPDATE=')) return null;
+  try {
+    const raw = JSON.parse(line.slice('FELIX_UPDATE='.length));
+    if (!raw || typeof raw !== 'object' || !validUpdateStates.has(raw.state)) return null;
+    const version = typeof raw.version === 'string' ? raw.version.trim().slice(0, 40) : '';
+    const error = typeof raw.error === 'string' && raw.error.trim() ? raw.error.trim().slice(0, 280) : null;
+    return { state: raw.state, version, error };
+  } catch {
+    return null;
+  }
+}
 
 const stageLabels = {
   args: 'parámetros de arranque',
@@ -71,7 +87,7 @@ async function lockDirectory(directory) {
   return () => new Promise(done => pipe.close(done));
 }
 
-export async function startDesktop({ directory, assetsDirectory, remoteOptions } = {}) {
+export async function startDesktop({ directory, assetsDirectory, remoteOptions, host } = {}) {
   let stage = 'lock';
   let release;
   let engine, server;
@@ -101,7 +117,7 @@ export async function startDesktop({ directory, assetsDirectory, remoteOptions }
     }
     stage = 'server';
     const remote = new RemoteClient(ledger, remoteOptions);
-    server = desktopServer(engine, remote, assetsDirectory);
+    server = desktopServer(engine, remote, assetsDirectory, host);
     const port = ledger.get('port');
     if (port !== null && (!Number.isSafeInteger(port) || port < 1 || port > 65535)) throw new Error('El puerto guardado del POS necesita revisión.');
     // IndexedDB is scoped to the origin. Keep the first assigned port so an
@@ -134,11 +150,26 @@ async function main() {
     throw Object.assign(new Error('Faltan las carpetas de datos y de la interfaz.'), { startupStage: 'args' });
   }
   try {
-    const app = await startDesktop({ directory: options['--data-dir'], assetsDirectory: options['--assets'] });
+    let updateState = null;
+    const host = {
+      updateStatus: () => updateState ? { ...updateState } : null,
+      applyUpdate: () => {
+        if (!updateState || !['available', 'error'].includes(updateState.state)) return null;
+        updateState = { ...updateState, state: 'downloading', error: null };
+        console.log('FELIX_APPLY_UPDATE');
+        return { ...updateState };
+      },
+    };
+    const app = await startDesktop({ directory: options['--data-dir'], assetsDirectory: options['--assets'], host });
     console.log('FELIX_READY=' + app.origin);
     const stop = () => app.stop().then(() => process.exit(0), () => process.exit(1));
     process.once('SIGINT', stop); process.once('SIGTERM', stop);
-    process.stdin.once('end', stop); process.stdin.resume();
+    const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
+    rl.on('line', line => {
+      const next = parseHostUpdateLine(line);
+      if (next) updateState = next;
+    });
+    rl.once('close', stop);
   } catch (error) {
     const diagnostic = recordStartupError(options['--data-dir'], error, error?.startupStage);
     console.log('FELIX_ERROR=' + diagnostic);

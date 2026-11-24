@@ -34,8 +34,70 @@ function PurchasesHistoryTable({ purchases, suppliers, business, canVoid = false
       {purchases.length === 0 ? (
         <EmptyState icon={ReceiptText} title="Aún no hay compras" />
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-sm">
+        <>
+          <div className="grid gap-3 border-t border-border p-4 lg:hidden">
+            {visible.map((p) => {
+              const isVoided = p.status === "anulada";
+              return (
+                <button
+                  type="button"
+                  key={p.id}
+                  onClick={() => setSelectedId(p.id)}
+                  aria-label={`Ver factura de ${p.number}`}
+                  className={cn(
+                    "w-full space-y-2.5 rounded-2xl border border-border bg-card p-4 text-left transition-colors hover:bg-muted/30",
+                    isVoided && "opacity-65",
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-foreground">{p.number}</p>
+                      <p className="truncate font-mono text-xs text-muted-foreground">
+                        {p.supplierInvoice || "Sin número"}
+                      </p>
+                    </div>
+                    <span
+                      className={cn(
+                        "shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-medium",
+                        isVoided
+                          ? "border-destructive/40 bg-destructive/10 text-destructive"
+                          : p.condition === "credito"
+                            ? "border-foreground/50"
+                            : p.condition === "contado"
+                              ? "border-emerald-600/40 text-emerald-700 dark:text-emerald-400"
+                              : "text-muted-foreground",
+                      )}
+                    >
+                      {isVoided
+                        ? "Anulada"
+                        : p.condition === "credito"
+                          ? "Crédito"
+                          : p.condition === "contado"
+                            ? "Pagada"
+                            : "Sin registrar"}
+                    </span>
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="truncate text-sm font-medium text-foreground">
+                      {p.supplierName ?? supplierName(p.supplierId)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{formatDate(p.date)}</p>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 border-t border-border/60 pt-2.5">
+                    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <Eye className="h-3.5 w-3.5" />
+                      <span>{"Ver factura"}</span>
+                    </span>
+                    <span className={cn("text-sm font-semibold tabular-nums text-foreground", isVoided && "line-through text-muted-foreground")}>
+                      {formatMoney(p.total)}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          <div className="hidden overflow-x-auto lg:block">
+            <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="border-y border-border bg-muted/50 text-left text-xs text-muted-foreground">
                 <th className="px-5 py-2.5 font-medium">{"No."}</th>
@@ -112,6 +174,7 @@ function PurchasesHistoryTable({ purchases, suppliers, business, canVoid = false
               })}
             </tbody>
           </table>
+          </div>
           {totalPages > 1 && (
             <div className="flex items-center justify-between border-t border-border px-5 py-3 text-xs text-muted-foreground">
               <span>{`${purchases.length} compras · Página ${safePage} de ${totalPages}`}</span>
@@ -125,7 +188,7 @@ function PurchasesHistoryTable({ purchases, suppliers, business, canVoid = false
               </div>
             </div>
           )}
-        </div>
+        </>
       )}
       <PurchaseInvoiceDialog
         purchase={selectedPurchase}

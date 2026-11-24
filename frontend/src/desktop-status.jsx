@@ -8,6 +8,36 @@ import { formatBusinessDateTime } from './lib/dates.js';
 
 const dateLabel = value => formatBusinessDateTime(value);
 const connectionLabels = { checking: 'Comprobando…', offline: 'Sin conexión', online: 'Al día', conflict: 'Revisar sincronización', authentication: 'Iniciar sesión' };
+const validUpdateStates = new Set(['available', 'downloading', 'installing', 'error']);
+
+let latestUpdate = null;
+const updateListeners = new Set();
+function normalizeUpdate(value) {
+  if (!value || typeof value !== 'object' || !validUpdateStates.has(value.state)) return null;
+  return {
+    state: value.state,
+    version: typeof value.version === 'string' ? value.version : '',
+    error: typeof value.error === 'string' && value.error ? value.error : null,
+  };
+}
+function publishUpdate(value) {
+  const next = normalizeUpdate(value);
+  if (JSON.stringify(next) === JSON.stringify(latestUpdate)) return;
+  latestUpdate = next;
+  updateListeners.forEach(listener => listener(next));
+}
+async function requestDesktopUpdate() {
+  const response = await fetch('/api/desktop/update', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(data?.error || 'No se pudo iniciar la actualización.');
+  if (data?.update) publishUpdate(data.update);
+  return data?.update ?? null;
+}
 
 function validStatus(value) {
   return value && typeof value.initialized === 'boolean' && Object.hasOwn(connectionLabels, value.connection) &&
@@ -17,6 +47,105 @@ function validStatus(value) {
 
 export function DesktopSyncStatus(props) {
   return window.__FELIX_DESKTOP__ ? <DesktopStatus {...props} /> : null;
+}
+
+export function DesktopUpdateNotice() {
+  return window.__FELIX_DESKTOP__ ? <DesktopUpdateBanner /> : null;
+}
+
+function DesktopUpdateBanner() {
+  const [update, setUpdate] = useState(latestUpdate);
+  const [dismissed, setDismissed] = useState(null);
+  const [requestError, setRequestError] = useState('');
+
+  useEffect(() => {
+    setUpdate(latestUpdate);
+    const onChange = next => {
+      setUpdate(next);
+      if (next && next.state !== 'available') setDismissed(null);
+    };
+    updateListeners.add(onChange);
+    return () => { updateListeners.delete(onChange); };
+  }, []);
+
+  useEffect(() => {
+    if (!update || !['downloading', 'installing'].includes(update.state)) return;
+    let active = true;
+    const poll = window.setInterval(async () => {
+      try {
+        const res = await fetch('/api/desktop/status', { credentials: 'same-origin', cache: 'no-store' });
+        if (!res.ok || !active) return;
+        const data = await res.json();
+        if (active && validStatus(data)) publishUpdate(data.update ?? null);
+      } catch { /* host may be restarting during install */ }
+    }, 1500);
+    return () => { active = false; window.clearInterval(poll); };
+  }, [update?.state]);
+
+  if (!update) return null;
+  const key = update.version || 'latest';
+  if (update.state === 'available' && dismissed === key) return null;
+  const busy = update.state === 'downloading' || update.state === 'installing';
+  const verLabel = update.version ? ` (v${update.version})` : '';
+  const detail = requestError || (update.state === 'error' ? update.error : null);
+
+  async function apply() {
+    if (busy) return;
+    setRequestError('');
+    try {
+      await requestDesktopUpdate();
+    } catch (cause) {
+      setRequestError(cause.message || 'No se pudo iniciar la actualización.');
+    }
+  }
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="mb-4 flex flex-col gap-3 rounded-2xl border border-primary/30 bg-card p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div className="flex min-w-0 items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent text-primary">
+          {busy ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+        </div>
+        <div className="min-w-0 space-y-0.5 text-sm">
+          <p className="font-semibold text-foreground">
+            {update.state === 'installing'
+              ? `Instalando Repuestos Félix${verLabel}…`
+              : update.state === 'downloading'
+                ? `Descargando actualización${verLabel}…`
+                : `Actualización disponible${verLabel}`}
+          </p>
+          <p className={cn('text-xs', detail ? 'text-destructive' : 'text-muted-foreground')}>
+            {detail
+              || (update.state === 'installing'
+                ? 'El programa se reiniciará automáticamente al terminar. Tus datos y ventas pendientes se conservan.'
+                : update.state === 'downloading'
+                  ? 'Descargando en segundo plano. No cierres el programa.'
+                  : 'Tus datos locales y ventas pendientes se conservan al actualizar.')}
+          </p>
+        </div>
+      </div>
+      {!busy && (
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Button type="button" size="sm" className="h-9 rounded-xl px-4" onClick={apply}>
+            <Download className="h-3.5 w-3.5" />
+            <span>{update.state === 'error' ? 'Reintentar' : 'Actualizar ahora'}</span>
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-9 rounded-xl px-3"
+            onClick={() => setDismissed(key)}
+          >
+            Más tarde
+          </Button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function DesktopStatus({ onSync }) {
@@ -47,6 +176,7 @@ function DesktopStatus({ onSync }) {
       const previous = current.current;
       current.current = next;
       setStatus(next); setError('');
+      publishUpdate(next.update ?? null);
       if (previous && next.initialized && (!previous.initialized || previous.lastSync !== next.lastSync)) {
         // Refresh the shared catalog after the desktop host adopts server changes.
         Promise.resolve(refresh.current?.()).catch(() => {});
@@ -157,6 +287,33 @@ function DesktopStatus({ onSync }) {
           {(status.conflict || status.error) && <p className="text-destructive" style={{ overflowWrap: 'anywhere' }}>{status.conflict || status.error}</p>}
         </>}
       </div>
+      {status?.update && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-primary/30 bg-accent p-3 text-sm">
+          <div className="min-w-0">
+            <p className="font-semibold text-foreground">
+              {status.update.state === 'installing'
+                ? `Instalando actualización${status.update.version ? ` (v${status.update.version})` : ''}…`
+                : status.update.state === 'downloading'
+                  ? `Descargando actualización${status.update.version ? ` (v${status.update.version})` : ''}…`
+                  : `Actualización disponible${status.update.version ? ` (v${status.update.version})` : ''}`}
+            </p>
+            <p className={cn('text-xs', status.update.state === 'error' ? 'text-destructive' : 'text-muted-foreground')}>
+              {status.update.error || 'Tus datos y ventas pendientes se conservan.'}
+            </p>
+          </div>
+          {['available', 'error'].includes(status.update.state) && (
+            <Button
+              type="button"
+              size="sm"
+              className="h-9 rounded-xl"
+              onClick={() => requestDesktopUpdate().catch(cause => setError(cause.message || 'No se pudo iniciar la actualización.'))}
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span>{status.update.state === 'error' ? 'Reintentar' : 'Actualizar ahora'}</span>
+            </Button>
+          )}
+        </div>
+      )}
       {!review && <PendingOperations refreshKey={[status?.pending, status?.lastSync, status?.conflict].join(':')} />}
       {status?.archived > 0 && <div className="space-y-2 text-sm">
         <p>{status.archived} {status.archived === 1 ? 'operación archivada' : 'operaciones archivadas'} para revisión.</p>

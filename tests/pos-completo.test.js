@@ -538,7 +538,7 @@ test('E2E navegador: Ctrl K, notificaciones, códigos alternativos, espera, coti
     await page.getByRole('button', { name: 'Nuevo artículo', exact: true }).click();
     const sheet = page.getByRole('dialog');
     await sheet.getByLabel('Código', { exact: true }).fill('PAS-900');
-    await sheet.getByLabel('Descripción').fill('Pastilla de freno delantera');
+    await sheet.getByLabel('Nombre').fill('Pastilla de freno delantera');
     await sheet.getByLabel('Marca').fill('Brembo');
     await sheet.getByLabel('Existencia').fill('15');
     await sheet.getByLabel('Mínimo').fill('5');
@@ -653,7 +653,7 @@ test('E2E navegador: Ctrl K, notificaciones, códigos alternativos, espera, coti
     await page.getByLabel('Costo unitario').fill('300');
     await page.getByRole('button', { name: 'Agregar', exact: true }).click();
     await page.getByRole('button', { name: 'Subir factura al inventario' }).click();
-    await page.getByText('COMP-CR-1', { exact: true }).waitFor();
+    await page.getByRole('cell', { name: 'COMP-CR-1', exact: true }).waitFor();
 
     await page.goto(origin + '/cuentas-por-pagar');
     await page.getByText('COMP-CR-1', { exact: true }).waitFor();
@@ -669,7 +669,7 @@ test('E2E navegador: Ctrl K, notificaciones, códigos alternativos, espera, coti
     await voidDlg.getByLabel('Motivo de anulación').fill('Error de mostrador');
     await voidDlg.getByRole('button', { name: 'Anular factura' }).click();
     await voidDlg.waitFor({ state: 'hidden' });
-    await page.getByText('Error de mostrador').waitFor();
+    await page.getByRole('table').getByText('Error de mostrador').waitFor();
 
     // 8. Configurar NCF real B02 y Meta diaria en Configuración -> verificar Dashboard y Ventas
     await page.goto(origin + '/configuracion');
@@ -719,7 +719,7 @@ test('E2E navegador: Ctrl K, notificaciones, códigos alternativos, espera, coti
     await cPage.getByRole('button', { name: /Entrar|Iniciar sesión/ }).click();
     await cPage.waitForURL(url => !url.pathname.startsWith('/login'));
     await cPage.goto(cashierOrigin + '/inventario');
-    await cPage.getByText('Pastilla de freno delantera').waitFor();
+    await cPage.getByRole('table').getByText('Pastilla de freno delantera').waitFor();
     assert.equal(await cPage.getByRole('button', { name: 'Nuevo artículo' }).count(), 0);
     assert.equal(await cPage.getByRole('columnheader', { name: 'Costo' }).count(), 0);
     assert.equal(await cPage.getByRole('link', { name: 'Reportes' }).count(), 0);

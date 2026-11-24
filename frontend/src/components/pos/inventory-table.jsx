@@ -11,7 +11,7 @@ import { formatNumber, formatUnitMoney } from "../../lib/format.js";
 import { Button } from "../ui/button.jsx";
 import { memo, useDeferredValue, useMemo, useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
-import { indexedProducts, matchesIndexed } from "../../data/product-search.js";
+import { compactSearchText, indexedProducts, matchesIndexed } from "../../data/product-search.js";
 const PAGE_SIZE = 50;
 const STOCK_FILTERS = [
   ["all", "Todos"],
@@ -61,6 +61,7 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
   const category = categories.includes(filters.category) ? filters.category : "";
   const rows = useMemo(() => {
     const q = deferredQuery.trim().toLowerCase();
+    const qCompact = q ? compactSearchText(q) : "";
     const index = indexedProducts(products);
     const out = [];
     for (let i = 0; i < index.length; i++) {
@@ -68,7 +69,7 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
       const p = entry.p;
       if (category && p.category !== category) continue;
       if (restock ? !needsRestock(p) : stock !== "all" && stockState(p) !== stock) continue;
-      if (q && !matchesIndexed(entry, q)) continue;
+      if (q && !matchesIndexed(entry, q, qCompact)) continue;
       out.push(p);
     }
     return out;
@@ -161,8 +162,130 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-sm">
+        <>
+          <div className="grid gap-3 border-t border-border p-4 lg:hidden">
+            {rows.slice(start, end).map((p) => {
+              const state = stockState(p);
+              const ui = STATE_UI[state];
+              const margin = p.prices.p1 > 0 ? ((p.prices.p1 - p.cost) / p.prices.p1) * 100 : null;
+              const fill = p.minStock > 0 ? Math.max(3, Math.min(100, (p.stock / (p.minStock * 3)) * 100)) : 0;
+              const meta = [p.brand, p.category, p.location].filter(Boolean).join(" · ");
+              return (
+                <article
+                  key={p.id}
+                  className="space-y-3 rounded-2xl border border-border bg-card p-4"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium leading-snug text-foreground">{p.name}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        <span
+                          className="font-mono"
+                          style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}
+                        >
+                          {p.code}
+                        </span>
+                        {meta ? ` · ${meta}` : ""}
+                      </p>
+                    </div>
+                    <span
+                      className={cn(
+                        "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium",
+                        ui.bg,
+                        ui.text,
+                      )}
+                    >
+                      <span className={cn("h-1.5 w-1.5 rounded-full", ui.dot)} />
+                      {ui.label}
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-xs tabular-nums">
+                      <span className="font-semibold text-foreground">
+                        {"Existencia: "}
+                        {formatNumber(p.stock)}
+                      </span>
+                      <span className="text-muted-foreground">
+                        {"mín. "}
+                        {formatNumber(p.minStock)}
+                      </span>
+                    </div>
+                    <div className="h-1 overflow-hidden rounded-full bg-muted">
+                      <div className={cn("h-full rounded-full", ui.dot)} style={{ width: `${fill}%` }} />
+                    </div>
+                  </div>
+                  <div className="space-y-2 rounded-xl bg-muted/50 p-2.5 text-xs tabular-nums">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="min-w-0">
+                        <p className="text-[11px] text-muted-foreground">{"P1"}</p>
+                        <p className="truncate font-semibold text-foreground">
+                          {formatUnitMoney(p.pricesExact?.p1 ?? p.prices.p1)}
+                        </p>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[11px] text-muted-foreground">{"P2"}</p>
+                        <p className="truncate font-medium text-foreground">
+                          {formatUnitMoney(p.pricesExact?.p2 ?? p.prices.p2)}
+                        </p>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[11px] text-muted-foreground">{"P3"}</p>
+                        <p className="truncate font-medium text-foreground">
+                          {formatUnitMoney(p.pricesExact?.p3 ?? p.prices.p3)}
+                        </p>
+                      </div>
+                    </div>
+                    {showCosts && (
+                      <div className="grid grid-cols-2 gap-2 border-t border-border/60 pt-2">
+                        <div className="min-w-0">
+                          <p className="text-[11px] text-muted-foreground">{"Costo"}</p>
+                          <p className="truncate font-medium text-muted-foreground">
+                            {formatUnitMoney(p.costExact ?? p.cost)}
+                          </p>
+                        </div>
+                        <div className="min-w-0 text-right">
+                          <p className="text-[11px] text-muted-foreground">{"Margen"}</p>
+                          <p className="truncate font-medium text-muted-foreground">
+                            {margin === null ? "—" : `${margin.toFixed(1)}%`}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {showActions && (
+                    <div className="flex gap-2 pt-0.5">
+                      {onEdit && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-11 flex-1 rounded-xl text-xs"
+                          onClick={() => onEdit(p)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          <span>{"Editar"}</span>
+                        </Button>
+                      )}
+                      {onDelete && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-11 flex-1 rounded-xl text-xs hover:bg-accent hover:text-primary"
+                          onClick={() => onDelete(p)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          <span>{"Eliminar"}</span>
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+          <div className="hidden overflow-x-auto lg:block">
+            <table className="w-full min-w-[980px] text-sm">
             <thead>
               <tr className="border-y border-border bg-muted/50 text-left text-xs text-muted-foreground">
                 <th className="px-5 py-2.5 font-medium">{"Producto"}</th>
@@ -311,7 +434,8 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
               })}
             </tbody>
           </table>
-        </div>
+          </div>
+        </>
       )}
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-5 py-3 text-xs text-muted-foreground">
         <p role="status" aria-live="polite">

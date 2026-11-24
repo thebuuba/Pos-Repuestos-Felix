@@ -10,8 +10,10 @@ export const CATEGORIES = [
 ];
 
 export function catalogCategories(state) {
-  return [...new Set([
-    ...(state?.catalogo?.categorias ?? []),
-    ...(state?.productos.map(product => product.categoria) ?? []),
-  ].filter(Boolean))];
+  const used = new Set();
+  for (const product of state?.productos ?? []) {
+    const clean = typeof product.categoria === 'string' ? product.categoria.trim() : '';
+    if (clean) used.add(clean);
+  }
+  return [...used].sort((a, b) => a.localeCompare(b, 'es'));
 }

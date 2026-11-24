@@ -57,7 +57,7 @@ test('product previews reject invalid and overflowing suggestions and allow vali
   await sheet.getByRole('alert').getByText(/límite permitido/).waitFor();
 
   await sheet.getByLabel('Código', { exact: true }).fill('MANUAL-PRUEBA');
-  await sheet.getByLabel('Descripción', { exact: true }).fill('Artículo manual de prueba');
+  await sheet.getByLabel('Nombre', { exact: true }).fill('Artículo manual de prueba');
   await firstPrice.fill('140');
   await sheet.getByRole('button', { name: 'Guardar artículo', exact: true }).click();
   await sheet.waitFor({ state: 'hidden' });
@@ -72,7 +72,7 @@ test('purchase suggestions guard entry and editable rows against invalid and ove
   const upload = main.getByRole('button', { name: 'Subir factura al inventario' });
   const name = 'Artículo de compra de prueba';
   await main.getByPlaceholder('Código', { exact: true }).fill('COMPRA-PRUEBA');
-  await main.getByPlaceholder('Descripción', { exact: true }).fill(name);
+  await main.getByPlaceholder('Nombre del artículo', { exact: true }).fill(name);
 
   await cost.fill('1e2');
   assert.equal(await add.isDisabled(), true);
@@ -115,7 +115,7 @@ test('a purchase row accepts explicit zero and rejects a blank cost', async (t) 
   await page.getByRole('option', { name: 'Arias Piezas y Gomas', exact: true }).click();
   await main.getByPlaceholder('Ej. FAC-4589').fill('CERO-PRUEBA');
   await main.getByPlaceholder('Código', { exact: true }).fill('COSTO-CERO');
-  await main.getByPlaceholder('Descripción', { exact: true }).fill(name);
+  await main.getByPlaceholder('Nombre del artículo', { exact: true }).fill(name);
   await cost.fill('0');
   assert.equal(await add.isDisabled(), true);
   await cost.fill('100');

@@ -90,7 +90,7 @@ test('inventario conectado pagina todo el catálogo, filtra existencias y conser
     await lower.getByRole('button', { name: 'Editar', exact: true }).click();
     assert.equal(await price.inputValue(), '24.5678');
     const location = sheet.getByLabel('Ubicación', { exact: true });
-    assert.deepEqual(await Promise.all([sheet.getByLabel('Descripción', { exact: true }).inputValue(),
+    assert.deepEqual(await Promise.all([sheet.getByLabel('Nombre', { exact: true }).inputValue(),
       sheet.getByLabel('Marca', { exact: true }).inputValue(), location.inputValue()]),
       ['  Pieza sintética 123  ', '  Marca Mixta ', ' OpCión Pasillo a  ']);
     assert.equal(await sheet.getByLabel('Código', { exact: true }).inputValue(), 'caso-ultimo');
@@ -110,7 +110,7 @@ test('inventario conectado pagina todo el catálogo, filtra existencias y conser
     const categories = page.getByRole('combobox', { name: 'Filtrar por categoría' });
     await next.click();
     await categories.click();
-    assert.equal(await page.getByRole('option', { name: 'Solo del maestro', exact: true }).count(), 1);
+    assert.equal(await page.getByRole('option', { name: 'Solo del maestro', exact: true }).count(), 0);
     assert.equal(await page.getByRole('option', { name: 'Motor', exact: true }).count(), 0);
     await page.getByRole('option', { name: 'Grupo B', exact: true }).click();
     await result('Mostrando 1–23 de 23 productos');
@@ -176,14 +176,21 @@ test('inventario conectado pagina todo el catálogo, filtra existencias y conser
           assert.ok(await money.evaluate(el => el.scrollWidth <= el.clientWidth),
             'la valoración de la fixture normal permanece completa a tamaño de escritorio');
         }
-        if (width < 640) {
-          assert.equal(await table.evaluate(el => el.parentElement.scrollWidth > el.parentElement.clientWidth), true);
+        if (width < 1024) {
+          assert.ok(await page.locator('article').count() > 0, `Debe mostrar tarjetas nativas en ${width} px`);
+          assert.equal(await table.isVisible(), false, `La tabla ancha debe ocultarse en ${width} px`);
+        } else {
+          assert.equal(await table.isVisible(), true, `La tabla debe verse en escritorio (${width} px)`);
         }
         if (evidence) {
-          await table.evaluate(element => {
-            element.parentElement.scrollLeft = 0;
-            window.scrollTo(0, 0);
-          });
+          if (width >= 1024) {
+            await table.evaluate(element => {
+              element.parentElement.scrollLeft = 0;
+              window.scrollTo(0, 0);
+            });
+          } else {
+            await page.evaluate(() => window.scrollTo(0, 0));
+          }
           await page.screenshot({ path: join(evidence, `inventario-${width}-${theme}.png`), animations: 'disabled' });
         }
         if (evidence && [390, 1440].includes(width)) {

@@ -71,8 +71,97 @@ function SalesReportTable({ sales, allSales, onVoid, onReprint, operational = fa
       {rows.length === 0 ? (
         <EmptyState icon={ReceiptText} title="Sin facturas" />
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] text-sm">
+        <>
+          <div className="grid gap-3 border-t border-border p-4 lg:hidden">
+            {rows.map((s) => (
+              <article
+                key={s.id}
+                onClick={onReprint ? () => onReprint(s) : undefined}
+                className={cn(
+                  "space-y-3 rounded-2xl border border-border bg-card p-4",
+                  onReprint && "cursor-pointer transition-colors hover:bg-muted/30",
+                )}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-foreground">{s.number}</p>
+                    <p className="truncate font-mono text-[11px] text-muted-foreground">
+                      {s.ncf ?? s.comprobante}
+                    </p>
+                  </div>
+                  <span
+                    className={cn(
+                      "shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-medium capitalize",
+                      STATUS_UI[s.status],
+                    )}
+                    title={s.voidReason || undefined}
+                  >
+                    {s.status ?? "Registrada"}
+                  </span>
+                </div>
+                <div className="space-y-0.5 text-xs">
+                  <p className="truncate text-sm font-medium text-foreground">{s.customerName}</p>
+                  <p className="text-muted-foreground">
+                    {formatDateTime(s.date)}
+                    {" · "}
+                    {paymentLabel(s)}
+                  </p>
+                  {s.status === "anulada" && s.voidReason && (
+                    <p className="text-[11px] text-muted-foreground">{`Motivo: ${s.voidReason}`}</p>
+                  )}
+                </div>
+                <div className="flex items-center justify-between gap-2 rounded-xl bg-muted/50 px-3 py-2 text-xs tabular-nums">
+                  <span className="text-muted-foreground">
+                    {"ITBIS "}
+                    {formatMoney(s.itbis)}
+                  </span>
+                  <span className="text-sm font-semibold text-foreground">
+                    {formatMoney(s.total)}
+                  </span>
+                </div>
+                {(onReprint || (onVoid && s.status !== "anulada")) && (
+                  <div className="flex gap-2 pt-0.5">
+                    {onReprint && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-11 flex-1 rounded-xl text-xs"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onReprint(s);
+                        }}
+                        aria-label={`Reimprimir ${s.number}`}
+                      >
+                        <Printer className="h-3.5 w-3.5" />
+                        <span>{"Imprimir"}</span>
+                      </Button>
+                    )}
+                    {onVoid && s.status !== "anulada" && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-11 flex-1 rounded-xl text-xs hover:bg-accent hover:text-primary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setToVoid(s);
+                          setReason("");
+                          setVoidError(null);
+                        }}
+                        aria-label="Anular"
+                      >
+                        <Ban className="h-3.5 w-3.5" />
+                        <span>{"Anular"}</span>
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+          <div className="hidden overflow-x-auto lg:block">
+            <table className="w-full min-w-[860px] text-sm">
             <thead>
               <tr className="border-y border-border bg-muted/50 text-left text-xs text-muted-foreground">
                 <th className="px-5 py-2.5 font-medium">{"Factura"}</th>
@@ -178,7 +267,8 @@ function SalesReportTable({ sales, allSales, onVoid, onReprint, operational = fa
               ))}
             </tbody>
           </table>
-        </div>
+          </div>
+        </>
       )}
       <div className="flex items-center justify-between border-t border-border px-5 py-3 text-xs text-muted-foreground">
         <span>

@@ -146,7 +146,7 @@ test("oversized catalog text stays editable and never creates a network operatio
   const tooLong = "X".repeat(2001);
   for (const [label, original] of [
     ["Código", "PRUEBA"],
-    ["Descripción", "Artículo de prueba"],
+    ["Nombre", "Artículo de prueba"],
     ["Marca", ""],
     ["Ubicación", ""],
   ]) {
@@ -256,7 +256,7 @@ test(
       .getByRole("alert")
       .getByText("El servicio rechazó el artículo.")
       .waitFor();
-    const description = sheet.getByLabel("Descripción", { exact: true });
+    const description = sheet.getByLabel("Nombre", { exact: true });
     assert.equal(await description.inputValue(), "Artículo de prueba");
     await description.fill("Corrección de prueba");
   },
@@ -351,7 +351,7 @@ test(
       true,
     );
     assert.equal(
-      await sheet.getByLabel("Descripción", { exact: true }).isDisabled(),
+      await sheet.getByLabel("Nombre", { exact: true }).isDisabled(),
       true,
     );
     await sheet
@@ -395,7 +395,7 @@ test(
     });
     const sheet = await newDraft(page);
     const code = sheet.getByLabel("Código", { exact: true });
-    const description = sheet.getByLabel("Descripción", { exact: true });
+    const description = sheet.getByLabel("Nombre", { exact: true });
     const save = sheet.getByRole("button", {
       name: "Guardar artículo",
       exact: true,
@@ -581,7 +581,7 @@ test(
       .getByText(/La base cambió/)
       .waitFor();
     assert.equal(
-      await sheet.getByLabel("Descripción", { exact: true }).inputValue(),
+      await sheet.getByLabel("Nombre", { exact: true }).inputValue(),
       product.nombre,
     );
     assert.equal(writes, 0);
