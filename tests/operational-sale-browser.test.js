@@ -101,8 +101,8 @@ test('el POS abre caja, recupera una venta confirmada, registra movimientos y co
     const dialog = page.getByRole('dialog');
     await dialog.getByRole('heading', { name: 'Venta registrada' }).waitFor();
     assert.match(await dialog.innerText(), /F-000001/);
-    assert.match(await dialog.innerText(), /25\.01/);
-    assert.match(await dialog.innerText(), /3\.82/);
+    assert.match(await dialog.innerText(), /25\.00/);
+    assert.match(await dialog.innerText(), /3\.81/);
     assert.match(await dialog.innerText(), /Sin emisión de NCF/);
     assert.doesNotMatch(await dialog.innerText(), /Recibido|Cambio|Efectivo/);
     await verifyPrintLayout(page, 80 * 96 / 25.4);
@@ -127,7 +127,7 @@ test('el POS abre caja, recupera una venta confirmada, registra movimientos y co
       await verifyPrintLayout(page, width, letter);
     }
     await page.goto(origin + '/caja');
-    for (const [type, amount, concept] of [['Entrada', '100.01', 'Fondo confirmado'], ['Salida', '25', 'Retiro confirmado']]) {
+    for (const [type, amount, concept] of [['Entrada', '100', 'Fondo confirmado'], ['Salida', '25', 'Retiro confirmado']]) {
       await page.getByRole('button', { name: 'Entrada / salida' }).click();
       await dialog.getByRole('button', { name: type, exact: true }).click();
       await dialog.getByLabel('Monto RD$').fill(amount);
@@ -149,10 +149,9 @@ test('el POS abre caja, recupera una venta confirmada, registra movimientos y co
     await page.getByText('Caja cerrada', { exact: true }).waitFor();
     await page.reload();
     const history = page.getByRole('row').last();
-    await history.getByText(/0\.01/).waitFor();
-    assert.equal(await page.getByText('Cuadrada', { exact: true }).count(), 0);
+    await history.getByText('Cuadrada', { exact: true }).waitFor();
     assert.deepEqual((await admin.query('SELECT fondo,esperado,contado,ventas FROM turnos_caja')).rows,
-      [{ fondo: '0.00', esperado: '75.01', contado: '75.00', ventas: '55.01' }]);
+      [{ fondo: '0.00', esperado: '75.00', contado: '75.00', ventas: '55.00' }]);
     assert.equal((await admin.query('SELECT count(*) AS n FROM movimientos_caja')).rows[0].n, '2');
     assert.deepEqual(errors, []);
   } finally {

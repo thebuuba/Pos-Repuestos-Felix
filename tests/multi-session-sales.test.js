@@ -48,7 +48,7 @@ test('tres sesiones del mismo usuario confirman ventas concurrentes sin perder a
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
         body: JSON.stringify({ databaseId, ...payload }),
       }, cookie).then(json);
-      await write(sessions[0], '/api/caja/abrir', { monto: '100.01' });
+      await write(sessions[0], '/api/caja/abrir', { monto: '100' });
       for (const [index, price] of ['10.0030', '20.1250', '30.2000'].entries()) {
         await write(sessions[index], '/api/productos', {
           codigo: `SESION-${index + 1}`, nombre: `Artículo de sesión ${index + 1}`,
@@ -77,7 +77,7 @@ test('tres sesiones del mismo usuario confirman ventas concurrentes sin perder a
           operationId: keys[index], databaseId, method: 'POST', path: '/api/ventas', replayed: false,
         });
         const invoice = result.state.facturas.find(row => row.id === result.result.id);
-        assert.equal(invoice.total, [25.01, 40.25, 90.6][index]);
+        assert.equal(invoice.total, [25, 40, 91][index]);
         assert.equal(invoice.ncf, null);
       }
       const snapshots = await Promise.all(sessions.map(cookie => call('/api/state', {}, cookie).then(json)));
@@ -92,11 +92,11 @@ test('tres sesiones del mismo usuario confirman ventas concurrentes sin perder a
       assert.equal(state.caja.session.cashier, 'felix');
       assert.equal(state.caja.session.version, before.state.caja.session.version + 3);
       assert.deepEqual(state.caja.summary, {
-        opening: 100.01, cashSales: 25.01, cardSales: 40.25, transferSales: 90.6, creditSales: 0,
-        entradas: 0, salidas: 0, cobros: 0, pagos: 0, expected: 125.02, invoices: 3,
+        opening: 100, cashSales: 25, cardSales: 40, transferSales: 91, creditSales: 0,
+        entradas: 0, salidas: 0, cobros: 0, pagos: 0, expected: 125, roundingAdjustment: 0, invoices: 3,
       });
       assert.deepEqual((await admin.query('SELECT count(*)::int AS count, sum(total)::text AS total FROM ventas')).rows,
-        [{ count: 3, total: '155.86' }]);
+        [{ count: 3, total: '156.00' }]);
       assert.deepEqual((await admin.query('SELECT codigo, stock::text FROM productos ORDER BY codigo')).rows, [
         { codigo: 'SESION-1', stock: '2.50' }, { codigo: 'SESION-2', stock: '4.00' }, { codigo: 'SESION-3', stock: '4.00' },
       ]);

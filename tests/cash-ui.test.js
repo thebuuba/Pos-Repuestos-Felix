@@ -41,26 +41,32 @@ async function open(t, fields = {}, sale = false) {
   await page.getByRole('heading', { level: 1 }).waitFor();
   return page;
 }
-test('opening waits for confirmation and blocks duplicate requests', async t => {
+test('opening waits for confirmation, rejects centavos and blocks duplicate requests', async t => {
   const page = await open(t, { cashSession: { open: false } });
   const amount = page.getByRole('spinbutton');
   assert.equal(await amount.isEnabled(), true);
   await amount.fill('0.01');
+  assert.equal(await page.getByRole('button', { name: 'Abrir caja', exact: true }).isDisabled(), true);
+  await page.getByText('Usa pesos enteros sin centavos.', { exact: true }).waitFor();
+  await amount.fill('100');
   await page.getByRole('button', { name: 'Abrir caja', exact: true }).click();
   await page.getByText('Confirmando la apertura…', { exact: true }).waitFor();
   assert.equal(await amount.isDisabled(), true);
   assert.equal(await page.getByText('Caja abierta', { exact: true }).count(), 0);
-  assert.deepEqual(await page.evaluate(() => calls), [{ name: 'open', dto: { databaseId: 'isolated', monto: '0.01' } }]);
+  assert.deepEqual(await page.evaluate(() => calls), [{ name: 'open', dto: { databaseId: 'isolated', monto: '100' } }]);
   await page.evaluate(() => { render({ cashSession: { id: 7, version: 1, open: true, openedAt: '2026-11-22T12:00:00Z', cashier: 'Cajero' } }); confirm({ result: { id: 7 } }); });
   await page.getByText('Caja abierta', { exact: true }).waitFor();
   await page.getByText(/Caja 01 abierta por Cajero a las/).waitFor();
 });
-test('uncertain movements preserve input and retry the original operation without success', async t => {
+test('uncertain movements reject centavos, preserve input and retry the original operation without success', async t => {
   const page = await open(t);
   await page.getByRole('button', { name: 'Entrada / salida' }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('spinbutton').fill('12.50');
   await dialog.getByPlaceholder('¿Para qué es?').fill('Repuesto');
+  assert.equal(await dialog.getByRole('button', { name: 'Registrar salida' }).isDisabled(), true);
+  await dialog.getByText('Usa pesos enteros sin centavos.', { exact: true }).waitFor();
+  await dialog.getByRole('spinbutton').fill('125');
   await dialog.getByRole('button', { name: 'Registrar salida' }).click();
   await page.evaluate(() => reject(Object.assign(new Error('Confirmación pendiente'), {
     retry: async () => { window.retries = (window.retries ?? 0) + 1; return { result: { id: 8 } }; }
@@ -75,7 +81,7 @@ test('uncertain movements preserve input and retry the original operation withou
   await dialog.waitFor({ state: 'hidden' });
   await page.getByText('Salida registrada', { exact: true }).waitFor();
   assert.deepEqual(await page.evaluate(() => calls), [{ name: 'movement', dto: {
-    databaseId: 'isolated', cajaId: 7, version: 3, tipo: 'salida', monto: '12.50', concepto: 'Repuesto' } }]);
+    databaseId: 'isolated', cajaId: 7, version: 3, tipo: 'salida', monto: '125', concepto: 'Repuesto' } }]);
   assert.equal(await page.evaluate(() => retries), 1);
 });
 test('cash count rejects fractional notes and retains a failed count for correction', async t => {

@@ -64,7 +64,7 @@ test('offline opening and sale preserve exact price and original date across dup
   await write(cloud, '/api/productos', { codigo: 'SYNC', nombre: 'Artículo sincronizado', costo: '1.0001', stock: '5.25', precio1: '118.1234', precio2: 100, precio3: 90 });
   const boot = await checkpoint();
   const openedAt = new Date(Date.now() - 86400000).toISOString();
-  const opening = await prepare(boot, '/api/caja/abrir', { monto: '100.01' }, { occurredAt: openedAt });
+  const opening = await prepare(boot, '/api/caja/abrir', { monto: '100' }, { occurredAt: openedAt });
   const opened = await writeSyncOperation(cloud, opening, 'Prueba', actor);
   assert.equal(opened.receipt.sequence, 1);
   assert.equal(opened.receipt.effect.abierto_en, openedAt);
@@ -82,7 +82,7 @@ test('offline opening and sale preserve exact price and original date across dup
   assert.deepEqual(response.receipt.effect, sale.expected.effect);
   assert.equal(response.receipt.effect.metodo_pago, 'efectivo');
   assert.equal(response.receipt.effect.ncf, null);
-  assert.equal(response.receipt.effect.total, '29.53');
+  assert.equal(response.receipt.effect.total, '30.00');
   assert.deepEqual(response.receipt.effect.items, [{ codigo: 'SYNC', nombre: 'Artículo sincronizado', cantidad: '0.25',
     nivel_precio: 'precio1', precio: '118.1234', base: '25.03', itbis: '4.50', total: '29.53' }]);
   assert.equal(response.receipt.created.venta_detalles.length, 1);
@@ -151,7 +151,7 @@ test('price and configuration changes cannot alter a sale already confirmed loca
   await write(cloud, '/api/productos/' + product.id, { ...product, version: product.version, precio1: '200.0001' }, 'PUT');
   await assert.rejects(writeSyncOperation(cloud, sale, 'Prueba', actor), { status: 409 });
   assert.equal((await read(cloud)).state.facturas.length, count);
-  assert.equal((await read(local)).state.facturas.at(-1).total, 118.12);
+  assert.equal((await read(local)).state.facturas.at(-1).total, 118);
   const missingVersion = structuredClone(sale); delete missingVersion.body.versionConfiguracion;
   await assert.rejects(writeSyncOperation(cloud, missingVersion, 'Prueba', actor), { status: 400 });
 });
@@ -174,11 +174,11 @@ test('closed cash heads detect an entire intervening web turn and prevent overla
 test('opening then closing offline keeps original times and records one closed turn after replay', async () => {
   const boot = await checkpoint();
   const openAt = new Date().toISOString();
-  const opening = await prepare(boot, '/api/caja/abrir', { monto: '0.01' }, { occurredAt: openAt });
+  const opening = await prepare(boot, '/api/caja/abrir', { monto: '1' }, { occurredAt: openAt });
   await writeSyncOperation(cloud, opening, 'Prueba', actor);
   const turn = (await read(local)).state.caja.session;
   const closeAt = new Date().toISOString();
-  const closing = await prepare(boot, '/api/caja/cerrar', { cajaId: turn.id, version: turn.version, conteo: '0.01' },
+  const closing = await prepare(boot, '/api/caja/cerrar', { cajaId: turn.id, version: turn.version, conteo: '1' },
     { deviceId: opening.deviceId, sequence: 2, occurredAt: closeAt });
   const reply = await writeSyncOperation(cloud, closing, 'Prueba', actor);
   assert.equal(reply.receipt.effect.abierto_en, openAt);

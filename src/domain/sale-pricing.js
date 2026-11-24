@@ -7,6 +7,14 @@ export function saleLineAmounts(priceUnits, quantityUnits, taxRateUnits) {
   return { total, base, tax: total - base };
 }
 
+// Redondea el total final de una venta a pesos dominicanos enteros (RD$ 1).
+// Un total positivo menor a RD$ 0.50 sube a RD$ 1.00 para nunca regalar una venta cobrada.
+export function roundSaleTotalCents(totalCents) {
+  if (totalCents <= 0n) return 0n;
+  const rounded = ((totalCents + 50n) / 100n) * 100n;
+  return rounded === 0n ? 100n : rounded;
+}
+
 // discountBps en centésimas de porcentaje (5 % = 500n, 15 % = 1500n).
 // discountAmountCents (opcional) en centavos de peso (RD$ 50.00 = 5000n).
 export function saleDocumentTotals(lines, discountBps = 0n, taxRateUnits = 0n, discountAmountCents = null) {
@@ -33,15 +41,43 @@ export function saleDocumentTotals(lines, discountBps = 0n, taxRateUnits = 0n, d
   } else if (effectiveBps > 0n && gross.total > 0n) {
     discount = (gross.total * effectiveBps + 5000n) / 10000n;
   }
-  if (discount === 0n || gross.total === 0n) {
-    return { grossTotal: gross.total, discount: 0n, discountBps: 0n, base: gross.base, tax: gross.tax, total: gross.total };
+  const rawTotal = gross.total - discount;
+  const total = roundSaleTotalCents(rawTotal);
+  const roundingAdjustment = total - rawTotal;
+  if (gross.total === 0n || total === 0n) {
+    return {
+      grossTotal: gross.total,
+      discount,
+      discountBps: effectiveBps,
+      base: 0n,
+      tax: 0n,
+      total: 0n,
+      roundingAdjustment: 0n,
+    };
   }
-  const total = gross.total - discount;
-  const taxableDiscount = (discount * gross.taxableTotal + gross.total / 2n) / gross.total;
-  const taxableNet = gross.taxableTotal - taxableDiscount;
+  if (discount === 0n && roundingAdjustment === 0n) {
+    return {
+      grossTotal: gross.total,
+      discount: 0n,
+      discountBps: 0n,
+      base: gross.base,
+      tax: gross.tax,
+      total: gross.total,
+      roundingAdjustment: 0n,
+    };
+  }
+  const taxableNet = (total * gross.taxableTotal + gross.total / 2n) / gross.total;
   const exemptNet = total - taxableNet;
   const divisor = 1000000n + taxRateUnits;
   const taxableBase = (taxableNet * 1000000n + divisor / 2n) / divisor;
   const base = taxableBase + exemptNet;
-  return { grossTotal: gross.total, discount, discountBps: effectiveBps, base, tax: total - base, total };
+  return {
+    grossTotal: gross.total,
+    discount,
+    discountBps: effectiveBps,
+    base,
+    tax: total - base,
+    total,
+    roundingAdjustment,
+  };
 }

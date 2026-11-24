@@ -86,6 +86,7 @@ export function quoteSale(items, percent, discount = 0) {
       discountPercent: Number(money(doc.discountBps)),
       itbis: Number(money(doc.tax)),
       total: Number(money(doc.total)),
+      roundingAdjustment: Number(decimalUnits(doc.roundingAdjustment ?? 0n, 2)),
     },
   };
 }
@@ -175,6 +176,7 @@ export function quoteWorkshopItems(items, percent, discount = 0) {
       discountPercent: Number(money(doc.discountBps)),
       itbis: Number(money(doc.tax)),
       total: Number(money(doc.total)),
+      roundingAdjustment: Number(decimalUnits(doc.roundingAdjustment ?? 0n, 2)),
     },
   };
 }

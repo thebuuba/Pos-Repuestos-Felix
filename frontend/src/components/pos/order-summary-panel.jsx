@@ -2,7 +2,7 @@
 import { Banknote } from "lucide-react";
 import { CreditCard } from "lucide-react";
 import { ArrowLeftRight } from "lucide-react";
-import { formatMoney } from "../../lib/format.js";
+import { formatCashMoney, formatMoney } from "../../lib/format.js";
 import { cn } from "../../lib/utils.js";
 import { MoneyDisplay } from "./money-display.jsx";
 import { Label } from "../ui/label.jsx";
@@ -264,6 +264,14 @@ function OrderSummaryPanel({
             {formatMoney(totals.itbis)}
           </span>
         </div>
+        {operational && Boolean(totals.roundingAdjustment) && (
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>{"Redondeo a peso"}</span>
+            <span className="font-medium tabular-nums">
+              {totals.roundingAdjustment > 0 ? "+" : "−"} {formatMoney(Math.abs(totals.roundingAdjustment))}
+            </span>
+          </div>
+        )}
       </div>
       <div className={cn("sale-summary-total rounded-xl bg-accent", operational ? "sale-summary-total-compact" : "mx-5 px-4 py-3.5")}>
         <p className="text-xs font-medium uppercase tracking-wider text-accent-foreground/80">
@@ -271,6 +279,7 @@ function OrderSummaryPanel({
         </p>
         <MoneyDisplay
           value={totals.total}
+          showCents={!operational}
           className={operational ? "sale-summary-total-amount text-primary" : "text-[34px] leading-tight text-primary"}
           symbolClassName="text-primary/70"
           centsClassName="text-primary/50"
@@ -323,7 +332,9 @@ function OrderSummaryPanel({
                     aria-label="Monto recibido"
                     data-sale-received={operational ? "true" : undefined}
                     type="number"
-                    inputMode="decimal"
+                    min="0"
+                    step="1"
+                    inputMode="numeric"
                     value={received}
                     onChange={(e) => onReceivedChange(e.target.value)}
                     onKeyDown={(e) => {
@@ -337,7 +348,7 @@ function OrderSummaryPanel({
                         if (!isTouchMobile()) focusFirstSelector("[data-sale-search]");
                       }
                     }}
-                    placeholder="0.00"
+                    placeholder="0"
                     className="sale-received-input h-11 rounded-xl pl-11 text-base font-semibold tabular-nums"
                   />
                 </div>
@@ -358,7 +369,7 @@ function OrderSummaryPanel({
                     >
                       {index === 0
                         ? "Exacto"
-                        : formatMoney(a)}
+                        : formatCashMoney(a)}
                     </button>
                   ))}
                 </div>
@@ -376,7 +387,7 @@ function OrderSummaryPanel({
                     {insufficient ? "Falta" : "Cambio a devolver"}
                   </span>
                   <span className="sale-cash-change-amount text-base font-semibold tabular-nums">
-                    {formatMoney(Math.abs(empty ? 0 : change))}
+                    {formatCashMoney(Math.abs(empty ? 0 : change))}
                   </span>
                 </div>
               )}

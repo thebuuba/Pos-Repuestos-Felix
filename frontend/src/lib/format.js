@@ -14,6 +14,15 @@ function formatMoney(value, withSymbol = true) {
   const formatted = moneyFormatter.format(value);
   return withSymbol ? `${CURRENCY} ${formatted}` : formatted;
 }
+function formatWholeMoney(value, withSymbol = true) {
+  const formatted = intFormatter.format(Math.round(Number(value) || 0));
+  return withSymbol ? `${CURRENCY} ${formatted}` : formatted;
+}
+function formatCashMoney(value, withSymbol = true) {
+  const num = Number(value) || 0;
+  const hasCents = Math.abs(Math.round(num * 100)) % 100 !== 0;
+  return hasCents ? formatMoney(num, withSymbol) : formatWholeMoney(num, withSymbol);
+}
 function formatNumber(value) {
   return intFormatter.format(value);
 }
@@ -30,4 +39,4 @@ function splitMoney(value) {
 function round2(value) {
   return Math.round(value * 100) / 100;
 }
-export { ITBIS_RATE, round2, formatMoney, formatUnitMoney, splitMoney, CURRENCY, formatNumber };
+export { ITBIS_RATE, round2, formatMoney, formatWholeMoney, formatCashMoney, formatUnitMoney, splitMoney, CURRENCY, formatNumber };

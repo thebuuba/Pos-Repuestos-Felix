@@ -8,8 +8,10 @@ function MoneyDisplay({
   symbolClassName,
   centsClassName,
   showSymbol = true,
+  showCents = true,
 }) {
   const { whole, cents } = splitMoney(value);
+  const displayCents = showCents || cents !== "00";
   return (
     <span
       className={cn(
@@ -28,10 +30,12 @@ function MoneyDisplay({
         </span>
       )}
       {whole}
-      <span className={cn("text-muted-foreground/70", centsClassName)}>
-        {"."}
-        {cents}
-      </span>
+      {displayCents && (
+        <span className={cn("text-muted-foreground/70", centsClassName)}>
+          {"."}
+          {cents}
+        </span>
+      )}
     </span>
   );
 }

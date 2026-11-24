@@ -1,7 +1,7 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
 import { round2 } from "../../lib/format.js";
 import { Input } from "../ui/input.jsx";
-import { formatMoney } from "../../lib/format.js";
+import { formatCashMoney } from "../../lib/format.js";
 import { Dialog } from "../ui/dialog.jsx";
 import { DialogContent } from "../ui/dialog.jsx";
 import { DialogHeader } from "../ui/dialog.jsx";
@@ -48,7 +48,7 @@ function CashCountDialog({ open, onOpenChange, expected, onConfirm, disabled = f
         className="h-9 w-20 rounded-lg text-center"
       />
       <span className="ml-auto text-xs tabular-nums text-muted-foreground">
-        {formatMoney(d * (Number(counts[d]) || 0))}
+        {formatCashMoney(d * (Number(counts[d]) || 0))}
       </span>
     </div>
   );
@@ -81,13 +81,13 @@ function CashCountDialog({ open, onOpenChange, expected, onConfirm, disabled = f
               <div className="flex justify-between">
                 <span className="text-muted-foreground">{"Esperado"}</span>
                 <span className="font-medium tabular-nums">
-                  {formatMoney(expected)}
+                  {formatCashMoney(expected)}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">{"Contado"}</span>
                 <span className="font-semibold tabular-nums">
-                  {formatMoney(counted)}
+                  {formatCashMoney(counted)}
                 </span>
               </div>
               <div
@@ -104,7 +104,7 @@ function CashCountDialog({ open, onOpenChange, expected, onConfirm, disabled = f
                   {diff === 0 ? "Cuadrada" : diff > 0 ? "Sobrante" : "Faltante"}
                 </span>
                 <span className="tabular-nums">
-                  {formatMoney(Math.abs(diff))}
+                  {formatCashMoney(Math.abs(diff))}
                 </span>
               </div>
             </div>
@@ -121,7 +121,7 @@ function CashCountDialog({ open, onOpenChange, expected, onConfirm, disabled = f
           </Button>
           <Button data-shortcut-submit="true" disabled={disabled || !valid} className="rounded-xl" onClick={() => onConfirm(counted)}>
             {"Cerrar caja con "}
-            {formatMoney(counted)}
+            {formatCashMoney(counted)}
           </Button>
         </DialogFooter>
       </DialogContent>

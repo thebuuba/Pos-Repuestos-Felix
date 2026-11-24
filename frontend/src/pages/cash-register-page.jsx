@@ -12,7 +12,7 @@ import { Lock } from "lucide-react";
 import { LockOpen } from "lucide-react";
 import { Input } from "../components/ui/input.jsx";
 import { toast as ue } from "sonner";
-import { formatMoney } from "../lib/format.js";
+import { formatCashMoney, formatMoney } from "../lib/format.js";
 import { MoneyDisplay } from "../components/pos/money-display.jsx";
 import { MiniStat } from "../components/pos/section-card.jsx";
 import { Banknote } from "lucide-react";
@@ -82,7 +82,9 @@ function CashRegisterPage() {
   const hasPending = Boolean(runtime?.pending && runtime.inFlightOperationId !== runtime.pending.id);
   const unavailable = !!runtime && (runtime.connection !== "connected" || hasPending || (runtime.busy && !sending));
   const disabled = locked || unavailable;
-  const validOpening = /^\d+(?:\.\d{1,2})?$/.test(opening) && Number.isFinite(Number(opening));
+  const openingTrimmed = String(opening).trim();
+  const validOpening = /^\d{1,12}$/.test(openingTrimmed) && Number.isSafeInteger(Number(openingTrimmed));
+  const openingHasDecimals = openingTrimmed !== "" && !validOpening;
   const sessionMoves = cashMovements.filter(
     (m) => runtime ? m.sessionId === cashSession.id : m.date >= cashSession.openedAt,
   );
@@ -103,16 +105,16 @@ function CashRegisterPage() {
       else result = await (runtime ? addCashMovement({ databaseId: runtime.databaseId, cajaId: cashSession.id,
         version: cashSession.version, tipo: args.type, monto: args.amount, concepto: args.description })
         : addCashMovement(args.type, Number(args.amount), args.description));
-      if (kind === "open") ue.success("Caja abierta", { description: `Fondo inicial ${formatMoney(Number(args.amount))}` });
+      if (kind === "open") ue.success("Caja abierta", { description: `Fondo inicial ${formatCashMoney(Number(args.amount))}` });
       else if (kind === "close") {
         const closure = runtime ? result.result : result;
         const diff = (Math.round(closure.counted * 100) - Math.round(closure.expected * 100)) / 100;
         setCountOpen(false);
         ue.success("Caja cerrada", { description: diff === 0 ? "La caja cuadró perfectamente."
-          : `${diff > 0 ? "Sobrante" : "Faltante"} de ${formatMoney(Math.abs(diff))}` });
+          : `${diff > 0 ? "Sobrante" : "Faltante"} de ${formatCashMoney(Math.abs(diff))}` });
       } else {
         setMoveOpen(false);
-        ue.success(`${args.type === "entrada" ? "Entrada" : "Salida"} registrada`, { description: formatMoney(Number(args.amount)) });
+        ue.success(`${args.type === "entrada" ? "Entrada" : "Salida"} registrada`, { description: formatCashMoney(Number(args.amount)) });
       }
     } catch (error) {
       setFailure({ kind, args, message: error.message,
@@ -134,7 +136,10 @@ function CashRegisterPage() {
         title="Caja"
         description={
           cashSession.open
-            ? `Caja 01 abierta por ${cashSession.cashier} a las ${formatTime(cashSession.openedAt)}.`
+            ? (() => {
+                const opened = formatTime(cashSession.openedAt);
+                return `Caja 01 abierta por ${cashSession.cashier} a las ${opened}${opened.endsWith(".") ? "" : "."}`;
+              })()
             : "La caja está cerrada. Ábrela con el fondo inicial para empezar a vender."
         }
         actions={
@@ -188,18 +193,25 @@ function CashRegisterPage() {
               data-shortcut-search="true"
               type="number"
               min={0}
-              step="0.01"
+              step="1"
+              inputMode="numeric"
+              placeholder="0"
               value={opening}
               onChange={(e) => setOpening(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !disabled && validOpening) {
                   e.preventDefault();
-                  if (!e.repeat) submit("open", { amount: opening });
+                  if (!e.repeat) submit("open", { amount: openingTrimmed });
                 }
               }}
               className="h-14 rounded-xl pl-14 text-center text-2xl font-semibold tabular-nums"
             />
           </div>
+          {openingHasDecimals && (
+            <p role="alert" className="mt-2 text-xs font-medium text-primary">
+              {"Usa pesos enteros sin centavos."}
+            </p>
+          )}
           <div className="mobile-touch-controls mt-3 flex flex-wrap justify-center gap-2">
             {[2000, 3000, 5000, 1e4].map((a) => (
               <button disabled={disabled}
@@ -215,7 +227,7 @@ function CashRegisterPage() {
           <Button
             disabled={disabled || !validOpening}
             className="mt-6 h-12 w-full rounded-xl text-[15px] font-semibold"
-            onClick={() => submit("open", { amount: opening })}
+            onClick={() => submit("open", { amount: openingTrimmed })}
           >
             {"Abrir caja"}
           </Button>
@@ -230,6 +242,7 @@ function CashRegisterPage() {
               </p>
               <MoneyDisplay
                 value={s.expected}
+                showCents={false}
                 className="mt-1 text-[40px] leading-tight"
                 symbolClassName="text-primary-foreground/70"
                 centsClassName="text-primary-foreground/55"
@@ -246,10 +259,18 @@ function CashRegisterPage() {
                   <div className="flex justify-between" key={label}>
                     <span className="text-primary-foreground/75">{label}</span>
                     <span className="font-medium tabular-nums">
-                      {sign} {formatMoney(value)}
+                      {sign} {formatCashMoney(value)}
                     </span>
                   </div>
                 ))}
+                {Boolean(s.roundingAdjustment) && (
+                  <div className="flex justify-between text-xs text-primary-foreground/80">
+                    <span>{"Ajuste centavos previos"}</span>
+                    <span className="font-medium tabular-nums">
+                      {s.roundingAdjustment > 0 ? "+" : "−"} {formatMoney(Math.abs(s.roundingAdjustment))}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:col-span-2">
@@ -257,25 +278,25 @@ function CashRegisterPage() {
                 icon={Banknote}
                 tone="success"
                 label="Ventas en efectivo"
-                value={formatMoney(s.cashSales)}
+                value={formatCashMoney(s.cashSales)}
               />
               <MiniStat
                 icon={CreditCard}
                 label="Ventas con tarjeta"
-                value={formatMoney(s.cardSales)}
+                value={formatCashMoney(s.cardSales)}
                 hint="Va al banco, no a la caja"
               />
               <MiniStat
                 icon={ArrowLeftRight}
                 label="Transferencias"
-                value={formatMoney(s.transferSales)}
+                value={formatCashMoney(s.transferSales)}
                 hint="Va al banco, no a la caja"
               />
               <MiniStat
                 icon={HandCoins}
                 tone="warning"
                 label="Ventas a crédito"
-                value={formatMoney(s.creditSales)}
+                value={formatCashMoney(s.creditSales)}
                 hint="Pasan a Cuentas x cobrar"
               />
               <div className="flex items-center justify-between rounded-2xl border border-border bg-card p-4 sm:col-span-2">
@@ -284,7 +305,7 @@ function CashRegisterPage() {
                     {"Total vendido en el turno"}
                   </p>
                   <p className="text-2xl font-semibold tabular-nums">
-                    {formatMoney(totalSales)}
+                    {formatCashMoney(totalSales)}
                   </p>
                 </div>
                 <div className="text-right">
@@ -345,7 +366,7 @@ function CashRegisterPage() {
                         </p>
                       </div>
                       <span className="font-semibold tabular-nums">
-                        {ui.sign} {formatMoney(m.amount)}
+                        {ui.sign} {formatCashMoney(m.amount)}
                       </span>
                     </li>
                   );
@@ -400,13 +421,13 @@ function CashRegisterPage() {
                       {c.cashier}
                     </td>
                     <td className="px-3 py-3 text-right tabular-nums">
-                      {formatMoney(c.sales)}
+                      {formatCashMoney(c.sales)}
                     </td>
                     <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">
-                      {formatMoney(c.expected)}
+                      {formatCashMoney(c.expected)}
                     </td>
                     <td className="px-3 py-3 text-right tabular-nums">
-                      {formatMoney(c.counted)}
+                      {formatCashMoney(c.counted)}
                     </td>
                     <td className="px-5 py-3 text-right">
                       <span
@@ -421,7 +442,7 @@ function CashRegisterPage() {
                       >
                         {diff === 0
                           ? "Cuadrada"
-                          : `${diff > 0 ? "+" : "−"} ${formatMoney(Math.abs(diff))}`}
+                          : `${diff > 0 ? "+" : "−"} ${formatCashMoney(Math.abs(diff))}`}
                       </span>
                     </td>
                   </tr>

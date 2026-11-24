@@ -28,7 +28,7 @@ test('SQLite conserva ventas offline, reinicios, respuestas perdidas, IDs y conf
   await engine.adopt(await remote('/api/sync/bootstrap'));
   const databaseId = engine.ledger.get('databaseId');
   const write = (path, body, key = randomUUID()) => engine.write('POST', path, { databaseId, ...body }, key, actor);
-  const opened = await write('/api/caja/abrir', { monto: '100.01' });
+  const opened = await write('/api/caja/abrir', { monto: '100' });
   const product = await write('/api/productos', { codigo: '000DESKTOP', nombre: 'Prueba', costo: '0.1001', precio1: '0.3001', precio2: 0, precio3: 0, stock: '20' });
   const before = await engine.snapshot();
   const sale = { cajaId: opened.result.id, clienteId: before.state.clientes[0].id, versionCliente: before.state.clientes[0].version,
@@ -36,12 +36,12 @@ test('SQLite conserva ventas offline, reinicios, respuestas perdidas, IDs y conf
     items: [{ productoId: product.result.id, cantidad: '3', nivelPrecio: 'precio1', versionProducto: before.state.productos[0].version }] };
   const key = randomUUID();
   const sold = await write('/api/ventas', sale, key);
-  assert.equal(sold.state.caja.summary.expected, 100.91);
+  assert.equal(sold.state.caja.summary.expected, 101);
   assert.equal(engine.status().pending, 3);
   await engine.close();
   engine = new DesktopEngine(new DesktopLedger(directory)); await engine.rebuild();
   const restored = await engine.snapshot();
-  assert.equal(restored.state.facturas[0].total, 0.9);
+  assert.equal(restored.state.facturas[0].total, 1);
   assert.equal(restored.state.productos[0].stock, 17);
   assert.equal((await write('/api/ventas', sale, key)).confirmation.replayed, true);
   assert.equal(engine.status().pending, 3);
@@ -65,7 +65,7 @@ test('SQLite conserva ventas offline, reinicios, respuestas perdidas, IDs y conf
   assert.equal((await engine.snapshot()).state.clientes.some(row => row.nombre === 'Cambio independiente en web'), true);
   const saved = await readSnapshot(cloud, 'Prueba');
   assert.equal(saved.state.facturas.length, 1);
-  assert.equal(saved.state.facturas[0].total, 0.9);
+  assert.equal(saved.state.facturas[0].total, 1);
   assert.equal(saved.state.productos[0].stock, 17);
   assert.notEqual(saved.state.facturas[0].id, sold.result.id);
   assert.notEqual(saved.state.productos[0].id, product.result.id);
@@ -77,7 +77,7 @@ test('SQLite conserva ventas offline, reinicios, respuestas perdidas, IDs y conf
   engine.ledger.transaction = action => originalTransaction(() => { action(); throw new Error('Fallo de disco simulado'); });
   await assert.rejects(write('/api/caja/movimiento', { cajaId: prior.state.caja.session.id, version: prior.state.caja.session.version, tipo: 'entrada', monto: '5', concepto: 'No guardar' }));
   engine.ledger.transaction = originalTransaction;
-  assert.equal((await engine.snapshot()).state.caja.summary.expected, 100.91);
+  assert.equal((await engine.snapshot()).state.caja.summary.expected, 101);
   assert.equal(engine.status().pending, 0);
 
   const localHead = (await engine.snapshot()).state.caja.session;
@@ -88,17 +88,17 @@ test('SQLite conserva ventas offline, reinicios, respuestas perdidas, IDs y conf
   await engine.synchronize(remote, actor);
   assert.equal(engine.status().pending, 1);
   assert.match(engine.status().conflict, /caja/i);
-  assert.equal((await engine.snapshot()).state.caja.summary.expected, 110.91);
-  assert.equal((await readSnapshot(cloud, 'Prueba')).state.caja.summary.expected, 102.91);
+  assert.equal((await engine.snapshot()).state.caja.summary.expected, 111);
+  assert.equal((await readSnapshot(cloud, 'Prueba')).state.caja.summary.expected, 103);
 
   await engine.close(); engine = null;
   const child = fork(new URL('./fixtures/desktop-crash.js', import.meta.url), [], { stdio: ['pipe', 'ignore', 'ignore', 'ipc'], windowsHide: true });
   t.after(() => { if (child.exitCode === null) child.kill(); });
   child.send({ directory, actor });
   const [confirmed] = await once(child, 'message', { signal: AbortSignal.timeout(30000) });
-  assert.equal(confirmed.expected, 110.92);
+  assert.equal(confirmed.expected, 112);
   const closed = once(child, 'exit'); child.kill('SIGKILL'); await closed;
   engine = new DesktopEngine(new DesktopLedger(directory)); await engine.rebuild();
-  assert.equal((await engine.snapshot()).state.caja.summary.expected, 110.92);
+  assert.equal((await engine.snapshot()).state.caja.summary.expected, 112);
   assert.equal(engine.status().pending, 2);
 });

@@ -19,11 +19,12 @@ test('la venta identifica el turno y su medio de pago sin inventar métodos hist
   assert.throws(() => saleRequest(cart, settings, 9, 'contado', 'B02', { open: false }, 'efectivo'), /caja/i);
 });
 
-test('los totales incluyen el ITBIS por línea y usan cuatro decimales de precio y centésimas de unidad', () => {
+test('los totales incluyen el ITBIS por línea, usan cuatro decimales y redondean el total final al peso entero', () => {
   let cart = updateSaleLine([], product, 'p1', '2.50');
   cart = updateSaleLine(cart, second, 'p1', '0.01');
   const quote = quoteSale(cart, 18);
-  assert.deepEqual(quote.totals, { items: 2.51, subtotal: 21.24, grossTotal: 25.06, discount: 0, discountPercent: 0, itbis: 3.82, total: 25.06 });
+  assert.deepEqual(quote.totals, { items: 2.51, subtotal: 21.19, grossTotal: 25.06, discount: 0, discountPercent: 0, itbis: 3.81, total: 25, roundingAdjustment: -0.06 });
+  assert.equal(Number((quote.totals.subtotal + quote.totals.itbis).toFixed(2)), quote.totals.total);
   // El último artículo agregado aparece en la parte superior.
   assert.equal(quote.lines[0].product.id, 20);
   assert.equal(quote.lines[1].subtotal, 25.01);
@@ -77,7 +78,9 @@ test('el descuento libre soporta cualquier porcentaje (0-100%) o monto fijo en R
   const pct = quoteSale(cart, 18, { mode: 'percent', value: '22.5' });
   assert.equal(pct.discountError, null);
   assert.equal(pct.totals.discount, 112.5);
-  assert.equal(pct.totals.total, 387.5);
+  assert.equal(pct.totals.total, 388);
+  assert.equal(pct.totals.roundingAdjustment, 0.5);
+  assert.equal(Number((pct.totals.subtotal + pct.totals.itbis).toFixed(2)), 388);
   assert.equal(saleRequest(cart, settings, 9, 'contado', 'B02', undefined, undefined, { mode: 'percent', value: '22.5' }).descuentoPorcentaje, 22.5);
 
   const amt = quoteSale(cart, 18, { mode: 'amount', value: '75' });

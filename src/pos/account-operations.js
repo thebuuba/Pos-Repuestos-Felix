@@ -1,4 +1,4 @@
-import { cents, decimalUnits, fail, id, money, quantityUnits, text } from './operation-fields.js';
+import { cents, decimalUnits, fail, id, money, quantityUnits, text, wholePesos } from './operation-fields.js';
 import { lockCash, turnTotals } from './cash-operations.js';
 
 const quantityText = value => decimalUnits(value, 2);
@@ -39,7 +39,7 @@ export async function voidSale(client, saleId, body, actor, occurredAt = null, c
       fail('No se puede anular una venta en efectivo de un turno de caja ya cerrado.', 409);
     }
     const summary = await turnTotals(client, turn);
-    if (summary.expected < cents(sale.total)) {
+    if (summary.rawExpected < cents(sale.total)) {
       fail('La anulación dejaría el efectivo esperado de la caja en negativo.', 409);
     }
     await client.query('UPDATE turnos_caja SET version=version+1 WHERE id=$1', [turn.id]);
@@ -143,13 +143,13 @@ export async function voidPurchase(client, purchaseId, body, actor, occurredAt =
 
 export async function accountPayment(client, kind, body, actor, occurredAt = null) {
   if (!['cobro', 'pago'].includes(kind)) fail('Tipo de abono inválido.');
-  const amount = cents(body.monto, 'el monto');
-  if (!amount) fail('El abono debe ser mayor que cero.');
   if (!['efectivo', 'tarjeta', 'transferencia'].includes(body.metodoPago)) fail('Selecciona un método de pago válido.');
+  const isCash = body.metodoPago === 'efectivo';
+  const amount = isCash ? wholePesos(body.monto, 'el monto') : cents(body.monto, 'el monto');
+  if (!amount) fail('El abono debe ser mayor que cero.');
   const reference = text(body.referencia ?? '', 'la referencia', false);
   const note = text(body.nota ?? '', 'la nota', false);
   const user = text(actor?.id, 'el usuario');
-  const isCash = body.metodoPago === 'efectivo';
   if (!isCash && body.cajaId !== undefined && body.cajaId !== null) fail('Solo los abonos en efectivo se vinculan a un turno de caja.');
 
   let turn = null, cashSummary = null;
@@ -169,7 +169,7 @@ export async function accountPayment(client, kind, body, actor, occurredAt = nul
     const paidRow = (await client.query('SELECT COALESCE(sum(monto),0)::text AS pagado FROM abonos_cuentas WHERE venta_id=$1', [docId])).rows[0];
     const remaining = cents(sale.total) - cents(paidRow.pagado);
     if (amount > remaining) fail('El abono supera el saldo pendiente de esta factura.', 409);
-    if (isCash) money(cashSummary.expected + amount);
+    if (isCash) money(cashSummary.rawExpected + amount);
     await client.query('UPDATE ventas SET version=version+1 WHERE id=$1', [docId]);
   } else {
     docId = id(body.compraId, 'la compra');
@@ -181,7 +181,7 @@ export async function accountPayment(client, kind, body, actor, occurredAt = nul
     const paidRow = (await client.query('SELECT COALESCE(sum(monto),0)::text AS pagado FROM abonos_cuentas WHERE compra_id=$1', [docId])).rows[0];
     const remaining = cents(purchase.total) - cents(paidRow.pagado);
     if (amount > remaining) fail('El pago supera el saldo pendiente de esta compra.', 409);
-    if (isCash && amount > cashSummary.expected) fail('El pago en efectivo supera el efectivo esperado en caja.', 409);
+    if (isCash && amount > cashSummary.rawExpected) fail('El pago en efectivo supera el efectivo esperado en caja.', 409);
     await client.query('UPDATE compras SET version=version+1 WHERE id=$1', [docId]);
   }
 

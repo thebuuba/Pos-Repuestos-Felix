@@ -109,7 +109,7 @@ test('gateway Windows autentica, conserva caja y sesión offline, bloquea origen
     assert.equal(html.status, 200);
     assert.ok(html.text.indexOf('/desktop.js') < html.text.indexOf('type="module"'));
     await page.getByRole('link', { name: 'Inventario', exact: true }).click();
-    await page.getByText('Producto sintético Windows', { exact: true }).waitFor();
+    await page.getByRole('table').getByText('Producto sintético Windows', { exact: true }).waitFor();
     network = 'offline';
     await call('/api/desktop/sync', { method: 'POST', body: {}, cookie });
     await page.getByRole('link', { name: 'Caja', exact: true }).click();
@@ -137,7 +137,7 @@ test('gateway Windows autentica, conserva caja y sesión offline, bloquea origen
         transaction.oncomplete = () => database.close();
       };
     }));
-    await page.getByLabel('Fondo inicial').fill('100.01');
+    await page.getByLabel('Fondo inicial').fill('100');
     await page.getByRole('main').getByRole('button', { name: 'Abrir caja', exact: true }).click();
     await droppedOpeningResponse.promise;
     await page.getByText('Solicitud pendiente de confirmación', { exact: true }).waitFor();
@@ -146,14 +146,14 @@ test('gateway Windows autentica, conserva caja y sesión offline, bloquea origen
     assert.equal(uncertain.id, packets[0].id);
     assert.equal(uncertain.status, 'sending');
     assert.equal(uncertain.body, packets[0].body);
-    assert.equal((await call('/api/state', { cookie })).json().state.caja.summary.expected, 100.01);
+    assert.equal((await call('/api/state', { cookie })).json().state.caja.summary.expected, 100);
     assert.equal((await readSnapshot(pool, 'Prueba gateway')).state.caja.session.open, false, 'La caja local no se declara guardada en el servidor sin red');
     assert.equal((await call('/api/desktop/pending', { cookie })).json().length, 1);
     assert.equal((await call('/api/desktop/sync', { method: 'POST', body: {}, cookie, headers: { Origin: 'https://ajeno.example' } })).status, 403);
     const previousOrigin = app.origin;
     await app.stop(); app = await start();
     assert.equal(app.origin, previousOrigin, 'El origen debe conservarse para recuperar el diario IndexedDB de una respuesta local incierta');
-    assert.equal((await call('/api/state', { cookie })).json().state.caja.summary.expected, 100.01, 'La sesión y caja local sobreviven al reinicio');
+    assert.equal((await call('/api/state', { cookie })).json().state.caja.summary.expected, 100, 'La sesión y caja local sobreviven al reinicio');
     await page.reload();
     await page.getByText('Solicitud pendiente de confirmación', { exact: true }).waitFor();
     assert.deepEqual(await journal(), uncertain, 'El reinicio recupera los mismos UUID y bytes pendientes');
@@ -165,7 +165,7 @@ test('gateway Windows autentica, conserva caja y sesión offline, bloquea origen
     assert.equal((await call('/api/desktop/pending', { cookie })).json().length, 1);
     const localBackup = (await call('/api/backup', { cookie })).json();
     assert.equal(localBackup.tables.turnos_caja.length, 1, 'La respuesta perdida y el reinicio dejan un solo turno');
-    assert.equal((await call('/api/state', { cookie })).json().state.caja.summary.expected, 100.01);
+    assert.equal((await call('/api/state', { cookie })).json().state.caja.summary.expected, 100);
     await page.getByRole('button', { name: 'Cerrar caja', exact: true }).waitFor();
     await page.getByRole('button', { name: /Sincronización:.*1 operación pendiente/ }).waitFor();
     assert.equal(await page.getByText('Este equipo · almacenamiento local', { exact: true }).count(), 0);
@@ -185,7 +185,7 @@ test('gateway Windows autentica, conserva caja y sesión offline, bloquea origen
     assert.equal((await call('/login', { method: 'POST', body: { username: 'felix', password: 'incorrecta' } })).status, 401);
     await login();
     cookie = (await context.cookies(app.origin)).filter(item => item.name === 'felix-desktop').map(item => item.name + '=' + item.value).join(';');
-    assert.equal((await call('/api/state', { cookie })).json().state.caja.summary.expected, 100.01);
+    assert.equal((await call('/api/state', { cookie })).json().state.caja.summary.expected, 100);
     network = 'revoked';
     const revoked = await call('/api/desktop/sync', { method: 'POST', body: {}, cookie });
     assert.equal(revoked.json().connection, 'authentication');

@@ -22,13 +22,15 @@ after(async () => { await pool?.end(); await database?.stop(); });
 
 test('caja persists, separates payment methods, rejects stale closes and restores audited closures', async () => {
   assert.equal((await read()).state.caja.session.open, false);
+  await assert.rejects(write('caja/abrir', { monto: '100.01' }), error => error.status === 400 && /pesos enteros/i.test(error.message));
   const key = randomUUID();
-  const openings = await Promise.all([write('caja/abrir', { monto: '100.01' }, key), write('caja/abrir', { monto: '100.01' }, key)]);
+  const openings = await Promise.all([write('caja/abrir', { monto: '100' }, key), write('caja/abrir', { monto: '100' }, key)]);
   assert.equal(openings[0].result.id, openings[1].result.id);
   const cajaId = openings[0].result.id;
   assert.equal((await read()).state.caja.session.cashier, actor.name);
   await assert.rejects(write('caja/abrir', { monto: 20 }), { status: 409 });
   const customer = (await read()).state.clientes[0];
+  // Un artículo con centavos (0.30) nunca regala la venta: sube a RD$ 1 entero.
   const product = (await write('productos', { codigo: 'CAJA', nombre: 'Prueba', costo: 0, precio1: '0.30', precio2: 0, precio3: 0, stock: 20 })).result.id;
   const sale = { cajaId, clienteId: customer.id, condicion: 'Contado', tipoComprobante: 'B02', items: [{ productoId: product, cantidad: 1, nivelPrecio: 'precio1' }] };
   await assert.rejects(write('ventas', sale), { status: 400 });
@@ -36,23 +38,26 @@ test('caja persists, separates payment methods, rejects stale closes and restore
   const oldVersion = (await read()).state.caja.session.version;
   for (const metodoPago of ['efectivo', 'tarjeta', 'transferencia']) await write('ventas', { ...sale, metodoPago });
   let caja = (await read()).state.caja;
-  assert.equal(caja.summary.expected, 100.31);
-  assert.equal(caja.summary.cardSales, 0.3);
-  assert.equal(caja.summary.transferSales, 0.3);
+  assert.equal(caja.summary.expected, 101);
+  assert.equal(caja.summary.cashSales, 1);
+  assert.equal(caja.summary.cardSales, 1);
+  assert.equal(caja.summary.transferSales, 1);
   assert.equal(caja.summary.invoices, 3);
   await assert.rejects(write('caja/cerrar', { cajaId, version: oldVersion, conteo: 100 }), { status: 409 });
   await assert.rejects(write('caja/movimiento', { cajaId, version: caja.session.version, tipo: 'salida', monto: 200, concepto: 'Exceso' }), { status: 409 });
+  await assert.rejects(write('caja/movimiento', { cajaId, version: caja.session.version, tipo: 'entrada', monto: '0.02', concepto: 'Centavos' }), error => error.status === 400 && /pesos enteros/i.test(error.message));
   const moveKey = randomUUID();
-  const payload = { cajaId, version: caja.session.version, tipo: 'entrada', monto: '0.02', concepto: 'Cambio' };
+  const payload = { cajaId, version: caja.session.version, tipo: 'entrada', monto: '2', concepto: 'Cambio' };
   await write('caja/movimiento', payload, moveKey); await write('caja/movimiento', payload, moveKey);
   caja = (await read()).state.caja;
-  assert.equal(caja.movements.length, 1); assert.equal(caja.summary.expected, 100.33);
-  await write('caja/movimiento', { cajaId, version: caja.session.version, tipo: 'salida', monto: '0.03', concepto: 'Retiro' });
+  assert.equal(caja.movements.length, 1); assert.equal(caja.summary.expected, 103);
+  await write('caja/movimiento', { cajaId, version: caja.session.version, tipo: 'salida', monto: '3', concepto: 'Retiro' });
   caja = (await read()).state.caja;
-  const closed = await write('caja/cerrar', { cajaId, version: caja.session.version, conteo: '100.29' });
+  await assert.rejects(write('caja/cerrar', { cajaId, version: caja.session.version, conteo: '99.50' }), error => error.status === 400 && /pesos enteros/i.test(error.message));
+  const closed = await write('caja/cerrar', { cajaId, version: caja.session.version, conteo: '99' });
   assert.equal(closed.state.caja.session.open, false);
-  assert.equal(closed.result.expected, 100.3); assert.equal(closed.result.counted, 100.29);
-  assert.equal(closed.result.sales, 0.9);
+  assert.equal(closed.result.expected, 100); assert.equal(closed.result.counted, 99);
+  assert.equal(closed.result.sales, 3);
   await assert.rejects(write('ventas', { ...sale, metodoPago: 'efectivo' }), { status: 409 });
   await assert.rejects(write('caja/movimiento', { ...payload, version: caja.session.version }), { status: 409 });
   // Read with a new connection pool: persisted state survives server recreation.
@@ -60,11 +65,11 @@ test('caja persists, separates payment methods, rejects stale closes and restore
   assert.equal((await read()).state.caja.closures.length, 1);
   const backup = JSON.parse(JSON.stringify(await readSnapshot(pool, 'Prueba', true)));
   assert.equal(backup.version, 9);
-  const invalid = structuredClone(backup); invalid.tables.turnos_caja[0].esperado = '100.29';
+  const invalid = structuredClone(backup); invalid.tables.turnos_caja[0].esperado = '99.00';
   await assert.rejects(write('restore', { backup: invalid, revision: (await read()).revision }), { status: 400 });
   const restored = await write('restore', { backup, revision: (await read()).revision });
   databaseId = restored.databaseId;
-  assert.equal(restored.state.caja.closures[0].expected, 100.3);
+  assert.equal(restored.state.caja.closures[0].expected, 100);
 });
 
 test('concurrent opening and close-versus-sale serialize without losing cash', async () => {
@@ -78,8 +83,69 @@ test('concurrent opening and close-versus-sale serialize without losing cash', a
   assert.equal(race.filter(r => r.status === 'fulfilled').length, 1);
   assert.equal(race.find(r => r.status === 'rejected').reason.status, 409);
   const after = (await read()).state.caja;
-  if (after.session.open) assert.equal(after.summary.expected, 0.3);
+  if (after.session.open) assert.equal(after.summary.expected, 1);
   else assert.equal(after.closures[0].expected, 0);
+});
+
+test('abonos en efectivo exigen pesos enteros y un turno heredado con centavos cuadra al peso entero', async () => {
+  const initialBackup = JSON.parse(JSON.stringify(await readSnapshot(pool, 'Prueba', true)));
+  try {
+    let current = (await read()).state;
+    if (current.caja.session.open) {
+      await write('caja/cerrar', { cajaId: current.caja.session.id, version: current.caja.session.version, conteo: current.caja.summary.expected });
+    }
+    const opened = await write('caja/abrir', { monto: 100 });
+    const cajaId = opened.result.id;
+    const creditCustomer = (await write('clientes', { nombre: 'Cliente Crédito Pesos', rnc: '', tel: '', limiteCredito: 5000 })).result.id;
+    const prod = (await write('productos', { codigo: 'PESO-325', nombre: 'Correa', costo: 100, precio1: '325.00', precio2: '325.00', precio3: '325.00', stock: 10 })).result.id;
+    // 5% de 325 = 16.25 -> bruto neto 308.75 -> redondea a RD$ 309 exactos.
+    const creditSale = await write('ventas', {
+      cajaId, clienteId: creditCustomer, condicion: 'Credito', metodoPago: 'credito', tipoComprobante: 'B02',
+      descuentoPorcentaje: 5, items: [{ productoId: prod, cantidad: 1, nivelPrecio: 'precio1' }],
+    });
+    const doc = creditSale.state.facturas.find(f => f.id === creditSale.result.id);
+    assert.equal(doc.total, 309);
+    assert.equal(Number((doc.base + doc.itbis).toFixed(2)), 309);
+    // Abono en efectivo con centavos se rechaza; entero pasa; transferencia permite centavos si hubiera.
+    await assert.rejects(write('cuentas/cobros', { ventaId: doc.id, version: doc.version, monto: '100.50', metodoPago: 'efectivo', cajaId }),
+      error => error.status === 400 && /pesos enteros/i.test(error.message));
+    const paid = await write('cuentas/cobros', { ventaId: doc.id, version: doc.version, monto: 309, metodoPago: 'efectivo', cajaId });
+    assert.equal(paid.state.caja.summary.expected, 409);
+    // Simular una venta histórica con centavos (.47) dentro del turno abierto (vía respaldo) y comprobar cierre al peso entero.
+    const cashSale = await write('ventas', {
+      cajaId, clienteId: creditSale.state.clientes[0].id, condicion: 'Contado', metodoPago: 'efectivo', tipoComprobante: 'B02',
+      items: [{ productoId: prod, cantidad: 1, nivelPrecio: 'precio1' }],
+    });
+    const backupWithCash = JSON.parse(JSON.stringify(await readSnapshot(pool, 'Prueba', true)));
+    const legacySale = backupWithCash.tables.ventas.find(v => Number(v.id) === cashSale.result.id);
+    legacySale.total = '325.47';
+    legacySale.base = '275.82';
+    legacySale.itbis = '49.65';
+    const legacyDetail = backupWithCash.tables.venta_detalles.find(d => Number(d.venta_id) === cashSale.result.id);
+    legacyDetail.precio = '325.4700';
+    legacyDetail.total = '325.47';
+    legacyDetail.base = '275.82';
+    legacyDetail.itbis = '49.65';
+    const restoredLegacy = await write('restore', { backup: backupWithCash, revision: (await read()).revision });
+    databaseId = restoredLegacy.databaseId;
+    assert.equal(restoredLegacy.state.caja.summary.expected, 734);
+    assert.equal(restoredLegacy.state.caja.summary.roundingAdjustment, -0.47);
+    const closedLegacy = await write('caja/cerrar', {
+      cajaId: restoredLegacy.state.caja.session.id,
+      version: restoredLegacy.state.caja.session.version,
+      conteo: 734,
+    });
+    assert.equal(closedLegacy.result.expected, 734);
+    assert.equal(closedLegacy.result.counted, 734);
+    // El respaldo con ese cierre redondeado se restaura sin error.
+    const afterCloseBackup = JSON.parse(JSON.stringify(await readSnapshot(pool, 'Prueba', true)));
+    const reRestored = await write('restore', { backup: afterCloseBackup, revision: (await read()).revision });
+    databaseId = reRestored.databaseId;
+    assert.equal(reRestored.state.caja.closures[0].expected, 734);
+  } finally {
+    const restoreClean = await write('restore', { backup: initialBackup, revision: (await read()).revision });
+    databaseId = restoreClean.databaseId;
+  }
 });
 
 const exportCashBackup = async () => JSON.parse(JSON.stringify(await readSnapshot(pool, 'Prueba', true)));

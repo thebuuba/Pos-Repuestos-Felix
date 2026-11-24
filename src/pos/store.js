@@ -849,7 +849,10 @@ async function restore(client, body) {
     if (backup.version < 5 && (await client.query('SELECT 1 FROM productos GROUP BY lower(codigo) HAVING count(*) > 1 LIMIT 1')).rowCount)
       fail('El respaldo contiene códigos duplicados.', 409);
     const invalid = await client.query(`SELECT 1 FROM ventas v LEFT JOIN venta_detalles d ON d.venta_id=v.id GROUP BY v.id
-      HAVING count(d.id)=0 OR v.total+v.descuento<>sum(d.total) OR v.base+v.itbis<>v.total OR (v.descuento=0 AND (v.base<>sum(d.base) OR v.itbis<>sum(d.itbis)))
+      HAVING count(d.id)=0
+        OR (v.total<>sum(d.total)-v.descuento AND v.total<>CASE WHEN sum(d.total)-v.descuento<=0 THEN 0::numeric ELSE GREATEST(1::numeric, ROUND(sum(d.total)-v.descuento)) END)
+        OR v.base+v.itbis<>v.total
+        OR (v.descuento=0 AND v.total=sum(d.total) AND (v.base<>sum(d.base) OR v.itbis<>sum(d.itbis)))
       UNION ALL SELECT 1 FROM compras c LEFT JOIN compra_detalles d ON d.compra_id=c.id GROUP BY c.id HAVING count(d.id)=0 OR c.total<>sum(d.total)
       UNION ALL SELECT 1 FROM productos p LEFT JOIN LATERAL (SELECT existencia_posterior FROM movimientos_inventario m WHERE m.producto_id=p.id ORDER BY id DESC LIMIT 1) m ON true WHERE p.stock<>COALESCE(m.existencia_posterior,0)
       UNION ALL SELECT 1 FROM (SELECT cantidad,existencia_posterior,lag(existencia_posterior,1,0) OVER(PARTITION BY producto_id ORDER BY id) previa FROM movimientos_inventario) m WHERE existencia_posterior<>previa+cantidad

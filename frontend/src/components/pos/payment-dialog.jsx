@@ -6,7 +6,7 @@ import { DialogHeader } from "../ui/dialog.jsx";
 import { DialogTitle } from "../ui/dialog.jsx";
 import { DialogDescription } from "../ui/dialog.jsx";
 import { formatDate } from "../../lib/accounts.js";
-import { formatMoney } from "../../lib/format.js";
+import { formatCashMoney, formatMoney } from "../../lib/format.js";
 import { Field } from "./form-field.jsx";
 import { Input } from "../ui/input.jsx";
 import { cn } from "../../lib/utils.js";
@@ -25,11 +25,18 @@ function PaymentDialog({ doc, partyName, verb, operational = false, cashOpen = t
   const [retryFn, setRetryFn] = useState(null);
   const [snapshotBalance, setSnapshotBalance] = useState(null);
   const balance = doc ? balanceOf(doc) : 0;
+  const balanceHasCents = Math.abs(Math.round(balance * 100)) % 100 !== 0;
+  const maxCashWhole = Math.floor(balance + 1e-9);
   const docId = doc?.id ?? null;
   useEffect(() => {
     if (doc) {
-      setAmount(String(balanceOf(doc)));
-      setMethod(operational && !cashOpen ? "transferencia" : "efectivo");
+      const nextMethod = operational && !cashOpen ? "transferencia" : "efectivo";
+      const nextBalance = balanceOf(doc);
+      const nextWhole = Math.floor(nextBalance + 1e-9);
+      setMethod(nextMethod);
+      setAmount(nextMethod === "efectivo" && Math.abs(Math.round(nextBalance * 100)) % 100 !== 0
+        ? (nextWhole > 0 ? String(nextWhole) : "")
+        : String(nextBalance));
       setNote("");
       setError(null);
       setRetryFn(null);
@@ -37,10 +44,13 @@ function PaymentDialog({ doc, partyName, verb, operational = false, cashOpen = t
       setSending(false);
     }
   }, [docId]);
+  const isCashMethod = method === "efectivo";
   const trimmedAmount = String(amount).trim();
-  const validFormat = /^\d{1,12}(?:\.\d{1,2})?$/.test(trimmedAmount);
+  const validFormat = isCashMethod
+    ? /^\d{1,12}$/.test(trimmedAmount)
+    : /^\d{1,12}(?:\.\d{1,2})?$/.test(trimmedAmount);
   const value = validFormat ? Number(trimmedAmount) : 0;
-  const cashBlocked = operational && method === "efectivo" && !cashOpen;
+  const cashBlocked = operational && isCashMethod && !cashOpen;
   const tooHigh = validFormat && value > balance + 0.001;
   const invalid = !validFormat || value <= 0 || tooHigh || cashBlocked;
   const locked = sending || Boolean(retryFn);
@@ -83,14 +93,17 @@ function PaymentDialog({ doc, partyName, verb, operational = false, cashOpen = t
             tooHigh
               ? "No puede ser mayor que el balance"
               : trimmedAmount !== "" && !validFormat
-                ? "Indica un monto válido (hasta dos decimales)"
+                ? isCashMethod
+                  ? "En efectivo usa pesos enteros sin centavos"
+                  : "Indica un monto válido (hasta dos decimales)"
                 : undefined
           }
         >
           <Input
             type="number"
-            step="0.01"
-            min="0.01"
+            step={isCashMethod ? "1" : "0.01"}
+            min={isCashMethod ? "1" : "0.01"}
+            inputMode={isCashMethod ? "numeric" : "decimal"}
             disabled={locked}
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
@@ -98,20 +111,28 @@ function PaymentDialog({ doc, partyName, verb, operational = false, cashOpen = t
             autoFocus={true}
           />
           <div className="flex gap-1.5 pt-1">
-            {[0.25, 0.5, 1].map((f) => (
-              <button
-                type="button"
-                disabled={locked}
-                onClick={() =>
-                  setAmount(String(Math.round(balance * f * 100) / 100))
-                }
-                className="rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-50"
-                key={f}
-              >
-                {f === 1 ? "Saldar todo" : `${f * 100}%`}
-              </button>
-            ))}
+            {[0.25, 0.5, 1].map((f) => {
+              const target = isCashMethod
+                ? Math.min(maxCashWhole, f === 1 ? maxCashWhole : Math.round(balance * f))
+                : Math.round(balance * f * 100) / 100;
+              return (
+                <button
+                  type="button"
+                  disabled={locked || target <= 0}
+                  onClick={() => setAmount(String(target))}
+                  className="rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-50"
+                  key={f}
+                >
+                  {f === 1 ? "Saldar todo" : `${f * 100}%`}
+                </button>
+              );
+            })}
           </div>
+          {isCashMethod && balanceHasCents && (
+            <p className="pt-1 text-xs text-amber-700 dark:text-amber-400">
+              {"En efectivo solo se registran pesos enteros. Para saldar los centavos exactos usa tarjeta o transferencia."}
+            </p>
+          )}
         </Field>
         <Field label="Forma de pago">
           <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-muted p-1">
@@ -119,7 +140,15 @@ function PaymentDialog({ doc, partyName, verb, operational = false, cashOpen = t
               <button
                 type="button"
                 disabled={locked}
-                onClick={() => setMethod(m.value)}
+                onClick={() => {
+                  setMethod(m.value);
+                  if (m.value === "efectivo" && trimmedAmount.includes(".")) {
+                    const whole = Math.min(maxCashWhole, Math.floor(Number(trimmedAmount) || 0));
+                    setAmount(whole > 0 ? String(whole) : "");
+                  } else if (m.value !== "efectivo" && balanceHasCents && Number(trimmedAmount) === maxCashWhole) {
+                    setAmount(String(balance));
+                  }
+                }}
                 className={cn(
                   "h-9 rounded-lg text-xs font-medium transition-all disabled:opacity-50",
                   method === m.value
@@ -180,7 +209,7 @@ function PaymentDialog({ doc, partyName, verb, operational = false, cashOpen = t
               }
             }}
           >
-            {sending ? "Confirmando…" : retryFn ? `Reintentar ${verb.toLowerCase()}` : `${verb} ${formatMoney(value)}`}
+            {sending ? "Confirmando…" : retryFn ? `Reintentar ${verb.toLowerCase()}` : `${verb} ${isCashMethod ? formatCashMoney(value) : formatMoney(value)}`}
           </Button>
         </DialogFooter>
       </DialogContent>

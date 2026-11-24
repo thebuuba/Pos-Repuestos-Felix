@@ -1,7 +1,7 @@
-import { cents, money, id, text, fail } from './operation-fields.js';
+import { cents, decimalUnits, money, wholePesos, roundPesoCents, id, text, fail } from './operation-fields.js';
 
 const emptySummary = () => ({ opening: 0, cashSales: 0, cardSales: 0, transferSales: 0, creditSales: 0,
-  entradas: 0, salidas: 0, cobros: 0, pagos: 0, expected: 0, invoices: 0 });
+  entradas: 0, salidas: 0, cobros: 0, pagos: 0, expected: 0, roundingAdjustment: 0, invoices: 0 });
 const iso = date => date instanceof Date ? date.toISOString() : date;
 const closure = row => ({ id: Number(row.id), openedAt: iso(row.abierto_en), closedAt: iso(row.cerrado_en),
   cashier: row.cajero, opening: Number(row.fondo), expected: Number(row.esperado), counted: Number(row.contado), sales: Number(row.ventas) });
@@ -16,15 +16,19 @@ function totals(turn, sales, movements, payments = [], closedAt = null) {
   const cash = sum(row => row.metodo_pago === 'efectivo');
   const incoming = moved('entrada'), outgoing = moved('salida');
   const cobros = paid('cobro'), pagos = paid('pago');
-  const expected = cents(turn.fondo) + cash + incoming + cobros - outgoing - pagos;
-  return { expected, sales: sum(() => true), summary: {
+  const rawExpected = cents(turn.fondo) + cash + incoming + cobros - outgoing - pagos;
+  const expected = roundPesoCents(rawExpected);
+  const roundingAdjustment = expected - rawExpected;
+  return { rawExpected, expected, roundingAdjustment, sales: sum(() => true), summary: {
     ...emptySummary(), opening: Number(turn.fondo), cashSales: Number(money(cash)),
     cardSales: Number(money(sum(row => row.metodo_pago === 'tarjeta'))),
     transferSales: Number(money(sum(row => row.metodo_pago === 'transferencia'))),
     creditSales: Number(money(sum(row => row.metodo_pago === 'credito'))),
     entradas: Number(money(incoming)), salidas: Number(money(outgoing)),
     cobros: Number(money(cobros)), pagos: Number(money(pagos)),
-    expected: Number(money(expected)), invoices: activeSales.length,
+    expected: expected >= 0n ? Number(money(expected)) : Number(decimalUnits(expected, 2)),
+    roundingAdjustment: Number(decimalUnits(roundingAdjustment, 2)),
+    invoices: activeSales.length,
   } };
 }
 export function cashPresentation(data) {
@@ -66,7 +70,7 @@ export async function lockCash(client, cajaId, version) {
 export async function cashOperation(client, path, body, actor, occurredAt = null) {
   const user = text(actor.id, 'el usuario de caja');
   if (path === '/api/caja/abrir') {
-    const amount = money(cents(body.monto, 'el fondo inicial'));
+    const amount = money(wholePesos(body.monto, 'el fondo inicial'));
     await client.query('SELECT pg_advisory_xact_lock(74198233)');
     if ((await client.query('SELECT 1 FROM turnos_caja WHERE cerrado_en IS NULL')).rowCount) fail('Ya hay un turno de caja abierto. Actualiza los datos.', 409);
     const row = (await client.query('INSERT INTO turnos_caja(usuario,cajero,fondo,abierto_en) VALUES($1,$2,$3,COALESCE($4::timestamptz,clock_timestamp())) RETURNING id',
@@ -77,18 +81,19 @@ export async function cashOperation(client, path, body, actor, occurredAt = null
   const summary = await turnTotals(client, turn);
   if (path === '/api/caja/movimiento') {
     if (!['entrada', 'salida'].includes(body.tipo)) fail('Selecciona entrada o salida.');
-    const amount = cents(body.monto, 'el monto');
+    const amount = wholePesos(body.monto, 'el monto');
     if (!amount) fail('El movimiento debe ser mayor que cero.');
-    if (body.tipo === 'salida' && amount > summary.expected) fail('La salida supera el efectivo esperado en caja.', 409);
+    if (body.tipo === 'salida' && amount > summary.rawExpected) fail('La salida supera el efectivo esperado en caja.', 409);
     // Validate resulting balance before committing, including the numeric upper bound.
-    money(summary.expected + (body.tipo === 'entrada' ? amount : -amount));
+    money(summary.rawExpected + (body.tipo === 'entrada' ? amount : -amount));
     const row = (await client.query('INSERT INTO movimientos_caja(caja_id,tipo,monto,concepto,usuario,creado_en) VALUES($1,$2,$3,$4,$5,COALESCE($6::timestamptz,clock_timestamp())) RETURNING id',
       [turn.id, body.tipo, money(amount), text(body.concepto, 'el concepto'), user, occurredAt])).rows[0];
     await client.query('UPDATE turnos_caja SET version=version+1 WHERE id=$1', [turn.id]);
     return { id: Number(row.id) };
   }
+  const counted = wholePesos(body.conteo, 'el conteo');
   const row = (await client.query(`UPDATE turnos_caja SET cerrado_en=COALESCE($6::timestamptz,clock_timestamp()),cerrado_por=$2,esperado=$3,contado=$4,ventas=$5,version=version+1
-    WHERE id=$1 RETURNING *`, [turn.id, user, money(summary.expected), money(cents(body.conteo, 'el conteo')), money(summary.sales), occurredAt])).rows[0];
+    WHERE id=$1 RETURNING *`, [turn.id, user, money(summary.expected), money(counted), money(summary.sales), occurredAt])).rows[0];
   return closure(row);
 }
 
@@ -96,8 +101,13 @@ export async function validateCashRestore(client) {
   const turns = (await client.query('SELECT * FROM turnos_caja')).rows;
   for (const turn of turns) {
     const summary = await turnTotals(client, turn, { atClose: Boolean(turn.cerrado_en) });
-    if (turn.cerrado_en && (cents(turn.esperado) !== summary.expected || cents(turn.ventas) !== summary.sales))
-      fail('El respaldo contiene un cierre de caja que no coincide con sus ventas y movimientos.');
+    if (turn.cerrado_en) {
+      const savedExpected = cents(turn.esperado);
+      const validExpected = savedExpected === summary.rawExpected || savedExpected === summary.expected;
+      if (!validExpected || cents(turn.ventas) !== summary.sales) {
+        fail('El respaldo contiene un cierre de caja que no coincide con sus ventas y movimientos.');
+      }
+    }
   }
   const invalid = await client.query(`SELECT 1 FROM ventas v JOIN turnos_caja c ON c.id=v.caja_id
     WHERE v.creado_en<c.abierto_en OR (c.cerrado_en IS NOT NULL AND v.creado_en>c.cerrado_en)

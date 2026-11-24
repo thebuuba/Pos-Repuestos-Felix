@@ -48,7 +48,12 @@ function CashMovementDialog({
       setDescription("");
     }
   }, [open, defaultType]);
-  const valid = /^\d+(?:\.\d{1,2})?$/.test(amount) && Number.isFinite(Number(amount)) && Number(amount) > 0
+  const trimmedAmount = String(amount).trim();
+  const validAmount = /^\d{1,12}$/.test(trimmedAmount) && Number.isSafeInteger(Number(trimmedAmount)) && Number(trimmedAmount) > 0;
+  const amountError = trimmedAmount !== "" && !validAmount
+    ? "Usa pesos enteros sin centavos."
+    : undefined;
+  const valid = validAmount
     && description.trim().length > 0 && description.length <= 2000;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -88,17 +93,17 @@ function CashMovementDialog({
             </button>
           ))}
         </div>
-        <Field label="Monto RD$" htmlFor="cash-movement-amount">
+        <Field label="Monto RD$" htmlFor="cash-movement-amount" error={amountError}>
           <Input
             id="cash-movement-amount"
             disabled={disabled}
             type="number"
-            min="0.01"
-            step="0.01"
-            inputMode="decimal"
+            min="1"
+            step="1"
+            inputMode="numeric"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            placeholder="0.00"
+            placeholder="0"
             className={cn(inputClass, "text-base font-semibold")}
             autoFocus={true}
           />
@@ -132,7 +137,7 @@ function CashMovementDialog({
             data-shortcut-submit="true"
             className="h-11 w-full rounded-xl"
             disabled={disabled || !valid}
-            onClick={() => onConfirm(type, amount, description.trim())}
+            onClick={() => onConfirm(type, trimmedAmount, description.trim())}
           >
             {"Registrar "}
             {type}

@@ -35,6 +35,16 @@ const fourDecimals = /^(\d{1,12})(?:\.(\d{1,4}))?$/;
 export function cents(value, label = 'el importe') {
   return scaledUnits(value, label, 2, twoDecimals);
 }
+export function wholePesos(value, label = 'el importe') {
+  const amount = cents(value, label);
+  if (amount % 100n !== 0n) fail(`Revisa ${label}: usa pesos enteros sin centavos.`);
+  return amount;
+}
+export function roundPesoCents(value) {
+  if (value === 0n) return 0n;
+  if (value < 0n) return -(((-value + 50n) / 100n) * 100n);
+  return ((value + 50n) / 100n) * 100n;
+}
 export function quantityUnits(value, label, min = 0) {
   const quantity = scaledUnits(value, label, 2, twoDecimals);
   if (quantity < scaledUnits(min, label, 2, twoDecimals) || quantity > maxQuantity) fail(`Revisa ${label}: la cantidad está fuera del límite permitido.`);
