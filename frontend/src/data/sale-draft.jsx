@@ -3,6 +3,7 @@ import { toast as ue } from 'sonner';
 import { usePosStore } from './pos-context.jsx';
 import { quoteSale, updateSaleLine, receiptFromConfirmation, saleRequest } from './operational-sales.js';
 import { detectPostSaleStockCrossings } from './smart-notifications.js';
+import { suppressStockLiveToast } from './notification-state.js';
 import { ReceiptDialog } from '../components/pos/receipt-dialog.jsx';
 import { businessTodayIso } from '../lib/dates.js';
 
@@ -415,6 +416,7 @@ export function SaleDraftProvider({ children }) {
       clearSale();
       const { newlyOut, newlyLow } = detectPostSaleStockCrossings(soldItems, snapshot.state?.productos ?? []);
       if (newlyOut.length > 0) {
+        suppressStockLiveToast(8000);
         const title = newlyOut.length === 1
           ? `Se agotó: ${newlyOut[0].name}`
           : `${newlyOut.length} artículos quedaron agotados`;
@@ -424,6 +426,7 @@ export function SaleDraftProvider({ children }) {
             : newlyOut.slice(0, 3).map((x) => x.name).join(", "),
         });
       } else if (newlyLow.length > 0) {
+        suppressStockLiveToast(8000);
         const title = newlyLow.length === 1
           ? `Bajo mínimo: ${newlyLow[0].name}`
           : `${newlyLow.length} artículos cayeron bajo mínimo`;

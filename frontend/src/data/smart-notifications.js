@@ -74,7 +74,7 @@ function safeDueDays(doc, now, todayDate) {
   }
 }
 
-function summarizeParties(docs, now, todayDate) {
+function summarizeParties(docs, now, todayDate, partyNames = null) {
   const byParty = new Map();
   let totalAmount = 0;
   let maxOverdue = 0;
@@ -85,9 +85,10 @@ function summarizeParties(docs, now, todayDate) {
     const over = safeDueDays(doc, now, todayDate) ?? 0;
     if (over > maxOverdue) maxOverdue = over;
     const key = doc.partyId ?? doc.partyName ?? doc.id;
+    const resolvedName = doc.partyName || (partyNames && doc.partyId != null ? partyNames.get(doc.partyId) : null) || "Sin nombre";
     const prev = byParty.get(key) ?? {
       partyId: doc.partyId,
-      name: doc.partyName || "Sin nombre",
+      name: resolvedName,
       total: 0,
       count: 0,
       maxDays: over,
@@ -114,6 +115,7 @@ export function buildSmartNotifications({
   products = [],
   sales = [],
   customers = [],
+  suppliers = [],
   receivables = [],
   payables = [],
   workshopAccounts = [],
@@ -127,6 +129,8 @@ export function buildSmartNotifications({
   const todayIso = businessTodayIso(now);
   const todayDate = documentaryDate(todayIso);
   const cutoff30Iso = isoDateOffset(todayDate, -VELOCITY_WINDOW_DAYS);
+  const customerNames = new Map(customers.map((c) => [c.id, c.name]));
+  const supplierNames = new Map(suppliers.map((s) => [s.id, s.name]));
 
   // --- 1. Operación crítica: sincronización y solicitudes pendientes ---
   if (desktopStatus?.connection === "conflict") {
@@ -446,6 +450,9 @@ export function buildSmartNotifications({
   }
 
   if (outCold.length > 0) {
+    const description = outCold.length <= 3
+      ? `${outCold.map((p) => p.name).join(", ")}.`
+      : "Artículos en 0 sin ventas registradas en los últimos 30 días.";
     list.push({
       id: "stock-out-other",
       category: "inventario",
@@ -454,7 +461,7 @@ export function buildSmartNotifications({
       title: outHot.length > 0
         ? `${plural(outCold.length, "artículo agotado", "artículos agotados")} sin ventas recientes`
         : plural(outCold.length, "artículo agotado", "artículos agotados"),
-      description: outCold.slice(0, 3).map((p) => p.name).join(", ") + (outCold.length > 3 ? ` y ${outCold.length - 3} más.` : "."),
+      description,
       metric: plural(outCold.length, "agotado", "agotados"),
       actionLabel: "Ver agotados",
       to: "/inventario?existencia=out",
@@ -494,7 +501,7 @@ export function buildSmartNotifications({
   }
 
   if (cxcOverdueDocs.length > 0) {
-    const { totalAmount, maxOverdue, ranked } = summarizeParties(cxcOverdueDocs, now, todayDate);
+    const { totalAmount, maxOverdue, ranked } = summarizeParties(cxcOverdueDocs, now, todayDate, customerNames);
     list.push({
       id: "cxc-overdue",
       category: "cuentas",
@@ -516,7 +523,7 @@ export function buildSmartNotifications({
   }
 
   if (cxcSoonDocs.length > 0) {
-    const { totalAmount, ranked } = summarizeParties(cxcSoonDocs, now, todayDate);
+    const { totalAmount, ranked } = summarizeParties(cxcSoonDocs, now, todayDate, customerNames);
     list.push({
       id: "cxc-due-soon",
       category: "cuentas",
@@ -591,7 +598,7 @@ export function buildSmartNotifications({
     }
 
     if (cxpOverdueDocs.length > 0) {
-      const { totalAmount, maxOverdue, ranked } = summarizeParties(cxpOverdueDocs, now, todayDate);
+      const { totalAmount, maxOverdue, ranked } = summarizeParties(cxpOverdueDocs, now, todayDate, supplierNames);
       list.push({
         id: "cxp-overdue",
         category: "cuentas",
@@ -613,7 +620,7 @@ export function buildSmartNotifications({
     }
 
     if (cxpSoonDocs.length > 0) {
-      const { totalAmount, ranked } = summarizeParties(cxpSoonDocs, now, todayDate);
+      const { totalAmount, ranked } = summarizeParties(cxpSoonDocs, now, todayDate, supplierNames);
       list.push({
         id: "cxp-due-soon",
         category: "cuentas",

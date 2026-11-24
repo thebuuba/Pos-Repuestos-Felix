@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
   Bell,
   Box,
   CheckCheck,
+  ChevronDown,
   ChevronRight,
   CircleCheck,
   Clock,
@@ -16,13 +17,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../ui/button.jsx";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "../ui/dialog.jsx";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip.jsx";
 import { cn } from "../../lib/utils.js";
 import { usePosStore } from "../../data/pos-context.jsx";
@@ -32,6 +26,8 @@ import {
   NOTIFICATION_CATEGORIES,
 } from "../../data/smart-notifications.js";
 import {
+  detectLiveArrivals,
+  isStockLiveToastSuppressed,
   markAlertSeen,
   markAllAlertsSeen,
   notificationStorageKey,
@@ -58,6 +54,7 @@ export function NotificationsCenter({ onNavigate }) {
     products = [],
     sales = [],
     customers = [],
+    suppliers = [],
     receivables = [],
     payables = [],
     workshopAccounts = [],
@@ -68,8 +65,16 @@ export function NotificationsCenter({ onNavigate }) {
   const desktopStatus = useDesktopSyncSnapshot();
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("all");
+  const [expandedId, setExpandedId] = useState(null);
   const [showSnoozed, setShowSnoozed] = useState(false);
+  const [bellPulse, setBellPulse] = useState(false);
   const [tick, setTick] = useState(() => Date.now());
+  const containerRef = useRef(null);
+  const bellRef = useRef(null);
+  const prevFingerprintsRef = useRef(null);
+  const prevStorageKeyRef = useRef(null);
+  const pulseTimerRef = useRef(null);
+  const suppressNextArrivalRef = useRef(false);
 
   // Fail-closed mientras resuelve /api/account para no exponer alertas de dueño al cajero.
   const isOwner = !runtime || (runtime.isOwner !== false && (!runtime.accountDetailsAvailable || Boolean(runtime.account?.username)));
@@ -88,7 +93,7 @@ export function NotificationsCenter({ onNavigate }) {
     setNotifState(readNotificationState(storageKey));
   }, [storageKey]);
 
-  // Recalcula reloj cada 5 min para cambios de día de negocio / vencimientos sin re-render constante.
+  // Recalcula reloj cada 5 min para cambios de día de negocio / vencimientos.
   useEffect(() => {
     const id = window.setInterval(() => setTick(Date.now()), 5 * 60 * 1000);
     return () => window.clearInterval(id);
@@ -105,6 +110,29 @@ export function NotificationsCenter({ onNavigate }) {
     window.addEventListener("felix:shortcut", onShortcut);
     return () => window.removeEventListener("felix:shortcut", onShortcut);
   }, []);
+
+  // Cerrar popover al hacer clic afuera o pulsar Escape.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onPointerDown = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape" && !event.defaultPrevented) {
+        event.preventDefault();
+        setOpen(false);
+        bellRef.current?.focus();
+      }
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
 
   const updateState = (updater) => {
     setNotifState((prev) => {
@@ -125,6 +153,7 @@ export function NotificationsCenter({ onNavigate }) {
         products,
         sales,
         customers,
+        suppliers,
         receivables,
         payables,
         workshopAccounts,
@@ -141,6 +170,7 @@ export function NotificationsCenter({ onNavigate }) {
       products,
       sales,
       customers,
+      suppliers,
       receivables,
       payables,
       workshopAccounts,
@@ -156,6 +186,63 @@ export function NotificationsCenter({ onNavigate }) {
     () => partitionNotifications(rawAlerts, notifState, now),
     [rawAlerts, notifState, now],
   );
+
+  // Espera a conocer cuenta/snapshot antes de fijar la línea base silenciosa de la sesión.
+  const baselineReady = !hasRuntime || (Boolean(runtime?.snapshot) && (!runtime?.accountDetailsAvailable || Boolean(runtime?.account?.username)));
+  const openRef = useRef(open);
+  openRef.current = open;
+  const goToRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (pulseTimerRef.current != null) window.clearTimeout(pulseTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!baselineReady) return;
+    if (prevStorageKeyRef.current !== storageKey) {
+      prevStorageKeyRef.current = storageKey;
+      prevFingerprintsRef.current = null;
+    }
+    const { arrived, toastCandidates, nextFingerprints } = detectLiveArrivals(
+      active,
+      prevFingerprintsRef.current,
+      { suppressStockToast: isStockLiveToastSuppressed() },
+    );
+    prevFingerprintsRef.current = nextFingerprints;
+
+    if (suppressNextArrivalRef.current) {
+      suppressNextArrivalRef.current = false;
+      return;
+    }
+    if (!arrived.length || openRef.current) return;
+
+    // Pulso sutil 1 sola vez en la campana (sin sonido).
+    setBellPulse(false);
+    if (pulseTimerRef.current != null) window.clearTimeout(pulseTimerRef.current);
+    const startPulse = window.requestAnimationFrame(() => {
+      setBellPulse(true);
+      pulseTimerRef.current = window.setTimeout(() => setBellPulse(false), 900);
+    });
+
+    if (toastCandidates.length > 0) {
+      const top = toastCandidates[0];
+      const extra = toastCandidates.length > 1 ? ` (+${toastCandidates.length - 1} más)` : "";
+      const notifyFn = top.id === "daily-goal-hit" ? toast.success : toast.warning;
+      notifyFn(`${top.title}${extra}`, {
+        id: `felix-live-notif-${top.id}`,
+        duration: 5000,
+        description: top.description,
+        action: {
+          label: "Ver",
+          onClick: () => goToRef.current?.(top, top.to),
+        },
+      });
+    }
+
+    return () => window.cancelAnimationFrame(startPulse);
+  }, [active, baselineReady, storageKey]);
 
   const counts = useMemo(() => {
     const map = { all: active.length, critical: 0, inventario: 0, cuentas: 0, operacion: 0 };
@@ -184,9 +271,11 @@ export function NotificationsCenter({ onNavigate }) {
     [active],
   );
 
-  const handleOpen = (nextOpen) => {
-    if (nextOpen) setTick(Date.now());
-    setOpen(nextOpen);
+  const toggleOpen = () => {
+    setOpen((prev) => {
+      if (!prev) setTick(Date.now());
+      return !prev;
+    });
   };
 
   const goTo = (alert, targetPath) => {
@@ -195,15 +284,18 @@ export function NotificationsCenter({ onNavigate }) {
     onNavigate?.();
     navigate(targetPath || alert?.to || "/");
   };
+  goToRef.current = goTo;
 
-  const handleSnooze = (alert) => {
+  const handleSnooze = (event, alert) => {
+    event.stopPropagation();
     updateState((prev) => snoozeAlertUntilTomorrow(prev, alert, new Date()));
     toast("Alerta pospuesta hasta mañana", {
-      description: "Volverá a avisar automáticamente si la situación cambia.",
+      description: "Volverá a avisar automáticamente si cambia la situación.",
     });
   };
 
   const handleUnsnooze = (alertId) => {
+    suppressNextArrivalRef.current = true;
     updateState((prev) => unsnoozeAlert(prev, alertId));
   };
 
@@ -212,30 +304,30 @@ export function NotificationsCenter({ onNavigate }) {
   };
 
   const badgeText = unreadCount > 99 ? "99+" : String(unreadCount);
-  const summaryParts = [];
-  if (counts.critical > 0) summaryParts.push(`${counts.critical} ${counts.critical === 1 ? "crítica" : "críticas"}`);
-  const nonCritical = active.length - counts.critical;
-  if (nonCritical > 0) summaryParts.push(`${nonCritical} ${nonCritical === 1 ? "aviso" : "avisos"}`);
-  const summaryText = summaryParts.length > 0
-    ? summaryParts.join(" · ")
-    : "Todo está al día. No hay alertas activas.";
-
   const tooltipLabel = unreadCount > 0
     ? `Notificaciones · ${unreadCount} sin leer (Alt+A)`
     : "Notificaciones (Alt+A)";
 
   return (
-    <>
+    <div ref={containerRef} className="relative">
       <Tooltip>
         <TooltipTrigger asChild={true}>
           <Button
+            ref={bellRef}
             variant="outline"
             size="icon"
-            className="notif-bell-btn relative h-10 w-10 rounded-xl bg-card"
+            className={cn(
+              "notif-bell-btn relative h-10 w-10 rounded-xl bg-card",
+              open && "bg-muted",
+              bellPulse && "notif-bell-pulse",
+            )}
             aria-label="Notificaciones"
+            aria-expanded={open}
+            aria-haspopup="dialog"
             data-unread-count={unreadCount}
             data-critical-count={unreadCriticalCount}
-            onClick={() => handleOpen(true)}
+            data-pulsing={bellPulse ? "true" : undefined}
+            onClick={toggleOpen}
           >
             <Bell />
             {unreadCount > 0 ? (
@@ -249,51 +341,48 @@ export function NotificationsCenter({ onNavigate }) {
                 {badgeText}
               </span>
             ) : (active.length > 0 || hasServiceError) ? (
-              <span
-                aria-hidden="true"
-                className="notif-bell-dot"
-              />
+              <span aria-hidden="true" className="notif-bell-dot" />
             ) : null}
           </Button>
         </TooltipTrigger>
         <TooltipContent>{tooltipLabel}</TooltipContent>
       </Tooltip>
 
-      <Dialog open={open} onOpenChange={handleOpen}>
-        <DialogContent
-          className="notif-dialog rounded-2xl p-0"
-          style={{ width: "calc(100vw - 1.5rem)", maxWidth: "34rem", maxHeight: "calc(100dvh - 2rem)" }}
+      {open && (
+        <section
+          role="dialog"
+          aria-label="Notificaciones"
+          data-state="open"
+          className="notif-popover"
         >
-          <div className="notif-dialog-head">
-            <DialogHeader className="text-left">
-              <div className="flex flex-wrap items-center gap-2 pr-8">
-                <DialogTitle>Notificaciones</DialogTitle>
+          <div className="notif-popover-head">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <h2 className="text-[15px] font-semibold tracking-tight text-foreground">
+                  Notificaciones
+                </h2>
                 {unreadCount > 0 && (
-                  <span className="notif-header-pill tabular-nums">
-                    {unreadCount} {unreadCount === 1 ? "nueva" : "nuevas"}
+                  <span className="notif-count-pill tabular-nums">
+                    {unreadCount}
                   </span>
                 )}
+              </div>
+              {canMarkAnyRead ? (
+                <button
+                  type="button"
+                  onClick={handleMarkAllRead}
+                  className="notif-mark-all-btn"
+                >
+                  <CheckCheck className="h-3.5 w-3.5" />
+                  <span>Marcar leídas</span>
+                </button>
+              ) : (
                 <kbd className="notif-kbd">Alt+A</kbd>
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <DialogDescription>{summaryText}</DialogDescription>
-                {canMarkAnyRead && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="notif-mark-all h-7 rounded-lg px-2 text-xs"
-                    onClick={handleMarkAllRead}
-                  >
-                    <CheckCheck className="h-3.5 w-3.5" />
-                    {"Marcar leídas"}
-                  </Button>
-                )}
-              </div>
-            </DialogHeader>
+              )}
+            </div>
 
             {visibleTabs.length > 1 && (
-              <div className="notif-tabs mt-3" role="tablist" aria-label="Filtrar notificaciones">
+              <div className="notif-filter-bar mt-2.5" role="tablist" aria-label="Filtrar notificaciones">
                 {visibleTabs.map((tab) => {
                   const selected = effectiveFilter === tab.id;
                   return (
@@ -304,10 +393,10 @@ export function NotificationsCenter({ onNavigate }) {
                       aria-selected={selected}
                       data-active={selected ? "true" : "false"}
                       onClick={() => setFilter(tab.id)}
-                      className="notif-tab"
+                      className="notif-filter-tab"
                     >
                       <span>{tab.label}</span>
-                      <span className="notif-tab-count tabular-nums">{counts[tab.id]}</span>
+                      <span className="notif-filter-count tabular-nums">{counts[tab.id]}</span>
                     </button>
                   );
                 })}
@@ -315,142 +404,164 @@ export function NotificationsCenter({ onNavigate }) {
             )}
           </div>
 
-          <div className="notif-list">
+          <div className="notif-scroll">
             {filteredAlerts.length === 0 ? (
               <div className="notif-empty">
                 <div className="notif-empty-icon">
-                  <CircleCheck className="h-6 w-6" />
+                  <CircleCheck className="h-5 w-5" />
                 </div>
                 <p className="text-sm font-medium text-foreground">Todo está al día</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  No hay alertas activas en esta categoría.
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  No hay alertas activas en este momento.
                 </p>
               </div>
             ) : (
-              <ul className="space-y-2.5">
+              <ul className="divide-y divide-border">
                 {filteredAlerts.map((alert) => {
                   const Icon = alertIconFor(alert);
+                  const hasItems = Array.isArray(alert.items) && alert.items.length > 0;
+                  const expanded = expandedId === alert.id;
                   return (
                     <li
                       key={alert.id}
                       data-alert-id={alert.id}
                       data-severity={alert.severity}
                       data-seen={alert.seen ? "true" : "false"}
-                      className={cn(
-                        "notif-card",
-                        `notif-card-${alert.severity}`,
-                        alert.seen && "notif-card-seen",
-                      )}
+                      className={cn("notif-row", alert.seen && "notif-row-seen")}
                     >
                       <div className="flex items-start gap-3">
-                        <span className={cn("notif-card-icon", `notif-icon-${alert.severity}`)}>
-                          <Icon className="h-4 w-4" />
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="flex items-center gap-1.5 text-sm font-semibold leading-snug text-foreground">
-                              {!alert.seen && <span className="notif-unread-dot" aria-hidden="true" />}
-                              <span>{alert.title}</span>
-                            </p>
-                            {alert.metric && (
-                              <span className={cn("notif-metric tabular-nums", `notif-metric-${alert.severity}`)}>
-                                {alert.metric}
+                        <button
+                          type="button"
+                          onClick={() => goTo(alert, alert.to)}
+                          className="notif-row-main"
+                        >
+                          <span className={cn("notif-row-icon", `notif-icon-${alert.severity}`)}>
+                            <Icon className="h-4 w-4" />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-start justify-between gap-2">
+                              <span className="flex min-w-0 items-center gap-1.5 text-[13px] font-medium leading-snug text-foreground">
+                                {!alert.seen && <span className="notif-unread-dot" aria-hidden="true" />}
+                                <span>{alert.title}</span>
                               </span>
-                            )}
-                          </div>
-                          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                            {alert.description}
-                          </p>
+                              {alert.metric && (
+                                <span className={cn("notif-metric-text shrink-0 tabular-nums", `notif-metric-text-${alert.severity}`)}>
+                                  {alert.metric}
+                                </span>
+                              )}
+                            </span>
+                            <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
+                              {alert.description}
+                            </span>
+                          </span>
+                        </button>
 
-                          {Array.isArray(alert.items) && alert.items.length > 0 && (
-                            <ul className="notif-subitems mt-2.5">
+                        {alert.snoozeable !== false && (
+                          <button
+                            type="button"
+                            onClick={(e) => handleSnooze(e, alert)}
+                            aria-label="Posponer"
+                            title="Posponer hasta mañana"
+                            className="notif-snooze-icon"
+                          >
+                            <Clock className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      {hasItems && (
+                        <div className="notif-detail-wrap">
+                          <div className="flex items-center justify-between gap-2">
+                            <button
+                              type="button"
+                              aria-expanded={expanded}
+                              onClick={() => setExpandedId(expanded ? null : alert.id)}
+                              className="notif-detail-toggle"
+                            >
+                              <span>
+                                {expanded
+                                  ? "Ocultar detalle"
+                                  : `Ver detalle (${alert.items.length})`}
+                              </span>
+                              <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", expanded && "rotate-180")} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => goTo(alert, alert.to)}
+                              className="notif-inline-action"
+                            >
+                              <span>{alert.actionLabel || "Abrir"}</span>
+                              <ChevronRight className="h-3 w-3" />
+                            </button>
+                          </div>
+
+                          {expanded && (
+                            <ul className="notif-sublist mt-1.5 divide-y divide-border">
                               {alert.items.map((sub, idx) => (
                                 <li key={`${alert.id}-sub-${idx}`}>
                                   <button
                                     type="button"
                                     onClick={() => goTo(alert, sub.to)}
-                                    className="notif-subitem-btn"
+                                    className="notif-subrow"
                                   >
-                                    <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+                                    <span className="min-w-0 flex-1 truncate text-foreground">
                                       {sub.label}
                                     </span>
                                     <span className="shrink-0 tabular-nums text-muted-foreground">
                                       {sub.meta}
                                     </span>
-                                    <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                    <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
                                   </button>
                                 </li>
                               ))}
                             </ul>
                           )}
-
-                          <div className="notif-card-actions mt-3">
-                            <button
-                              type="button"
-                              onClick={() => goTo(alert, alert.to)}
-                              className="notif-primary-action"
-                            >
-                              <span>{alert.actionLabel || "Revisar"}</span>
-                              <ChevronRight className="h-3.5 w-3.5" />
-                            </button>
-                            {alert.snoozeable !== false && (
-                              <button
-                                type="button"
-                                onClick={() => handleSnooze(alert)}
-                                title="Ocultar hasta mañana; vuelve a avisar si la situación cambia"
-                                className="notif-snooze-btn"
-                              >
-                                <Clock className="h-3.5 w-3.5" />
-                                <span>Posponer</span>
-                              </button>
-                            )}
-                          </div>
                         </div>
-                      </div>
+                      )}
                     </li>
                   );
                 })}
               </ul>
             )}
-
-            {snoozed.length > 0 && (
-              <div className="notif-snoozed-wrap mt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowSnoozed((prev) => !prev)}
-                  className="notif-snoozed-toggle"
-                >
-                  <Clock className="h-3.5 w-3.5" />
-                  <span>
-                    {showSnoozed
-                      ? `Ocultar pospuestas (${snoozed.length})`
-                      : `Pospuestas hasta mañana (${snoozed.length})`}
-                  </span>
-                </button>
-                {showSnoozed && (
-                  <ul className="mt-2 space-y-1.5">
-                    {snoozed.map((alert) => (
-                      <li key={`snoozed-${alert.id}`} className="notif-snoozed-row">
-                        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                          {alert.title}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handleUnsnooze(alert.id)}
-                          className="notif-unsnooze-btn"
-                        >
-                          <RotateCcw className="h-3 w-3" />
-                          <span>Reactivar</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
           </div>
-        </DialogContent>
-      </Dialog>
-    </>
+
+          {snoozed.length > 0 && (
+            <div className="notif-popover-foot">
+              <button
+                type="button"
+                onClick={() => setShowSnoozed((prev) => !prev)}
+                className="notif-snoozed-toggle"
+              >
+                <Clock className="h-3.5 w-3.5" />
+                <span>
+                  {showSnoozed
+                    ? `Ocultar pospuestas (${snoozed.length})`
+                    : `Pospuestas hasta mañana (${snoozed.length})`}
+                </span>
+              </button>
+              {showSnoozed && (
+                <ul className="mt-2 space-y-1">
+                  {snoozed.map((alert) => (
+                    <li key={`snoozed-${alert.id}`} className="notif-snoozed-row">
+                      <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                        {alert.title}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleUnsnooze(alert.id)}
+                        className="notif-unsnooze-btn"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        <span>Reactivar</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+    </div>
   );
 }

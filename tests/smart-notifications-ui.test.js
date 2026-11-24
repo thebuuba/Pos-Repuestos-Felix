@@ -228,6 +228,17 @@ test('E2E Centro de Notificaciones Inteligentes: reglas reales, Alt+A, filtros, 
     await page.getByText(/Se agotó: Pastilla Crítica/).waitFor();
     await page.keyboard.press('Escape');
 
+    // H2. Novedad en vivo desde otra sesión (Meta diaria alcanzada): sale toast con "Ver" sin robar el foco del buscador
+    const searchInput = page.getByLabel('Código o nombre del producto');
+    await searchInput.focus();
+    const cfgSnap = await readSnapshot(pool, 'Test');
+    await writeOperation(pool, 'PUT', '/api/configuracion', {
+      databaseId, version: cfgSnap.state.configuracion.version, metaDiaria: '1000',
+    }, randomUUID(), 'OtroEquipo', actor);
+    await page.getByText(/Meta diaria alcanzada/).waitFor({ timeout: 10000 });
+    const focusedAfterToast = await searchInput.evaluate((el) => document.activeElement === el);
+    assert.equal(focusedAfterToast, true, 'El aviso en vivo nunca debe robar el foco del buscador en Ventas');
+
     // I. Sesión de Cajero: NO ve precio <= costo, CxP ni NCF; SÍ ve CxC y rotación
     const cashierCtx = await browser.newContext({ viewport: { width: 1366, height: 768 }, locale: 'es-DO' });
     assert.equal((await cashierCtx.request.post(appOrigin + '/login', {

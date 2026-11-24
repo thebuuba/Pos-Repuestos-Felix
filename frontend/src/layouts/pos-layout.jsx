@@ -63,8 +63,8 @@ function PosLayout({ children }) {
         return;
       }
       if (isPlainAlt(event) && event.code === "KeyA") {
-        const notifDialogOpen = Boolean(document.querySelector('.notif-dialog[data-state="open"]'));
-        if (notifDialogOpen || (!hasOpenModal() && !menuOpen)) {
+        const notifOpen = Boolean(document.querySelector('.notif-popover[data-state="open"]'));
+        if (notifOpen || (!hasOpenModal() && !menuOpen)) {
           event.preventDefault();
           if (!event.repeat) dispatchShortcut("toggle-notifications");
         }

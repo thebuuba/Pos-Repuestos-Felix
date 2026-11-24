@@ -131,3 +131,47 @@ export function partitionNotifications(alerts, state, now = new Date()) {
   }
   return { active, snoozed, unreadCount, unreadCriticalCount };
 }
+
+let stockToastSuppressedUntil = 0;
+
+/**
+ * Evita duplicar el toast en vivo de stock justo después del aviso inmediato post-venta
+ * emitido en el mismo equipo.
+ */
+export function suppressStockLiveToast(durationMs = 6000) {
+  stockToastSuppressedUntil = Date.now() + Math.max(0, Number(durationMs) || 0);
+}
+
+export function isStockLiveToastSuppressed(nowMs = Date.now()) {
+  return nowMs < stockToastSuppressedUntil;
+}
+
+const LIVE_STOCK_ALERT_IDS = new Set(["stock-out-hot", "stock-velocity"]);
+
+/**
+ * Detecta alertas activas nuevas o empeoradas respecto al último estado conocido de la sesión.
+ * - Solo dispara toasts en vivo para alertas críticas nuevas o hitos positivos (meta diaria).
+ * - Nunca dispara toasts si `previousFingerprints` aún es null (arranque / cambio de sesión).
+ */
+export function detectLiveArrivals(activeAlerts = [], previousFingerprints = null, { suppressStockToast = false } = {}) {
+  const nextFingerprints = new Map();
+  for (const alert of activeAlerts) {
+    if (alert?.id) nextFingerprints.set(alert.id, alert.fingerprint);
+  }
+  if (!previousFingerprints) {
+    return { arrived: [], toastCandidates: [], nextFingerprints };
+  }
+  const arrived = [];
+  const toastCandidates = [];
+  for (const alert of activeAlerts) {
+    if (!alert?.id || alert.seen) continue;
+    const prevFp = previousFingerprints.get(alert.id);
+    if (prevFp === alert.fingerprint) continue;
+    arrived.push(alert);
+    const qualifiesForToast = alert.severity === "critical" || alert.id === "daily-goal-hit";
+    if (!qualifiesForToast) continue;
+    if (suppressStockToast && LIVE_STOCK_ALERT_IDS.has(alert.id)) continue;
+    toastCandidates.push(alert);
+  }
+  return { arrived, toastCandidates, nextFingerprints };
+}

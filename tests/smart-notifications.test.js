@@ -5,6 +5,7 @@ import {
   detectPostSaleStockCrossings,
 } from "../frontend/src/data/smart-notifications.js";
 import {
+  detectLiveArrivals,
   emptyNotificationState,
   markAlertSeen,
   markAllAlertsSeen,
@@ -67,20 +68,25 @@ test("cuentas por cobrar, límite de crédito y cuentas por pagar respetan venci
     { id: 12, name: "Cliente Contado", isCashCustomer: true, creditLimit: 0, balance: 0 },
   ];
   const receivables = [
-    { id: 1, partyId: 10, partyName: "Taller El Primo", dueDate: "2026-11-19", amount: 3000, paid: 500 },
+    { id: 1, partyId: 10, dueDate: "2026-11-19", amount: 3000, paid: 500 },
     { id: 2, partyId: 11, partyName: "Moto Express", dueDate: "2026-11-26", amount: 1800, paid: 0 },
     { id: 3, partyId: 11, partyName: "Moto Express", dueDate: "2026-11-10", amount: 1000, paid: 1000 }, // ya saldada
   ];
+  const suppliers = [
+    { id: 50, name: "Importadora Cibao" },
+    { id: 51, name: "Distribuidora Sur" },
+  ];
   const payables = [
-    { id: 20, partyId: 50, partyName: "Importadora Cibao", dueDate: "2026-11-20", amount: 12500, paid: 0 },
-    { id: 21, partyId: 51, partyName: "Distribuidora Sur", dueDate: "2026-11-24", amount: 4200, paid: 200 },
+    { id: 20, partyId: 50, dueDate: "2026-11-20", amount: 12500, paid: 0 },
+    { id: 21, partyId: 51, dueDate: "2026-11-24", amount: 4200, paid: 200 },
   ];
 
-  const owner = buildSmartNotifications({ now: NOW, isOwner: true, customers, receivables, payables });
+  const owner = buildSmartNotifications({ now: NOW, isOwner: true, customers, suppliers, receivables, payables });
   const map = new Map(owner.map((a) => [a.id, a]));
   assert.equal(map.get("cxc-overdue")?.severity, "critical");
   assert.equal(map.get("cxc-overdue")?.to, "/cuentas-por-cobrar?filtro=vencidas");
   assert.match(map.get("cxc-overdue")?.description ?? "", /2,500\.00/);
+  assert.equal(map.get("cxc-overdue")?.items?.[0]?.label, "Taller El Primo");
 
   assert.equal(map.get("cxc-due-soon")?.severity, "warning");
   assert.match(map.get("cxc-due-soon")?.description ?? "", /1,800\.00/);
@@ -90,6 +96,7 @@ test("cuentas por cobrar, límite de crédito y cuentas por pagar respetan venci
 
   assert.equal(map.get("cxp-overdue")?.severity, "critical");
   assert.equal(map.get("cxp-overdue")?.to, "/cuentas-por-pagar?filtro=vencidas");
+  assert.equal(map.get("cxp-overdue")?.items?.[0]?.label, "Importadora Cibao");
   assert.equal(map.get("cxp-due-soon")?.severity, "warning");
 
   // Cajero ve CxC y límite de crédito, pero NO CxP
@@ -229,4 +236,39 @@ test("detectPostSaleStockCrossings solo avisa cuando la venta cruza el umbral", 
   const { newlyOut, newlyLow } = detectPostSaleStockCrossings(soldItems, updatedProducts);
   assert.deepEqual(newlyOut.map((x) => x.id), [1]);
   assert.deepEqual(newlyLow.map((x) => x.id), [2]);
+});
+
+test("detectLiveArrivals fija línea base sin disparar al inicio y solo emite toast para críticas o meta diaria", () => {
+  const initial = [
+    { id: "cxc-overdue", severity: "critical", fingerprint: "cxc:1", seen: false },
+    { id: "stock-low", severity: "warning", fingerprint: "low:2", seen: false },
+  ];
+
+  // Primer ciclo (arranque): guarda huellas pero NO dispara ni pulso ni toast
+  const first = detectLiveArrivals(initial, null);
+  assert.equal(first.arrived.length, 0);
+  assert.equal(first.toastCandidates.length, 0);
+
+  // Llega solo una alerta warning -> pulso (arrived), pero SIN toast intrusivo
+  const withWarn = [
+    ...initial,
+    { id: "cxc-due-soon", severity: "warning", fingerprint: "soon:1", seen: false },
+  ];
+  const second = detectLiveArrivals(withWarn, first.nextFingerprints);
+  assert.deepEqual(second.arrived.map((a) => a.id), ["cxc-due-soon"]);
+  assert.equal(second.toastCandidates.length, 0);
+
+  // Llega stock-out-hot con supresión activa (venta propia) + meta diaria alcanzada -> solo sale meta diaria
+  const withSaleEffects = [
+    ...withWarn,
+    { id: "stock-out-hot", severity: "critical", fingerprint: "hot:9", seen: false },
+    { id: "daily-goal-hit", severity: "info", fingerprint: "goal:2026-11-24", seen: false },
+  ];
+  const third = detectLiveArrivals(withSaleEffects, second.nextFingerprints, { suppressStockToast: true });
+  assert.deepEqual(third.arrived.map((a) => a.id), ["stock-out-hot", "daily-goal-hit"]);
+  assert.deepEqual(third.toastCandidates.map((a) => a.id), ["daily-goal-hit"]);
+
+  // Si un evento crítico llega desde otra PC (sin supresión), sí genera toast
+  const fourth = detectLiveArrivals(withSaleEffects, second.nextFingerprints, { suppressStockToast: false });
+  assert.deepEqual(fourth.toastCandidates.map((a) => a.id), ["stock-out-hot", "daily-goal-hit"]);
 });
