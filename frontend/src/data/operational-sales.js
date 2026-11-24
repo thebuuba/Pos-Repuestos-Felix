@@ -222,7 +222,7 @@ export function receiptFromConfirmation(snapshot) {
   const doc = snapshot.state.facturas.find(row => row.id === saleId);
   if (!doc) throw new Error('Falta la factura en la confirmación del servidor.');
   const localReference = typeof snapshot.localReceipt === 'string' ? snapshot.localReceipt : null;
-  return { invoiceNumber: localReference ? 'Local ' + localReference.slice(0, 8) : formatSaleNumber(doc.id),
+  return { invoiceNumber: formatSaleNumber(doc.id),
     ...(localReference ? { localReference } : {}), dateOnly: doc.fechaISO, dueDate: doc.vencimiento ?? null,
     customerName: doc.cliente, customerRnc: doc.clienteRnc, ncf: localReference ? null : doc.ncf,
     comprobante: doc.tipoComprobante, itbisRate: null,

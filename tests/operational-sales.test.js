@@ -100,7 +100,7 @@ test('el recibo durable local conserva su referencia y no se presenta como confi
     tipoComprobante: 'B02', ncf: 'B0200000001', base: 10, itbis: 0, total: 10,
     items: [{ id: 1, nombre: 'Repuesto', cant: 1, precio: 10, subtotal: 10 }],
   }] } });
-  assert.equal(receipt.invoiceNumber, 'Local 1a2b3c4d');
+  assert.equal(receipt.invoiceNumber, 'F-000007');
   assert.equal(receipt.localReference, reference);
   assert.equal(receipt.ncf, null);
 });
