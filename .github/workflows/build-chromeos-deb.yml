@@ -27,16 +27,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - deb_arch: amd64
-            node_arch: x64
-            runner: ubuntu-24.04
-            node_sha256: d804845d34eddc21dc1092b519d643ef40b1f58ec5dec5c22b1f4bd8fabde6c9
-          - deb_arch: arm64
-            node_arch: arm64
-            runner: ubuntu-24.04-arm
-            node_sha256: 524659219d6a207a7400f2bde15d19ba060ffbe0d32a8643319ad67e3bb64c78
-    if: ${{ github.event.inputs.arch == 'all' || github.event.inputs.arch == matrix.deb_arch }}
+        include: ${{ fromJSON(inputs.arch == 'amd64' && '[{"deb_arch":"amd64","node_arch":"x64","runner":"ubuntu-24.04","node_sha256":"d804845d34eddc21dc1092b519d643ef40b1f58ec5dec5c22b1f4bd8fabde6c9"}]' || inputs.arch == 'arm64' && '[{"deb_arch":"arm64","node_arch":"arm64","runner":"ubuntu-24.04-arm","node_sha256":"524659219d6a207a7400f2bde15d19ba060ffbe0d32a8643319ad67e3bb64c78"}]' || '[{"deb_arch":"amd64","node_arch":"x64","runner":"ubuntu-24.04","node_sha256":"d804845d34eddc21dc1092b519d643ef40b1f58ec5dec5c22b1f4bd8fabde6c9"},{"deb_arch":"arm64","node_arch":"arm64","runner":"ubuntu-24.04-arm","node_sha256":"524659219d6a207a7400f2bde15d19ba060ffbe0d32a8643319ad67e3bb64c78"}]') }}
     steps:
       - name: Instalar dependencias base de compilación Debian 12 + WebKitGTK 4.1
         run: |
