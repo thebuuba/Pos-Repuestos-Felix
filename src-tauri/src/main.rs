@@ -238,6 +238,44 @@ fn start_server_with_commands(
 }
 
 #[cfg(windows)]
+fn notify_shell_icon_change() {
+    #[link(name = "shell32")]
+    extern "system" {
+        fn SHChangeNotify(
+            event_id: i32,
+            flags: u32,
+            item1: *const std::ffi::c_void,
+            item2: *const std::ffi::c_void,
+        );
+    }
+    const SHCNE_ASSOCCHANGED: i32 = 0x0800_0000;
+    const SHCNF_IDLIST: u32 = 0x0000;
+    unsafe {
+        SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, std::ptr::null(), std::ptr::null());
+    }
+}
+
+#[cfg(not(windows))]
+fn notify_shell_icon_change() {}
+
+fn record_version_change(data_dir: &Path, version: &str) -> bool {
+    let marker = data_dir.join("last-version.txt");
+    let previous = fs::read_to_string(&marker).ok();
+    if previous.as_deref().map(str::trim) == Some(version) {
+        return false;
+    }
+    let _ = fs::create_dir_all(data_dir);
+    let _ = fs::write(&marker, version);
+    true
+}
+
+fn refresh_shell_icons_if_version_changed(data_dir: &Path, version: &str) {
+    if record_version_change(data_dir, version) {
+        notify_shell_icon_change();
+    }
+}
+
+#[cfg(windows)]
 fn message_box(title: &str, text: &str, flags: u32) -> i32 {
     #[link(name = "user32")]
     extern "system" {
@@ -463,7 +501,9 @@ fn main() {
                     sender: cmd_tx,
                 });
                 let origin = url.origin();
-                let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
+                let current_version = app.package_info().version.to_string();
+                refresh_shell_icons_if_version_changed(dir, &current_version);
+                let mut builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
                     .title("Repuestos Félix")
                     .inner_size(1200.0, 850.0)
                     .min_inner_size(760.0, 600.0)
@@ -471,7 +511,11 @@ fn main() {
                     .prevent_overflow()
                     .resizable(true)
                     .on_navigation(move |next| next.origin() == origin)
-                    .on_new_window(|_, _| NewWindowResponse::Deny)
+                    .on_new_window(|_, _| NewWindowResponse::Deny);
+                if let Some(icon) = app.default_window_icon().cloned() {
+                    builder = builder.icon(icon)?;
+                }
+                let window = builder
                     .build()
                     .map_err(|err| format!("No se pudo abrir la ventana del POS (WebView2): {err}"))?;
                 let _ = window.maximize();
@@ -527,7 +571,18 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{error_message, format_update_event, ready_url, start_server};
+    use super::{error_message, format_update_event, ready_url, record_version_change, start_server};
+
+    #[test]
+    fn records_version_change_only_once_per_version() {
+        let unique = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("felix-ver-test-{}-{unique}", std::process::id()));
+        assert_eq!(record_version_change(&dir, "1.2.15"), true);
+        assert_eq!(record_version_change(&dir, "1.2.15"), false);
+        assert_eq!(record_version_change(&dir, "1.2.16"), true);
+        assert_eq!(record_version_change(&dir, "1.2.16"), false);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     #[cfg(windows)]
