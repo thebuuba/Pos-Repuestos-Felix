@@ -329,6 +329,10 @@ function DesktopStatus({ onSync }) {
   const stale = status && (status.connection !== 'online' || status.pending > 0 || needsReview);
   const summary = `${label}${status ? `. ${pendingLabel}. Última sincronización: ${dateLabel(status.lastSync)}.${stale ? ' Inventario y saldos sin actualizar.' : ''}` : ''}`;
 
+  const tone = checking ? 'neutral' : needsReview ? 'danger' : stale ? 'warning' : 'success';
+  const showUpdateBanner = Boolean(status?.update && bannerUpdateStates.has(status.update.state));
+  const checkingUpdateNow = checkingUpdate || status?.update?.state === 'checking';
+
   return <Dialog open={open} onOpenChange={setOpen}>
     <span role="status" aria-atomic="true" className="sr-only">{summary}</span>
     <DialogTrigger asChild>
@@ -339,103 +343,212 @@ function DesktopStatus({ onSync }) {
         {status?.pending > 0 && <span className="rounded-full bg-muted px-1.5 text-xs font-semibold tabular-nums">{status.pending}</span>}
       </Button>
     </DialogTrigger>
-    {open && <DialogContent className="max-w-lg overflow-y-auto rounded-2xl" style={{ width: 'calc(100vw - 2rem)', maxHeight: 'calc(100dvh - 2rem)' }}>
-      <DialogHeader><DialogTitle>Sincronización</DialogTitle>
-        <DialogDescription>Consulta cuándo se actualizaron tus datos y las operaciones pendientes.</DialogDescription></DialogHeader>
-      <div className="space-y-2 text-sm">
-        <p className="font-semibold">{label}</p>
-        {error && <p role="alert" className="text-destructive">{error}</p>}
-        {status && <>
-          {!status.initialized ? <p>Conecta a internet e inicia sesión para descargar los datos del negocio antes de trabajar sin conexión.</p> : <p>{pendingLabel}.</p>}
-          <p className="text-muted-foreground">Última sincronización: {dateLabel(status.lastSync)}.</p>
-          {stale && <p>El inventario y los saldos pueden estar desactualizados. Tus operaciones guardadas se conservan en este equipo.</p>}
-          {status.connection === 'authentication' && <p>Vuelve a iniciar sesión con internet para continuar la sincronización.</p>}
-          {(status.connection === 'conflict' || status.conflict) && <p>Hay operaciones que requieren revisión. Los datos no se sobrescriben automáticamente.</p>}
-          {(status.conflict || status.error) && <p className="text-destructive" style={{ overflowWrap: 'anywhere' }}>{status.conflict || status.error}</p>}
-        </>}
+    {open && <DialogContent
+      className="sync-dialog rounded-2xl p-0"
+      style={{ width: 'calc(100vw - 2rem)', maxWidth: '31rem', maxHeight: 'calc(100dvh - 2rem)' }}
+    >
+      <div className="sync-dialog-head">
+        <DialogHeader className="text-left">
+          <DialogTitle>Sincronización</DialogTitle>
+          <DialogDescription>Consulta cuándo se actualizaron tus datos y las operaciones pendientes.</DialogDescription>
+        </DialogHeader>
       </div>
-      {status?.update && bannerUpdateStates.has(status.update.state) && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-primary/30 bg-accent p-3 text-sm">
-          <div className="min-w-0">
-            <p className="font-semibold text-foreground">
-              {status.update.state === 'installing'
-                ? `Instalando actualización${status.update.version ? ` (v${status.update.version})` : ''}…`
-                : status.update.state === 'downloading'
-                  ? `Descargando actualización${status.update.version ? ` (v${status.update.version})` : ''}…`
-                  : `Actualización disponible${status.update.version ? ` (v${status.update.version})` : ''}`}
-            </p>
-            <p className={cn('text-xs', status.update.state === 'error' ? 'text-destructive' : 'text-muted-foreground')}>
-              {status.update.error || 'Tus datos y ventas pendientes se conservan.'}
-            </p>
+
+      <div className="sync-dialog-body space-y-3">
+        <div className={cn('sync-status-card', `sync-status-card-${tone}`)}>
+          <div className="flex items-start gap-3">
+            <span className={cn('sync-status-icon', `sync-status-icon-${tone}`)}>
+              <Icon className={cn('h-5 w-5', checking && 'animate-spin')} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold leading-snug text-foreground">{label}</p>
+              {status && (
+                <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                  {!status.initialized
+                    ? 'Conecta a internet e inicia sesión para descargar los datos del negocio antes de trabajar sin conexión.'
+                    : `${pendingLabel}.`}
+                </p>
+              )}
+            </div>
           </div>
-          {['available', 'error'].includes(status.update.state) && (
-            <Button
-              type="button"
-              size="sm"
-              className="h-9 rounded-xl"
-              onClick={() => requestDesktopUpdate().catch(cause => setError(cause.message || 'No se pudo iniciar la actualización.'))}
-            >
-              <Download className="h-3.5 w-3.5" />
-              <span>{status.update.state === 'error' ? 'Reintentar' : 'Actualizar ahora'}</span>
+          {status && (
+            <div className="sync-status-meta">
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {`Última sincronización: ${dateLabel(status.lastSync)}`}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {(error || (status && (stale || status.connection === 'authentication' || status.connection === 'conflict' || status.conflict || status.error))) && (
+          <div className={cn('sync-notice-box', needsReview ? 'sync-notice-danger' : 'sync-notice-warning')}>
+            {error && <p role="alert" className="text-xs font-medium text-destructive">{error}</p>}
+            {status && stale && (
+              <p className="text-xs leading-relaxed text-foreground">
+                El inventario y los saldos pueden estar desactualizados. Tus operaciones guardadas se conservan en este equipo.
+              </p>
+            )}
+            {status?.connection === 'authentication' && (
+              <p className="text-xs leading-relaxed text-foreground">
+                Vuelve a iniciar sesión con internet para continuar la sincronización.
+              </p>
+            )}
+            {(status?.connection === 'conflict' || status?.conflict) && (
+              <p className="text-xs leading-relaxed text-foreground">
+                Hay operaciones que requieren revisión. Los datos no se sobrescriben automáticamente.
+              </p>
+            )}
+            {(status?.conflict || status?.error) && (
+              <p className="text-xs font-medium text-destructive" style={{ overflowWrap: 'anywhere' }}>
+                {status.conflict || status.error}
+              </p>
+            )}
+          </div>
+        )}
+
+        {!review && (
+          <PendingOperations
+            refreshKey={[status?.pending, status?.lastSync, status?.conflict].join(':')}
+            hasPendingHint={Boolean(status?.pending > 0 || status?.conflict || status?.connection === 'conflict')}
+          />
+        )}
+
+        {status?.archived > 0 && (
+          <div className="sync-section-card space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-foreground">
+                  {`${status.archived} ${status.archived === 1 ? 'operación archivada' : 'operaciones archivadas'} para revisión.`}
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Los originales se conservan. Archivar no confirma una venta en el servidor.
+                </p>
+              </div>
+              <Button asChild variant="outline" size="sm" className="h-8 rounded-xl text-xs">
+                <a href="/api/desktop/archive" download="historial-revision-felix.json">
+                  <Download className="h-3.5 w-3.5" />
+                  <span>Descargar historial de revisión</span>
+                </a>
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {review && (
+          <section className="sync-review-card space-y-3" aria-label="Revisión de pendientes">
+            <div>
+              <p className="text-sm font-semibold text-foreground">Revisa antes de continuar</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                Estas operaciones dejarán de enviarse. Se conservará una copia completa en este equipo y se cargarán los datos del servidor. Revisa las ventas y los cobros antes de volver a registrarlos.
+              </p>
+            </div>
+            <ul className="divide-y divide-border rounded-xl border border-border bg-card">
+              {review.operations.map(row => (
+                <li key={row.reference} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs">
+                  <span className="text-foreground">{row.operation} · {dateLabel(row.date)}</span>
+                  {row.total != null && <strong className="tabular-nums text-foreground">{formatMoney(row.total)}</strong>}
+                </li>
+              ))}
+            </ul>
+            <label className="flex cursor-pointer items-start gap-3 text-xs leading-relaxed" style={{ minHeight: 44 }}>
+              <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0" style={{ accentColor: 'hsl(var(--primary))' }} checked={acknowledged} disabled={reviewing} onChange={event => setAcknowledged(event.target.checked)} />
+              <span>He revisado las operaciones y entiendo que quedarán archivadas para conciliación, sin enviarse como ventas nuevas.</span>
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <Button style={{ minHeight: 44 }} className="rounded-xl" disabled={!acknowledged || reviewing} onClick={archivePending}>
+                {reviewing ? 'Confirmando revisión…' : 'Archivar y actualizar'}
+              </Button>
+              <Button variant="outline" style={{ minHeight: 44 }} className="rounded-xl" disabled={reviewing} onClick={() => { setReview(null); setAcknowledged(false); }}>
+                Volver
+              </Button>
+              <Button asChild variant="outline" style={{ minHeight: 44 }} className="rounded-xl">
+                <a href="/api/desktop/export" download="operaciones-pendientes-felix.json">
+                  <Download />
+                  <span>Descargar operaciones</span>
+                </a>
+              </Button>
+            </div>
+          </section>
+        )}
+
+        {!review && (
+          <div className={cn('sync-update-row', showUpdateBanner && 'sync-update-row-highlight')}>
+            <div className="sync-update-copy min-w-0">
+              <p className="text-xs font-semibold text-foreground">
+                {showUpdateBanner
+                  ? status.update.state === 'installing'
+                    ? `Instalando actualización${status.update.version ? ` (v${status.update.version})` : ''}…`
+                    : status.update.state === 'downloading'
+                      ? `Descargando actualización${status.update.version ? ` (v${status.update.version})` : ''}…`
+                      : `Actualización disponible${status.update.version ? ` (v${status.update.version})` : ''}`
+                  : 'Actualizaciones'}
+              </p>
+              {showUpdateBanner ? (
+                <p className={cn('mt-0.5 text-xs', status.update.state === 'error' ? 'text-destructive' : 'text-muted-foreground')}>
+                  {status.update.error || 'Tus datos y ventas pendientes se conservan.'}
+                </p>
+              ) : status?.update?.state === 'up_to_date' ? (
+                <p role="status" className="mt-0.5 text-xs text-muted-foreground">
+                  {`Tienes la última versión instalada${status.update.version ? ` (v${status.update.version})` : ''}.`}
+                </p>
+              ) : status?.update?.state === 'check_error' ? (
+                <p role="alert" className="mt-0.5 text-xs text-destructive">
+                  {status.update.error || 'No se pudo buscar actualizaciones.'}
+                </p>
+              ) : (
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Comprueba si hay una versión nueva del POS.
+                </p>
+              )}
+            </div>
+            {showUpdateBanner && ['available', 'error'].includes(status.update.state) ? (
+              <Button
+                type="button"
+                size="sm"
+                className="h-9 shrink-0 rounded-xl"
+                onClick={() => requestDesktopUpdate().catch(cause => setError(cause.message || 'No se pudo iniciar la actualización.'))}
+              >
+                <Download className="h-3.5 w-3.5" />
+                <span>{status.update.state === 'error' ? 'Reintentar' : 'Actualizar ahora'}</span>
+              </Button>
+            ) : !['downloading', 'installing'].includes(status?.update?.state) ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 shrink-0 rounded-xl bg-card"
+                disabled={checkingUpdateNow || syncing}
+                onClick={checkUpdates}
+              >
+                <Download className={cn('h-3.5 w-3.5', checkingUpdateNow && 'animate-pulse')} />
+                <span>{checkingUpdateNow ? 'Buscando…' : 'Buscar actualizaciones'}</span>
+              </Button>
+            ) : null}
+          </div>
+        )}
+      </div>
+
+      <div className="sync-dialog-foot">
+        <div className="flex flex-wrap items-center gap-2">
+          {!review && (status?.conflict || status?.connection === 'conflict' || status?.reconciling) && (
+            <Button variant="outline" size="sm" className="h-9 rounded-xl" disabled={syncing || reviewing} onClick={reviewPending}>
+              {reviewing ? 'Consultando pendientes…' : status?.reconciling ? 'Reanudar revisión' : 'Revisar pendientes'}
             </Button>
           )}
         </div>
-      )}
-      {status?.update && status.update.state === 'up_to_date' && (
-        <p role="status" className="text-xs text-muted-foreground">
-          {`Tienes la última versión instalada${status.update.version ? ` (v${status.update.version})` : ''}.`}
-        </p>
-      )}
-      {status?.update && status.update.state === 'check_error' && (
-        <p role="alert" className="text-xs text-destructive">
-          {status.update.error || 'No se pudo buscar actualizaciones.'}
-        </p>
-      )}
-      {!review && <PendingOperations refreshKey={[status?.pending, status?.lastSync, status?.conflict].join(':')} />}
-      {status?.archived > 0 && <div className="space-y-2 text-sm">
-        <p>{status.archived} {status.archived === 1 ? 'operación archivada' : 'operaciones archivadas'} para revisión.</p>
-        <p className="text-muted-foreground">Los originales se conservan. Archivar no confirma una venta en el servidor.</p>
-        <Button asChild variant="outline"><a href="/api/desktop/archive" download="historial-revision-felix.json"><Download />Descargar historial de revisión</a></Button>
-      </div>}
-      {review && <section className="space-y-3 rounded-xl border border-border p-3 text-sm" aria-label="Revisión de pendientes">
-        <p className="font-semibold">Revisa antes de continuar</p>
-        <p>Estas operaciones dejarán de enviarse. Se conservará una copia completa en este equipo y se cargarán los datos del servidor. Revisa las ventas y los cobros antes de volver a registrarlos.</p>
-        <ul className="space-y-2">{review.operations.map(row => <li key={row.reference} className="flex flex-wrap justify-between gap-2">
-          <span>{row.operation} · {dateLabel(row.date)}</span>{row.total != null && <strong>{formatMoney(row.total)}</strong>}
-        </li>)}</ul>
-        <label className="flex cursor-pointer items-start gap-3" style={{ minHeight: 44 }}>
-          <input type="checkbox" className="mt-1 h-5 w-5 shrink-0" style={{ accentColor: 'hsl(var(--primary))' }} checked={acknowledged} disabled={reviewing} onChange={event => setAcknowledged(event.target.checked)} />
-          <span>He revisado las operaciones y entiendo que quedarán archivadas para conciliación, sin enviarse como ventas nuevas.</span>
-        </label>
-        <div className="flex flex-wrap gap-2">
-          <Button style={{ minHeight: 44 }} disabled={!acknowledged || reviewing} onClick={archivePending}>{reviewing ? 'Confirmando revisión…' : 'Archivar y actualizar'}</Button>
-          <Button variant="outline" style={{ minHeight: 44 }} disabled={reviewing} onClick={() => { setReview(null); setAcknowledged(false); }}>Volver</Button>
-          <Button asChild variant="outline" style={{ minHeight: 44 }}><a href="/api/desktop/export" download="operaciones-pendientes-felix.json"><Download />Descargar operaciones</a></Button>
-        </div>
-      </section>}
-      <div className="flex flex-wrap gap-2">
-        <Button disabled={syncing || reviewing || !!review || status?.reconciling} onClick={synchronize}><RefreshCw className={cn(syncing && 'animate-spin')} />{syncing ? 'Sincronizando…' : 'Sincronizar ahora'}</Button>
-        {!review && !['downloading', 'installing'].includes(status?.update?.state) && (
-          <Button
-            type="button"
-            variant="outline"
-            disabled={checkingUpdate || syncing || status?.update?.state === 'checking'}
-            onClick={checkUpdates}
-          >
-            <Download className={cn((checkingUpdate || status?.update?.state === 'checking') && 'animate-pulse')} />
-            {checkingUpdate || status?.update?.state === 'checking' ? 'Buscando…' : 'Buscar actualizaciones'}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button variant="outline" className="h-9 rounded-xl bg-card" onClick={() => setOpen(false)}>Cerrar</Button>
+          <Button className="h-9 rounded-xl" disabled={syncing || reviewing || !!review || status?.reconciling} onClick={synchronize}>
+            <RefreshCw className={cn('h-4 w-4', syncing && 'animate-spin')} />
+            <span>{syncing ? 'Sincronizando…' : 'Sincronizar ahora'}</span>
           </Button>
-        )}
-        {!review && (status?.conflict || status?.connection === 'conflict' || status?.reconciling) && <Button variant="outline" disabled={syncing || reviewing} onClick={reviewPending}>
-          {reviewing ? 'Consultando pendientes…' : status?.reconciling ? 'Reanudar revisión' : 'Revisar pendientes'}
-        </Button>}
-        <Button variant="outline" onClick={() => setOpen(false)}>Cerrar</Button>
+        </div>
       </div>
     </DialogContent>}
   </Dialog>;
 }
 
-function PendingOperations({ refreshKey }) {
+function PendingOperations({ refreshKey, hasPendingHint = false }) {
   const [rows, setRows] = useState(null);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -450,17 +563,53 @@ function PendingOperations({ refreshKey }) {
       }).catch(() => { if (!controller.signal.aborted) setError('No se pudo consultar la lista de operaciones locales.'); });
     return () => controller.abort();
   }, [refreshKey]);
-  return <>
-      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      {!rows ? !error && <p role="status">Cargando operaciones…</p> : rows.length === 0 ? <p>No hay operaciones locales pendientes.</p> :
-        <ul className="space-y-3">{rows.map(row => <li key={row.reference} className="space-y-1 rounded-xl border border-border bg-card p-3 text-sm">
-          <div className="flex flex-wrap items-center justify-between gap-2"><strong>{row.operation}</strong><span>{row.status === 'conflict' ? 'Requiere revisión' : 'Pendiente'}</span></div>
-          <p className="text-xs text-muted-foreground">{dateLabel(row.date)}</p>
-          {row.total != null && <p className="font-semibold tabular-nums">{formatMoney(row.total)}</p>}
-          {row.error && <p className="text-destructive" style={{ overflowWrap: 'anywhere' }}>{row.error}</p>}
-        </li>)}</ul>}
-      <div className="flex flex-wrap gap-2">
-        <Button asChild variant="outline"><a href="/api/desktop/export" download="operaciones-pendientes-felix.json"><Download />Descargar operaciones</a></Button>
+
+  if (error) {
+    return <p role="alert" className="text-xs text-destructive">{error}</p>;
+  }
+  if (!rows) {
+    return hasPendingHint ? <p role="status" className="text-xs text-muted-foreground">Cargando operaciones…</p> : null;
+  }
+  if (rows.length === 0) {
+    return null;
+  }
+  return (
+    <div className="sync-pending-box">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3.5 py-2.5">
+        <p className="text-xs font-semibold text-foreground">
+          {`Operaciones pendientes (${rows.length})`}
+        </p>
+        <a
+          href="/api/desktop/export"
+          download="operaciones-pendientes-felix.json"
+          className="sync-export-link"
+        >
+          <Download className="h-3.5 w-3.5" />
+          <span>Descargar operaciones</span>
+        </a>
       </div>
-  </>;
+      <ul className="divide-y divide-border">
+        {rows.map(row => (
+          <li key={row.reference} className="px-3.5 py-2.5 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <strong className="font-semibold text-foreground">{row.operation}</strong>
+              <span className={cn(
+                'font-medium',
+                row.status === 'conflict' ? 'text-primary' : 'text-amber-700 dark:text-amber-400',
+              )}>
+                {row.status === 'conflict' ? 'Requiere revisión' : 'Pendiente'}
+              </span>
+            </div>
+            <div className="mt-0.5 flex flex-wrap items-center justify-between gap-2 text-muted-foreground">
+              <span className="tabular-nums">{dateLabel(row.date)}</span>
+              {row.total != null && <span className="font-semibold tabular-nums text-foreground">{formatMoney(row.total)}</span>}
+            </div>
+            {row.error && (
+              <p className="mt-1 text-destructive" style={{ overflowWrap: 'anywhere' }}>{row.error}</p>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
