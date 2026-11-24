@@ -15,7 +15,7 @@ frontend/                Interfaz compartida de Polymet
   operational.jsx        Doce rutas con datos reales y disponibilidad explícita
   reference.jsx          Referencia de diseño aislada para pruebas
 dist/operational/        Compilación principal generada con pnpm build
-public/                  Interfaz anterior y recursos conservados
+public/                  Recursos estáticos compartidos (marca, iconos y PWA)
   assets/brand/          Imagen original de Repuestos Félix
   icons/                 Iconos de instalación de la PWA
 src/
@@ -35,7 +35,7 @@ tests/                   Pruebas y datos ficticios en fixtures/
 docs/                    Decisiones y planes de trabajo
 ```
 
-Node y los comandos de Cloudflare sirven la compilación Polymet de `dist/operational/`. Genera los recursos con `pnpm build` antes de iniciar Node. Usa un origen nuevo y configura `PORT` con un puerto libre distinto de 3000. La activación requiere detener primero el servicio heredado verificado para evitar escrituras sobre el catálogo nuevo desde sesiones antiguas. Los archivos de `public/` se conservan como referencia histórica. La compilación incorpora la imagen original y las fuentes locales.
+Node y los comandos de Cloudflare sirven la compilación Polymet de `dist/operational/`. Genera los recursos con `pnpm build` antes de iniciar Node. Usa un origen nuevo y configura `PORT` con un puerto libre distinto de 3000. La activación requiere detener primero el servicio heredado verificado para evitar escrituras sobre el catálogo nuevo desde sesiones antiguas. `public/` conserva únicamente los recursos estáticos compartidos (imagen de marca, iconos, `manifest.webmanifest` y `sw.js`). La compilación incorpora la imagen original y las fuentes locales.
 
 El diseño conserva los componentes, la navegación lateral, los temas y las medidas de Polymet. La imagen original del negocio se conserva como recurso; no sustituye la composición aprobada.
 
