@@ -24,6 +24,9 @@ jobs:
     # Contenedor Debian 12 (Bookworm, glibc 2.36) compatible con el entorno Linux (Crostini) de ChromeOS.
     container:
       image: debian:12-slim
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
