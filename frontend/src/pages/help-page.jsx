@@ -104,7 +104,7 @@ function HelpPage({ reference }) {
         ["F6", "Ventas en espera"],
         ["F7", "Cambiar método de pago"],
         ["F8", "Monto recibido (2.ª vez: Exacto)"],
-        ["F9", isOwner ? "Registrar venta / compra" : "Registrar la venta"],
+        ["Enter / F9", isOwner ? "Registrar venta (o F9 en Compras)" : "Registrar la venta"],
         ["F10", "Generar cotización"],
         ["Alt+1…0", "Cambiar entre módulos"],
         ["Alt+N", "Nuevo artículo / cliente / venta"],

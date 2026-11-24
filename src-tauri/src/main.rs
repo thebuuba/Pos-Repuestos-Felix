@@ -16,11 +16,13 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 
 enum HostCommand {
     ApplyUpdate,
+    CheckUpdate { manual: bool },
 }
 
 struct UpdateController {
     pending: Mutex<Option<Update>>,
     busy: AtomicBool,
+    checking: AtomicBool,
     sender: mpsc::Sender<HostCommand>,
 }
 
@@ -126,6 +128,7 @@ fn record_native_startup_error(data_dir: Option<&Path>, detail: &str) -> Option<
     Some(log_path)
 }
 
+#[cfg(test)]
 fn start_server(resources: &Path, data_dir: &Path) -> Result<(LocalServer, Url), String> {
     start_server_with_commands(resources, data_dir, None)
 }
@@ -198,6 +201,14 @@ fn start_server_with_commands(
             } else if line.trim() == "FELIX_APPLY_UPDATE" {
                 if let Some(tx) = command_tx.as_ref() {
                     let _ = tx.send(HostCommand::ApplyUpdate);
+                }
+            } else if line.trim() == "FELIX_CHECK_UPDATE" {
+                if let Some(tx) = command_tx.as_ref() {
+                    let _ = tx.send(HostCommand::CheckUpdate { manual: true });
+                }
+            } else if line.trim() == "FELIX_CHECK_UPDATE_SILENT" {
+                if let Some(tx) = command_tx.as_ref() {
+                    let _ = tx.send(HostCommand::CheckUpdate { manual: false });
                 }
             }
         }
@@ -285,16 +296,65 @@ fn emit_update_event(app: &tauri::AppHandle, state: &str, version: &str, error: 
     }
 }
 
-async fn check_for_update(app: tauri::AppHandle) {
-    let Ok(updater) = app.updater() else { return; };
-    let Ok(Some(update)) = updater.check().await else { return; };
-    let version = update.version.clone();
-    if let Some(controller) = app.try_state::<UpdateController>() {
-        if let Ok(mut pending) = controller.pending.lock() {
-            *pending = Some(update);
+async fn check_for_update(app: tauri::AppHandle, manual: bool) {
+    let Some(controller) = app.try_state::<UpdateController>() else { return; };
+    if controller.busy.load(Ordering::SeqCst) {
+        return;
+    }
+    if controller
+        .checking
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return;
+    }
+    let current_version = app.package_info().version.to_string();
+    let prev_version = controller
+        .pending
+        .lock()
+        .ok()
+        .and_then(|guard| guard.as_ref().map(|u| u.version.clone()));
+    if manual && prev_version.is_none() {
+        emit_update_event(&app, "checking", &current_version, None);
+    }
+    let outcome = match app.updater() {
+        Ok(updater) => updater.check().await,
+        Err(err) => Err(err),
+    };
+    controller.checking.store(false, Ordering::SeqCst);
+    match outcome {
+        Ok(Some(update)) => {
+            let version = update.version.clone();
+            if let Ok(mut pending) = controller.pending.lock() {
+                *pending = Some(update);
+            }
+            if manual || prev_version.as_deref() != Some(version.as_str()) {
+                emit_update_event(&app, "available", &version, None);
+            }
+        }
+        Ok(None) => {
+            if let Ok(mut pending) = controller.pending.lock() {
+                *pending = None;
+            }
+            if manual {
+                emit_update_event(&app, "up_to_date", &current_version, None);
+            }
+        }
+        Err(_) => {
+            if manual {
+                if let Some(ver) = prev_version {
+                    emit_update_event(&app, "available", &ver, None);
+                } else {
+                    emit_update_event(
+                        &app,
+                        "check_error",
+                        &current_version,
+                        Some("No se pudo buscar actualizaciones. Revisa tu conexión e inténtalo de nuevo."),
+                    );
+                }
+            }
         }
     }
-    emit_update_event(&app, "available", &version, None);
 }
 
 async fn apply_pending_update(app: tauri::AppHandle) {
@@ -399,6 +459,7 @@ fn main() {
                 app.manage(UpdateController {
                     pending: Mutex::new(None),
                     busy: AtomicBool::new(false),
+                    checking: AtomicBool::new(false),
                     sender: cmd_tx,
                 });
                 let origin = url.origin();
@@ -417,16 +478,24 @@ fn main() {
                 let command_handle = app.handle().clone();
                 std::thread::spawn(move || {
                     for cmd in cmd_rx {
-                        if matches!(cmd, HostCommand::ApplyUpdate) {
-                            let handle = command_handle.clone();
-                            tauri::async_runtime::spawn(apply_pending_update(handle));
+                        let handle = command_handle.clone();
+                        match cmd {
+                            HostCommand::ApplyUpdate => {
+                                tauri::async_runtime::spawn(apply_pending_update(handle));
+                            }
+                            HostCommand::CheckUpdate { manual } => {
+                                tauri::async_runtime::spawn(check_for_update(handle, manual));
+                            }
                         }
                     }
                 });
                 let update_handle = app.handle().clone();
                 std::thread::spawn(move || {
                     std::thread::sleep(Duration::from_secs(4));
-                    tauri::async_runtime::block_on(check_for_update(update_handle));
+                    loop {
+                        tauri::async_runtime::block_on(check_for_update(update_handle.clone(), false));
+                        std::thread::sleep(Duration::from_secs(300));
+                    }
                 });
                 Ok(())
             })();

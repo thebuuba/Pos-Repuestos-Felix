@@ -50,6 +50,18 @@ test('parseHostUpdateLine valida eventos FELIX_UPDATE del host Tauri', () => {
     parseHostUpdateLine('FELIX_UPDATE={"state":"error","version":"1.2.9","error":"Sin red"}'),
     { state: 'error', version: '1.2.9', error: 'Sin red' },
   );
+  assert.deepEqual(
+    parseHostUpdateLine('FELIX_UPDATE={"state":"checking","version":"1.2.11","error":null}'),
+    { state: 'checking', version: '1.2.11', error: null },
+  );
+  assert.deepEqual(
+    parseHostUpdateLine('FELIX_UPDATE={"state":"up_to_date","version":"1.2.11","error":null}'),
+    { state: 'up_to_date', version: '1.2.11', error: null },
+  );
+  assert.deepEqual(
+    parseHostUpdateLine('FELIX_UPDATE={"state":"check_error","version":"1.2.11","error":"Sin red"}'),
+    { state: 'check_error', version: '1.2.11', error: 'Sin red' },
+  );
   assert.equal(parseHostUpdateLine('FELIX_UPDATE={"state":"evil","version":"1.0.0"}'), null);
   assert.equal(parseHostUpdateLine('FELIX_UPDATE={invalido'), null);
   assert.equal(parseHostUpdateLine('otra linea'), null);
@@ -192,9 +204,18 @@ test('tarjetas móviles (<1024px) en Inventario, Compras y Reportes sin scroll h
   });
 
   let applyCalls = 0;
-  let hostUpdate = { state: 'available', version: '1.2.9', error: null };
+  let checkCalls = 0;
+  let hostUpdate = null;
   const host = {
-    updateStatus: () => ({ ...hostUpdate }),
+    updateStatus: () => (hostUpdate ? { ...hostUpdate } : null),
+    checkUpdate: () => {
+      checkCalls++;
+      hostUpdate = { state: 'checking', version: '1.2.11', error: null };
+      setTimeout(() => {
+        hostUpdate = { state: 'available', version: '1.2.12', error: null };
+      }, 150);
+      return { ...hostUpdate };
+    },
     applyUpdate: () => {
       applyCalls++;
       hostUpdate = { ...hostUpdate, state: 'downloading', error: null };
@@ -222,18 +243,25 @@ test('tarjetas móviles (<1024px) en Inventario, Compras y Reportes sin scroll h
   const deskErrors = [];
   deskPage.on('pageerror', err => deskErrors.push(err.message));
   await deskPage.goto(deskOrigin + '/ventas');
-  await deskPage.getByText('Actualización disponible (v1.2.9)', { exact: true }).waitFor({ state: 'visible' });
+  await deskPage.getByRole('button', { name: /Sincronización:/i }).waitFor({ state: 'visible' });
+  // Sin cerrar el programa: abrir Sincronización y pulsar "Buscar actualizaciones" detecta v1.2.12 en caliente
+  await deskPage.getByRole('button', { name: /Sincronización:/i }).click();
+  await deskPage.getByRole('dialog').getByRole('button', { name: 'Buscar actualizaciones', exact: true }).click();
+  await deskPage.getByRole('dialog').getByText('Actualización disponible (v1.2.12)', { exact: true }).waitFor({ state: 'visible' });
+  assert.equal(checkCalls, 1);
+  await deskPage.getByRole('dialog').getByRole('button', { name: 'Cerrar', exact: true }).click();
+  await deskPage.getByText('Actualización disponible (v1.2.12)', { exact: true }).waitFor({ state: 'visible' });
   await deskPage.screenshot({ path: join(evidenceDir, 'windows-update-banner-1366-light.png') });
 
   // Más tarde oculta el banner superior, pero sigue accesible en el diálogo de Sincronización
   await deskPage.getByRole('button', { name: 'Más tarde', exact: true }).click();
-  assert.equal(await deskPage.getByText('Actualización disponible (v1.2.9)', { exact: true }).count(), 0);
+  assert.equal(await deskPage.getByText('Actualización disponible (v1.2.12)', { exact: true }).count(), 0);
   await deskPage.getByRole('button', { name: /Sincronización:/i }).click();
-  await deskPage.getByRole('dialog').getByText('Actualización disponible (v1.2.9)', { exact: true }).waitFor({ state: 'visible' });
+  await deskPage.getByRole('dialog').getByText('Actualización disponible (v1.2.12)', { exact: true }).waitFor({ state: 'visible' });
 
-  // Pulsar "Actualizar ahora" envía POST /api/desktop/update y cambia a "Descargando actualización (v1.2.9)…"
+  // Pulsar "Actualizar ahora" envía POST /api/desktop/update y cambia a "Descargando actualización (v1.2.12)…"
   await deskPage.getByRole('dialog').getByRole('button', { name: 'Actualizar ahora', exact: true }).click();
-  await deskPage.getByRole('dialog').getByText('Descargando actualización (v1.2.9)…', { exact: true }).waitFor({ state: 'visible' });
+  await deskPage.getByRole('dialog').getByText('Descargando actualización (v1.2.12)…', { exact: true }).waitFor({ state: 'visible' });
   assert.equal(applyCalls, 1);
   assert.deepEqual(deskErrors, []);
 });

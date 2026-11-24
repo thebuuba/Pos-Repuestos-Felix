@@ -164,6 +164,15 @@ test('E2E operación completa por teclado: navegación, Ctrl+K, Inventario, Caja
     await page.keyboard.press('Enter'); // Cobra directo desde Monto recibido
     const receiptDialog = page.getByRole('dialog');
     await receiptDialog.getByText('Venta registrada', { exact: true }).waitFor();
+    const receiptBg = await receiptDialog.locator('.pos-receipt-document').evaluate(el => getComputedStyle(el).backgroundColor);
+    assert.equal(receiptBg, 'rgb(255, 255, 255)', 'El fondo de la factura debe ser blanco puro');
+    await page.screenshot({ path: join(evidence, 'receipt-white-1366-light.png'), animations: 'disabled' });
+    await page.evaluate(() => document.documentElement.classList.add('dark'));
+    await page.waitForTimeout(150);
+    const receiptBgDark = await receiptDialog.locator('.pos-receipt-document').evaluate(el => getComputedStyle(el).backgroundColor);
+    assert.equal(receiptBgDark, 'rgb(255, 255, 255)', 'El fondo de la factura debe mantenerse blanco en tema oscuro');
+    await page.screenshot({ path: join(evidence, 'receipt-white-1366-dark.png'), animations: 'disabled' });
+    await page.evaluate(() => document.documentElement.classList.remove('dark'));
     // Imprimir está enfocado por defecto -> Enter imprime, N inicia nueva venta y devuelve foco al buscador
     await page.keyboard.press('Enter');
     assert.equal(await page.evaluate(() => window.__printCalls), 1, 'Enter en el recibo debe imprimir');
@@ -171,6 +180,40 @@ test('E2E operación completa por teclado: navegación, Ctrl+K, Inventario, Caja
     await receiptDialog.waitFor({ state: 'hidden' });
     await page.waitForFunction(() => document.activeElement?.getAttribute('data-sale-search') === 'true');
     assert.equal(await page.locator('.sale-cart tbody tr').count(), 0);
+
+    // 4b. Entrar a Punto de venta por clic en menú -> foco automático en buscador; Enter en buscador vacío salta a Monto recibido; clic afuera + Enter cobra
+    await page.locator('aside').getByRole('link', { name: 'Panel', exact: true }).click();
+    await page.getByRole('heading', { name: 'Panel', exact: true }).waitFor();
+    await page.locator('aside').getByRole('link', { name: /Punto de venta/ }).click();
+    await page.getByRole('heading', { name: 'Agregar productos', exact: true }).waitFor();
+    await page.waitForFunction(() => document.activeElement?.getAttribute('data-sale-search') === 'true');
+    await page.keyboard.type('KB-001');
+    await page.keyboard.press('Enter');
+    await page.locator('.sale-cart tbody tr', { hasText: 'Bujía Teclado NGK' }).waitFor();
+    await page.waitForTimeout(450);
+    // Segundo Enter con buscador vacío y efectivo pendiente -> salta a Monto recibido
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.activeElement?.getAttribute('data-sale-received') === 'true');
+    await page.keyboard.type('200');
+    // Deseleccionar (clic afuera en título) y dar Enter -> registra la venta sin volver a seleccionar el campo
+    await page.getByRole('heading', { name: 'Detalle de la factura' }).click();
+    await page.keyboard.press('Enter');
+    const receiptDialog2 = page.getByRole('dialog');
+    await receiptDialog2.getByText('Venta registrada', { exact: true }).waitFor();
+    await page.keyboard.press('n');
+    await receiptDialog2.waitFor({ state: 'hidden' });
+
+    // 4c. Doble Enter en tarjeta: agregar producto -> esperar >400ms -> Enter en buscador vacío cobra directo
+    await page.keyboard.press('F7'); // Tarjeta
+    await page.keyboard.type('KB-001');
+    await page.keyboard.press('Enter');
+    await page.locator('.sale-cart tbody tr', { hasText: 'Bujía Teclado NGK' }).waitFor();
+    await page.waitForTimeout(450);
+    await page.keyboard.press('Enter');
+    const receiptDialog3 = page.getByRole('dialog');
+    await receiptDialog3.getByText('Venta registrada', { exact: true }).waitFor();
+    await page.keyboard.press('n');
+    await receiptDialog3.waitFor({ state: 'hidden' });
 
     // 5. Ctrl+K con ArrowDown y Enter para saltar a Compras
     await page.keyboard.press('Control+k');
@@ -195,9 +238,9 @@ test('E2E operación completa por teclado: navegación, Ctrl+K, Inventario, Caja
     await page.keyboard.press('F9');
     await page.getByText(/subida al inventario/i).waitFor();
 
-    // Verificar en DB que la compra subió stock (15 + 4 = 19) y la venta descontó KB-002 (10 - 2 = 8)
+    // Verificar en DB que la compra subió stock (15 - 2 ventas de KB-001 + 4 compra = 17) y la venta descontó KB-002 (10 - 2 = 8)
     const snapAfter = await readSnapshot(pool, 'Test');
-    assert.equal(snapAfter.state.productos.find(p => p.codigo === 'KB-001').stock, 19);
+    assert.equal(snapAfter.state.productos.find(p => p.codigo === 'KB-001').stock, 17);
     assert.equal(snapAfter.state.productos.find(p => p.codigo === 'KB-002').stock, 8);
 
     await context.close();

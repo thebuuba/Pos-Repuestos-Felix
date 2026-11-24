@@ -8,7 +8,8 @@ import { formatBusinessDateTime } from './lib/dates.js';
 
 const dateLabel = value => formatBusinessDateTime(value);
 const connectionLabels = { checking: 'Comprobando…', offline: 'Sin conexión', online: 'Al día', conflict: 'Revisar sincronización', authentication: 'Iniciar sesión' };
-const validUpdateStates = new Set(['available', 'downloading', 'installing', 'error']);
+const validUpdateStates = new Set(['available', 'downloading', 'installing', 'error', 'checking', 'up_to_date', 'check_error']);
+const bannerUpdateStates = new Set(['available', 'downloading', 'installing', 'error']);
 
 let latestUpdate = null;
 const updateListeners = new Set();
@@ -35,6 +36,18 @@ async function requestDesktopUpdate() {
   });
   const data = await response.json().catch(() => null);
   if (!response.ok) throw new Error(data?.error || 'No se pudo iniciar la actualización.');
+  if (data?.update) publishUpdate(data.update);
+  return data?.update ?? null;
+}
+async function requestDesktopUpdateCheck({ silent = false } = {}) {
+  const response = await fetch('/api/desktop/update/check', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ silent }),
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(data?.error || 'No se pudo buscar actualizaciones.');
   if (data?.update) publishUpdate(data.update);
   return data?.update ?? null;
 }
@@ -82,7 +95,7 @@ function DesktopUpdateBanner() {
     return () => { active = false; window.clearInterval(poll); };
   }, [update?.state]);
 
-  if (!update) return null;
+  if (!update || !bannerUpdateStates.has(update.state)) return null;
   const key = update.version || 'latest';
   if (update.state === 'available' && dismissed === key) return null;
   const busy = update.state === 'downloading' || update.state === 'installing';
@@ -152,11 +165,13 @@ function DesktopStatus({ onSync }) {
   const [status, setStatus] = useState(null);
   const [error, setError] = useState('');
   const [syncing, setSyncing] = useState(false);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [open, setOpen] = useState(false);
   const [review, setReview] = useState(null);
   const [reviewing, setReviewing] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const current = useRef(null);
+  const lastSilentCheck = useRef(0);
   const request = useRef(null);
   const inFlight = useRef(false);
   const mounted = useRef(false);
@@ -177,6 +192,10 @@ function DesktopStatus({ onSync }) {
       current.current = next;
       setStatus(next); setError('');
       publishUpdate(next.update ?? null);
+      if (previous?.connection === 'offline' && next.connection === 'online' && Date.now() - lastSilentCheck.current > 60_000) {
+        lastSilentCheck.current = Date.now();
+        requestDesktopUpdateCheck({ silent: true }).catch(() => {});
+      }
       if (previous && next.initialized && (!previous.initialized || previous.lastSync !== next.lastSync)) {
         // Refresh the shared catalog after the desktop host adopts server changes.
         Promise.resolve(refresh.current?.()).catch(() => {});
@@ -193,14 +212,41 @@ function DesktopStatus({ onSync }) {
     load();
     const poll = setInterval(load, 15_000);
     const focus = () => { if (!document.hidden) load(); };
+    const onOnline = () => {
+      load();
+      if (Date.now() - lastSilentCheck.current > 60_000) {
+        lastSilentCheck.current = Date.now();
+        requestDesktopUpdateCheck({ silent: true }).catch(() => {});
+      }
+    };
     window.addEventListener('focus', focus);
+    window.addEventListener('online', onOnline);
     document.addEventListener('visibilitychange', focus);
     return () => {
       mounted.current = false; request.current?.abort(); clearInterval(poll);
       window.removeEventListener('focus', focus);
+      window.removeEventListener('online', onOnline);
       document.removeEventListener('visibilitychange', focus);
     };
   }, [load]);
+
+  async function checkUpdates() {
+    if (checkingUpdate || syncing) return;
+    setCheckingUpdate(true);
+    setError('');
+    try {
+      await requestDesktopUpdateCheck({ silent: false });
+      for (let attempt = 0; attempt < 12 && mounted.current; attempt++) {
+        await new Promise(resolve => window.setTimeout(resolve, 750));
+        const next = await load();
+        if (next?.update && next.update.state !== 'checking') break;
+      }
+    } catch (cause) {
+      if (mounted.current) setError(cause.message || 'No se pudo buscar actualizaciones.');
+    } finally {
+      if (mounted.current) setCheckingUpdate(false);
+    }
+  }
 
   async function synchronize() {
     if (inFlight.current) return;
@@ -287,7 +333,7 @@ function DesktopStatus({ onSync }) {
           {(status.conflict || status.error) && <p className="text-destructive" style={{ overflowWrap: 'anywhere' }}>{status.conflict || status.error}</p>}
         </>}
       </div>
-      {status?.update && (
+      {status?.update && bannerUpdateStates.has(status.update.state) && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-primary/30 bg-accent p-3 text-sm">
           <div className="min-w-0">
             <p className="font-semibold text-foreground">
@@ -314,6 +360,16 @@ function DesktopStatus({ onSync }) {
           )}
         </div>
       )}
+      {status?.update && status.update.state === 'up_to_date' && (
+        <p role="status" className="text-xs text-muted-foreground">
+          {`Tienes la última versión instalada${status.update.version ? ` (v${status.update.version})` : ''}.`}
+        </p>
+      )}
+      {status?.update && status.update.state === 'check_error' && (
+        <p role="alert" className="text-xs text-destructive">
+          {status.update.error || 'No se pudo buscar actualizaciones.'}
+        </p>
+      )}
       {!review && <PendingOperations refreshKey={[status?.pending, status?.lastSync, status?.conflict].join(':')} />}
       {status?.archived > 0 && <div className="space-y-2 text-sm">
         <p>{status.archived} {status.archived === 1 ? 'operación archivada' : 'operaciones archivadas'} para revisión.</p>
@@ -338,6 +394,17 @@ function DesktopStatus({ onSync }) {
       </section>}
       <div className="flex flex-wrap gap-2">
         <Button disabled={syncing || reviewing || !!review || status?.reconciling} onClick={synchronize}><RefreshCw className={cn(syncing && 'animate-spin')} />{syncing ? 'Sincronizando…' : 'Sincronizar ahora'}</Button>
+        {!review && !['downloading', 'installing'].includes(status?.update?.state) && (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={checkingUpdate || syncing || status?.update?.state === 'checking'}
+            onClick={checkUpdates}
+          >
+            <Download className={cn((checkingUpdate || status?.update?.state === 'checking') && 'animate-pulse')} />
+            {checkingUpdate || status?.update?.state === 'checking' ? 'Buscando…' : 'Buscar actualizaciones'}
+          </Button>
+        )}
         {!review && (status?.conflict || status?.connection === 'conflict' || status?.reconciling) && <Button variant="outline" disabled={syncing || reviewing} onClick={reviewPending}>
           {reviewing ? 'Consultando pendientes…' : status?.reconciling ? 'Reanudar revisión' : 'Revisar pendientes'}
         </Button>}

@@ -10,7 +10,7 @@ import { DesktopEngine } from './engine.js';
 import { RemoteClient } from './credentials.js';
 import { desktopServer } from './server.js';
 
-const validUpdateStates = new Set(['available', 'downloading', 'installing', 'error']);
+const validUpdateStates = new Set(['available', 'downloading', 'installing', 'error', 'checking', 'up_to_date', 'check_error']);
 
 export function parseHostUpdateLine(line) {
   if (typeof line !== 'string' || !line.startsWith('FELIX_UPDATE=')) return null;
@@ -153,6 +153,16 @@ async function main() {
     let updateState = null;
     const host = {
       updateStatus: () => updateState ? { ...updateState } : null,
+      checkUpdate: (silent = false) => {
+        if (updateState && ['downloading', 'installing'].includes(updateState.state)) {
+          return { ...updateState };
+        }
+        if (!silent && (!updateState || !['available', 'error'].includes(updateState.state))) {
+          updateState = { state: 'checking', version: updateState?.version || '', error: null };
+        }
+        console.log(silent ? 'FELIX_CHECK_UPDATE_SILENT' : 'FELIX_CHECK_UPDATE');
+        return updateState ? { ...updateState } : { state: 'checking', version: '', error: null };
+      },
       applyUpdate: () => {
         if (!updateState || !['available', 'error'].includes(updateState.state)) return null;
         updateState = { ...updateState, state: 'downloading', error: null };

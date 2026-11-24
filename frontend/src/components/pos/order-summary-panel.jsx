@@ -347,7 +347,12 @@ function OrderSummaryPanel({
                   {quickAmounts.map((a, index) => (
                     <button
                       type="button"
-                      onClick={() => onReceivedChange(String(a))}
+                      onClick={() => {
+                        onReceivedChange(String(a));
+                        if (operational && !isTouchMobile()) {
+                          window.requestAnimationFrame(() => focusFirstSelector("[data-sale-received]"));
+                        }
+                      }}
                       className="h-7 rounded-lg border border-border px-2.5 text-xs font-medium tabular-nums text-muted-foreground hover:border-foreground/30 hover:text-foreground"
                       key={index === 0 ? "exacto" : a}
                     >
@@ -400,8 +405,8 @@ function OrderSummaryPanel({
         >
           <Printer />
           {operational ? "Registrar venta" : "Guardar e imprimir factura"}
-          <kbd className="sale-keyboard-hint ml-1 rounded bg-primary-foreground/20 px-1.5 py-0.5 font-mono text-[10px]">
-            {"F9"}
+          <kbd aria-hidden="true" className="sale-keyboard-hint ml-1 rounded bg-primary-foreground/20 px-1.5 py-0.5 font-mono text-[10px]">
+            {operational ? "Enter" : "F9"}
           </kbd>
         </Button>
         <div className="sale-secondary-actions grid grid-cols-2 gap-2">

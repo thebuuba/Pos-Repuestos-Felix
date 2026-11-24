@@ -22,7 +22,9 @@ import { OrderSummaryPanel } from "../components/pos/order-summary-panel.jsx";
 import { ReceiptDialog } from "../components/pos/receipt-dialog.jsx";
 import {
   focusFirstSelector,
+  hasOpenMenuOrListbox,
   hasOpenModal,
+  isEditableElement,
   isPlainAlt,
   isTouchMobile,
 } from "../data/keyboard-shortcuts.js";
@@ -401,6 +403,15 @@ export function OperationalPointOfSalePage() {
     : null;
   const nextNcfPreview = activeNcf ? `${activeNcf.prefix}${String(activeNcf.current + 1).padStart(8, "0")}` : null;
   const wasOverlayOpenRef = useRef(false);
+  const lastAddedAtRef = useRef(0);
+  const prevTotalQtyRef = useRef(0);
+  const currentTotalQty = items.reduce((sum, row) => sum + (Number(row.quantity) || 0), 0);
+  useEffect(() => {
+    if (currentTotalQty > prevTotalQtyRef.current) {
+      lastAddedAtRef.current = Date.now();
+    }
+    prevTotalQtyRef.current = currentTotalQty;
+  }, [currentTotalQty]);
   const anyOverlayOpen = Boolean(receipt || heldOpen || historyOpen || reprintSale);
   useEffect(() => {
     if (wasOverlayOpenRef.current && !anyOverlayOpen && !locked && !isTouchMobile()) {
@@ -422,6 +433,9 @@ export function OperationalPointOfSalePage() {
     sending,
     lines,
     totals,
+    received,
+    disabledReason,
+    ncfWarning,
     priceLevel,
     setPriceLevel,
     condition,
@@ -434,6 +448,22 @@ export function OperationalPointOfSalePage() {
     setHeldOpen,
     openQuote,
     resetSale,
+  };
+  const tryEnterCheckoutRef = useRef(null);
+  tryEnterCheckoutRef.current = () => {
+    const st = shortcutStateRef.current;
+    if (st.locked || st.sending || st.lines.length === 0) return;
+    if (hasOpenModal() || hasOpenMenuOrListbox()) return;
+    if (Date.now() - lastAddedAtRef.current < 400) return;
+    const isCash = st.condition === "contado" && st.paymentMethod === "efectivo";
+    const receivedNum = Number(st.received) || 0;
+    if (isCash && receivedNum < st.totals.total) {
+      focusFirstSelector("[data-sale-received]", { select: true });
+      return;
+    }
+    if (!st.disabledReason && !st.ncfWarning) {
+      checkoutRef.current();
+    }
   };
   useEffect(() => {
     const LEVEL_ORDER = ["p1", "p2", "p3"];
@@ -462,6 +492,17 @@ export function OperationalPointOfSalePage() {
         return;
       }
       if (st.locked) return;
+
+      if (event.key === "Enter" && noMods && !hasOpenMenuOrListbox()) {
+        const target = event.target;
+        const interactive = target instanceof Element &&
+          Boolean(target.closest('button, a, [role="button"], [role="link"], [role="tab"], [role="combobox"], [role="menuitem"], [role="option"], [role="switch"]'));
+        if (!isEditableElement(target) && !interactive && st.lines.length > 0) {
+          event.preventDefault();
+          if (!event.repeat) tryEnterCheckoutRef.current?.();
+          return;
+        }
+      }
 
       if (event.key === "F3" && noMods) {
         event.preventDefault();
@@ -659,6 +700,7 @@ export function OperationalPointOfSalePage() {
             priceLevel={priceLevel}
             onPriceLevelChange={setPriceLevel}
             onAdd={(p, qty) => editQuantity(p, priceLevel, qty)}
+            onEmptyEnter={() => tryEnterCheckoutRef.current?.()}
           />
         }
         cart={

@@ -53,7 +53,7 @@ function ReceiptDialog({
           ? `Anulada${sale?.voidReason ? ` · ${sale.voidReason}` : ""}. Copia informativa del registro ${sale?.invoiceNumber ?? ""}.`
           : `Factura ${sale?.invoiceNumber ?? "de venta"}.`
         : sale?.localReference
-          ? "Registro local durable. Consulta las operaciones locales para verificar su confirmación en el servidor."
+          ? "Pendiente de sincronizar al reconectar."
           : <>La factura {sale?.invoiceNumber} se guardó correctamente.</>;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -91,7 +91,7 @@ function ReceiptDialog({
           </DialogDescription>
         </DialogHeader>
         {sale && (
-          <div className="pos-receipt-document mx-6 max-h-[46vh] overflow-y-auto rounded-xl border border-dashed border-border bg-muted/40 p-4 font-mono text-xs">
+          <div className="pos-receipt-document mx-6 max-h-[46vh] overflow-y-auto rounded-xl border border-dashed border-border p-4 font-mono text-xs">
             <div className="text-center">
               <p className="text-sm font-bold uppercase">{business.name}</p>
               {business.rnc && <p className="text-muted-foreground">

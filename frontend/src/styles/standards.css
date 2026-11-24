@@ -755,6 +755,22 @@ label {
 @media (min-width: 768px) {
   .md\:grid-cols-\[minmax\(0\,1fr\)_104px_132px_auto\] { grid-template-columns: minmax(0, 1fr) 104px 132px auto; }
 }
+/* Clean white paper appearance for receipts/invoices on screen in both themes. */
+.pos-receipt-document {
+  background-color: #ffffff;
+  color: #111827;
+  border-color: #d4d4d8;
+}
+.pos-receipt-document .text-foreground {
+  color: #111827;
+}
+.pos-receipt-document .text-muted-foreground {
+  color: #52525b;
+}
+.pos-receipt-document .border-border {
+  border-color: #d4d4d8;
+}
+
 /* Clean desktop keyboard focus ring without ugly mouse-click outlines. */
 .pos-layout[data-operational="true"] :is(a, button, [role="tab"], [role="combobox"], [role="option"]):focus-visible {
   outline: 2px solid hsl(var(--ring));

@@ -25,8 +25,8 @@ import { BarcodeCameraDialog } from "./barcode-camera-dialog.jsx";
 import { productForBarcode } from "../../data/barcode-scanner.js";
 import { searchTopProducts } from "../../data/product-search.js";
 import { useScanFeedback } from "../../data/use-scan-feedback.js";
-import { hasOpenModal, isTouchMobile } from "../../data/keyboard-shortcuts.js";
-function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, operational = false, disabled = false }) {
+import { hasOpenModal, isEditableElement, isTouchMobile } from "../../data/keyboard-shortcuts.js";
+function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, onEmptyEnter, operational = false, disabled = false }) {
   const [query, setQuery] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [open, setOpen] = useState(false);
@@ -50,7 +50,8 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, ope
   useEffect(() => {
     if (!operational || disabled || isTouchMobile()) return undefined;
     const raf = window.requestAnimationFrame(() => {
-      if (!hasOpenModal() && document.activeElement === document.body) {
+      const active = document.activeElement;
+      if (!hasOpenModal() && (!active || active === document.body || !isEditableElement(active))) {
         inputRef.current?.focus();
       }
     });
@@ -132,6 +133,10 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, ope
     } else if (e.key === "Enter") {
       e.preventDefault();
       if (e.repeat) return;
+      if (operational && !e.currentTarget.value.trim()) {
+        onEmptyEnter?.();
+        return;
+      }
       if (operational && !selected) {
         if (e.currentTarget.value) scanCode(e.currentTarget.value);
       } else commit();

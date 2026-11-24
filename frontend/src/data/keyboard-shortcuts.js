@@ -108,7 +108,7 @@ export const SHORTCUT_SECTIONS = [
       { keys: "F6", label: "Ventas en espera (pausar o retomar)" },
       { keys: "F7", label: "Cambiar método de pago (Efectivo / Tarjeta / Transfer.)" },
       { keys: "F8", label: "Enfocar Monto recibido (otra vez F8 o Alt+E llena Exacto; Enter cobra)" },
-      { keys: "F9", label: "Registrar la venta" },
+      { keys: "Enter / F9", label: "Registrar la venta (con buscador vacío, en Monto recibido o clic afuera)" },
       { keys: "F10", label: "Generar cotización" },
       { keys: "Alt+C", label: "Seleccionar cliente" },
       { keys: "Alt+B", label: "Cambiar tipo de comprobante (B02 / B01 / B14)" },

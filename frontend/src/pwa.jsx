@@ -31,7 +31,8 @@ export function PwaProvider({ enabled, children }) {
       worker?.addEventListener('statechange', check);
       check();
     };
-    const checkUpdate = () => { if (!document.hidden) registration?.update().catch(() => {}); };
+    const checkUpdate = () => { if (!document.hidden && navigator.onLine !== false) registration?.update().catch(() => {}); };
+    const periodicCheck = window.setInterval(checkUpdate, 5 * 60 * 1000);
     window.addEventListener('beforeinstallprompt', onInstall);
     window.addEventListener('appinstalled', onInstalled);
     window.addEventListener('online', checkUpdate);
@@ -53,6 +54,7 @@ export function PwaProvider({ enabled, children }) {
     } else setError('La instalación requiere HTTPS y un navegador compatible.');
     return () => {
       disposed = true;
+      window.clearInterval(periodicCheck);
       if (warmTimer !== null) window.clearTimeout(warmTimer);
       window.removeEventListener('beforeinstallprompt', onInstall);
       window.removeEventListener('appinstalled', onInstalled);

@@ -236,6 +236,12 @@ export function desktopServer(engine, remote, assetsDirectory, desktopHost = nul
         status.update = desktopHost?.updateStatus?.() ?? null;
         return send(200, status);
       }
+      if (path === '/api/desktop/update/check' && request.method === 'POST') {
+        requireAccess();
+        const silent = Boolean(body?.silent);
+        const next = desktopHost?.checkUpdate?.(silent) ?? null;
+        return send(200, { update: next });
+      }
       if (path === '/api/desktop/update' && request.method === 'POST') {
         requireAccess();
         const next = desktopHost?.applyUpdate?.();
