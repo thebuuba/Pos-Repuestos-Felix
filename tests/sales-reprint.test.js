@@ -164,11 +164,41 @@ test('E2E reimpresión de facturas de venta: Ventas, Panel, Reportes, Cuentas x 
     await page.getByRole('heading', { name: 'Agregar productos', exact: true }).waitFor();
     assert.equal(await page.locator('.sale-cart tbody tr').count(), 0);
 
-    // A2: editar cantidad con ".5" y cobrar con F9 sin perder foco tras escribir "2"
+    // A2: editar cantidad con ".5", comprobar estabilidad de columnas al pasar de 1 → 10 y cobrar con F9 sin perder foco tras escribir "2"
     await searchInput.fill('BUJ-REPRINT');
     await searchInput.press('Enter');
     const qtyInput = page.locator('.sale-cart-qty-input').first();
     await qtyInput.waitFor();
+    const measureCartCols = () => page.evaluate(() => {
+      const sels = ['.sale-cart-quantity > div', '.sale-cart-price', '.sale-cart-tax', '.sale-cart-subtotal', '.sale-cart-remove'];
+      const rects = sels.map(s => {
+        const el = document.querySelector(s);
+        const r = el.getBoundingClientRect();
+        return { s, x: Math.round(r.x * 10) / 10, w: Math.round(r.width * 10) / 10, clipped: el.scrollWidth > el.clientWidth + 1 };
+      });
+      const scroller = document.querySelector('.sale-cart .overflow-x-auto');
+      return { rects, scrollOverflow: scroller ? scroller.scrollWidth - scroller.clientWidth : 0 };
+    });
+    for (const vp of [{ width: 1440, height: 1000 }, { width: 1366, height: 768 }]) {
+      await page.setViewportSize(vp);
+      await qtyInput.fill('1');
+      await qtyInput.press('Enter');
+      const at1 = await measureCartCols();
+      await qtyInput.fill('10');
+      await qtyInput.press('Enter');
+      const at10 = await measureCartCols();
+      assert.equal(at1.scrollOverflow, 0, `Sin scroll horizontal en ${vp.width}px con cant. 1`);
+      assert.equal(at10.scrollOverflow, 0, `Sin scroll horizontal en ${vp.width}px con cant. 10`);
+      for (let i = 0; i < at1.rects.length; i++) {
+        assert.ok(Math.abs(at10.rects[i].x - at1.rects[i].x) < 0.5, `Columna ${at1.rects[i].s} se movió en ${vp.width}px: ${at1.rects[i].x} -> ${at10.rects[i].x}`);
+        assert.equal(at10.rects[i].clipped, false, `Columna ${at10.rects[i].s} recortada en ${vp.width}px`);
+      }
+      if (vp.width === 1366) {
+        await page.locator('.sale-cart-quantity button[aria-label="Restar"]').first().focus();
+        await page.screenshot({ path: join(evidence, 'cart-stable-1366-light.png'), animations: 'disabled' });
+      }
+    }
+    await page.setViewportSize({ width: 1440, height: 1000 });
     await qtyInput.fill('.5');
     await qtyInput.press('Enter');
     assert.equal(await qtyInput.inputValue(), '0.5', 'Debe normalizar .5 a 0.5');

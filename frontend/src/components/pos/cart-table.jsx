@@ -171,7 +171,7 @@ function CartTable({ operational = false, lines, onQuantityChange, onRemove, onC
                       </div>
                     </td>
                     <td className="sale-cart-quantity px-3 py-3">
-                      <div className="mx-auto flex h-8 w-[104px] items-center rounded-lg border border-border">
+                      <div className="mx-auto flex h-8 w-[104px] items-center overflow-hidden rounded-lg border border-border">
                         <button
                           type="button"
                           onClick={() =>
@@ -179,7 +179,7 @@ function CartTable({ operational = false, lines, onQuantityChange, onRemove, onC
                               ? onQuantityChange(line.key, (Math.round(line.quantity * 100) - 100) / 100)
                               : onRemove(line.key)
                           }
-                          className="flex h-full w-8 items-center justify-center text-muted-foreground hover:text-foreground"
+                          className="sale-cart-qty-btn flex h-full w-8 shrink-0 items-center justify-center text-muted-foreground outline-none hover:text-foreground"
                           aria-label="Restar"
                         >
                           <Minus className="h-3.5 w-3.5" />
@@ -206,7 +206,7 @@ function CartTable({ operational = false, lines, onQuantityChange, onRemove, onC
                           onClick={() =>
                             onQuantityChange(line.key, (Math.round(line.quantity * 100) + 100) / 100)
                           }
-                          className="flex h-full w-8 items-center justify-center text-muted-foreground hover:text-foreground"
+                          className="sale-cart-qty-btn flex h-full w-8 shrink-0 items-center justify-center text-muted-foreground outline-none hover:text-foreground"
                           aria-label="Sumar"
                         >
                           <Plus className="h-3.5 w-3.5" />

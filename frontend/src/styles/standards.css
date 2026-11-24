@@ -97,12 +97,20 @@ label {
 
 /* Operational cart table: full Polymet readability with keyboard quantity input. */
 .pos-sale .sale-cart table { min-width: 0; }
-.pos-sale .sale-cart th { padding: 10px 12px; }
-.pos-sale .sale-cart td { padding: 11px 12px; }
+.pos-sale .sale-cart th { padding: 10px 8px; }
+.pos-sale .sale-cart td { padding: 11px 8px; }
 .pos-sale .sale-cart th:first-child,
-.pos-sale .sale-cart td:first-child { padding-left: 18px; }
+.pos-sale .sale-cart td:first-child { padding-left: 18px; padding-right: 12px; }
 .pos-sale .sale-cart th:last-child,
 .pos-sale .sale-cart td:last-child { padding-right: 12px; width: 44px; }
+@media (min-width: 1024px) {
+  .pos-sale .sale-cart table { table-layout: fixed; width: 100%; }
+  .pos-sale .sale-cart th:nth-child(2) { width: 120px; }
+  .pos-sale .sale-cart th:nth-child(3) { width: 112px; }
+  .pos-sale .sale-cart th:nth-child(4) { width: 102px; }
+  .pos-sale .sale-cart th:nth-child(5) { width: 122px; }
+  .pos-sale .sale-cart th:nth-child(6) { width: 44px; }
+}
 .pos-sale .sale-cart tbody tr:nth-child(odd) { background-color: hsl(var(--card)); }
 .pos-sale .sale-cart tbody tr:nth-child(even) { background-color: hsl(var(--accent) / 0.75); }
 .dark .pos-sale .sale-cart tbody tr:nth-child(even) { background-color: hsl(var(--accent) / 0.45); }
@@ -111,6 +119,11 @@ label {
 .pos-sale .sale-cart .sale-cart-quantity > div:focus-within {
   border-color: hsl(var(--ring));
   box-shadow: 0 0 0 1px hsl(var(--ring));
+}
+.pos-sale .sale-cart .sale-cart-qty-btn:hover { background-color: hsl(var(--muted) / 0.7); }
+.pos-sale .sale-cart .sale-cart-qty-btn:focus-visible {
+  background-color: hsl(var(--accent));
+  color: hsl(var(--primary));
 }
 .pos-sale .sale-cart .sale-cart-qty-input { font-size: 14px; padding: 0 2px; }
 .pos-sale .sale-cart-price,
@@ -341,7 +354,13 @@ label {
   .pos-sale .sale-cart th,
   .pos-sale .sale-cart td { padding: 8px 6px; }
   .pos-sale .sale-cart th:first-child,
-  .pos-sale .sale-cart td:first-child { padding-left: 12px; }
+  .pos-sale .sale-cart td:first-child { padding-left: 12px; padding-right: 8px; }
+  .pos-sale .sale-cart th:nth-child(2) { width: 100px; }
+  .pos-sale .sale-cart th:nth-child(3) { width: 100px; }
+  .pos-sale .sale-cart th:nth-child(4) { width: 92px; }
+  .pos-sale .sale-cart th:nth-child(5) { width: 110px; }
+  .pos-sale .sale-cart th:nth-child(6),
+  .pos-sale .sale-cart td:last-child { width: 40px; padding-right: 8px; }
   .pos-sale .sale-cart .sale-cart-quantity > div { width: 88px; }
   .pos-sale .sale-cart .sale-cart-quantity button { width: 26px; }
   .pos-sale .sale-cart .sale-cart-qty-input { font-size: 13px; }
