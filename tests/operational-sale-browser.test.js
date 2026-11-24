@@ -70,7 +70,8 @@ test('el POS abre caja, recupera una venta confirmada, registra movimientos y co
     await page.goto(origin + '/ventas');
     const search = page.getByPlaceholder('Escanea o escribe… ej. BUJ-C7HSA');
     await search.waitFor();
-    assert.equal(await page.getByRole('button', { name: /Artículo sintético/ }).count(), 8);
+    assert.equal(await page.locator('.sale-product-catalog').count(), 0);
+    assert.equal(await page.locator('.sale-search-catalog').count(), 0);
     await page.getByRole('spinbutton', { name: 'Cantidad' }).fill('2.50');
     await search.fill('sint-7681 ');
     await search.press('Enter');

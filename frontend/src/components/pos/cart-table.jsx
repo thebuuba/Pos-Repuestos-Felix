@@ -1,4 +1,5 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
+import { useEffect, useRef, useState } from "react";
 import { Button } from "../ui/button.jsx";
 import { Trash2 } from "lucide-react";
 import { PackageOpen } from "lucide-react";
@@ -12,7 +13,75 @@ var LEVEL_LABEL = {
   p2: "P2",
   p3: "P3",
 };
-function CartTable({ lines, onQuantityChange, onRemove, onClear }) {
+function CartQuantityInput({ value, label, overStock, onCommit }) {
+  const [draft, setDraft] = useState(String(value));
+  const [editing, setEditing] = useState(false);
+  const cancelledRef = useRef(false);
+  useEffect(() => {
+    if (!editing) setDraft(String(value));
+  }, [value, editing]);
+  const commit = () => {
+    if (cancelledRef.current) {
+      cancelledRef.current = false;
+      setEditing(false);
+      setDraft(String(value));
+      return;
+    }
+    setEditing(false);
+    const clean = draft.trim().replace(",", ".");
+    if (!clean) {
+      setDraft(String(value));
+      return;
+    }
+    const parsed = Number(clean);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setDraft(String(value));
+      return;
+    }
+    if (parsed === value) {
+      setDraft(String(value));
+      return;
+    }
+    const ok = onCommit(clean);
+    if (ok === false) setDraft(String(value));
+  };
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      aria-label={label}
+      value={editing ? draft : String(value)}
+      onFocus={(e) => {
+        cancelledRef.current = false;
+        setEditing(true);
+        setDraft(String(value));
+        e.target.select();
+      }}
+      onChange={(e) => {
+        const next = e.target.value;
+        if (/^[0-9]*[.,]?[0-9]{0,2}$/.test(next)) setDraft(next);
+      }}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          e.currentTarget.blur();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          cancelledRef.current = true;
+          setEditing(false);
+          setDraft(String(value));
+          e.currentTarget.blur();
+        }
+      }}
+      className={cn(
+        "sale-cart-qty-input h-full w-full min-w-0 flex-1 bg-transparent text-center text-sm font-semibold tabular-nums outline-none",
+        overStock && "text-amber-600 dark:text-amber-400",
+      )}
+    />
+  );
+}
+function CartTable({ operational = false, lines, onQuantityChange, onRemove, onClear }) {
   return (
     <section className="sale-cart overflow-hidden rounded-2xl border border-border bg-card">
       <div className="sale-cart-heading flex items-center justify-between px-5 py-4">
@@ -43,9 +112,9 @@ function CartTable({ lines, onQuantityChange, onRemove, onClear }) {
             {"La factura está vacía"}
           </p>
           <p className="mt-1 max-w-xs text-sm text-muted-foreground">
-            {
-              "Busca un producto por código o nombre, o tócalo en el catálogo para agregarlo."
-            }
+            {operational
+              ? "Escanea un código o busca un producto por código o nombre para agregarlo."
+              : "Busca un producto por código o nombre, o tócalo en el catálogo para agregarlo."}
           </p>
         </div>
       ) : (
@@ -110,14 +179,23 @@ function CartTable({ lines, onQuantityChange, onRemove, onClear }) {
                         >
                           <Minus className="h-3.5 w-3.5" />
                         </button>
-                        <span
-                          className={cn(
-                            "flex-1 text-center text-sm font-semibold tabular-nums",
-                            overStock && "text-amber-600 dark:text-amber-400",
-                          )}
-                        >
-                          {line.quantity}
-                        </span>
+                        {operational ? (
+                          <CartQuantityInput
+                            value={line.quantity}
+                            label={`Cantidad de ${line.product.name}`}
+                            overStock={overStock}
+                            onCommit={(nextQty) => onQuantityChange(line.key, nextQty)}
+                          />
+                        ) : (
+                          <span
+                            className={cn(
+                              "flex-1 text-center text-sm font-semibold tabular-nums",
+                              overStock && "text-amber-600 dark:text-amber-400",
+                            )}
+                          >
+                            {line.quantity}
+                          </span>
+                        )}
                         <button
                           type="button"
                           onClick={() =>

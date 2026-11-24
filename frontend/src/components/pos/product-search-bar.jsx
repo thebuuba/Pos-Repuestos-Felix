@@ -7,6 +7,7 @@ import { cn } from "../../lib/utils.js";
 import { formatUnitMoney } from "../../lib/format.js";
 import { Minus } from "lucide-react";
 import { Plus } from "lucide-react";
+import { X } from "lucide-react";
 import { Select } from "../ui/select.jsx";
 import { SelectTrigger } from "../ui/select.jsx";
 import { SelectValue } from "../ui/select.jsx";
@@ -34,13 +35,26 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, ope
   const [cameraOpen, setCameraOpen] = useState(false);
   const inputId = useId();
   const inputRef = useRef(null);
+  const wrapRef = useRef(null);
   const { prepareScanAudio, confirmScan, dismissScan } = useScanFeedback();
   const focusSearch = () => {
     if (window.matchMedia('(max-width: 1023px) and (pointer: coarse)').matches) inputRef.current?.blur();
     else inputRef.current?.focus();
   };
   useEffect(() => { if (disabled) setCameraOpen(false); }, [disabled]);
-  const results = useMemo(() => searchTopProducts(products, query, 6), [products, query]);
+  useEffect(() => {
+    if (!operational || !open) return undefined;
+    const onPointerDown = (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (wrapRef.current?.contains(target)) return;
+      if (target.closest("[data-radix-popper-content-wrapper], [role='listbox']")) return;
+      setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [operational, open]);
+  const results = useMemo(() => searchTopProducts(products, query, operational ? 12 : 6), [products, query, operational]);
   const commit = (product) => {
     if (disabled) return false;
     const target = product ?? results[highlight] ?? results[0];
@@ -96,9 +110,222 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, ope
       setOpen(false);
     }
   };
+  const quantityControl = (
+    <div className="sale-search-quantity space-y-1.5">
+      <Label className="text-xs text-muted-foreground">{"Cantidad"}</Label>
+      <div className="flex h-11 items-center rounded-xl border border-input bg-card">
+        <button
+          type="button"
+          onClick={() => setQuantity((q) => {
+            const n = Math.round(Number(q) * 100);
+            return n <= 100 ? 1 : (n - 100) / 100;
+          })}
+          className="flex h-full w-10 items-center justify-center text-muted-foreground hover:text-foreground"
+          aria-label="Restar"
+        >
+          <Minus className="h-4 w-4" />
+        </button>
+        <input
+          type="number"
+          inputMode="decimal"
+          aria-label="Cantidad"
+          min={operational ? 0.01 : 1}
+          step={operational ? 0.01 : 1}
+          value={quantity}
+          onChange={(e) => setQuantity(operational ? e.target.value : Number(e.target.value) || 1)}
+          className="h-full w-full min-w-0 bg-transparent text-center text-sm font-semibold tabular-nums outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+        />
+        <button
+          type="button"
+          onClick={() => setQuantity((q) => (Math.round(Number(q) * 100) + 100) / 100)}
+          className="flex h-full w-10 items-center justify-center text-muted-foreground hover:text-foreground"
+          aria-label="Sumar"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+  const priceLevelControl = (
+    <div className="sale-search-price min-w-0 space-y-1.5">
+      <Label className="text-xs text-muted-foreground">
+        {"Nivel de precio"}
+      </Label>
+      <Select
+        value={priceLevel}
+        onValueChange={(v) => onPriceLevelChange(v)}
+      >
+        <SelectTrigger aria-label="Nivel de precio" className="h-11 rounded-xl bg-card">
+          <SelectValue>{operational ? <>
+            <span className="sale-desktop-only">{PRICE_LEVELS.find(level => level.value === priceLevel)?.label}</span>
+            <span className="sale-mobile-only">{{ p1: 'P1 · Detalle', p2: 'P2 · Mayor', p3: 'P3 · Taller' }[priceLevel]}</span>
+          </> : undefined}</SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          {PRICE_LEVELS.map((l) => (
+            <SelectItem value={l.value} key={l.value}>
+              {l.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+  const addButtonControl = (
+    <Button
+      aria-label="Agregar"
+      onMouseDown={operational ? (e) => e.preventDefault() : undefined}
+      onClick={() => commit()}
+      disabled={disabled || results.length === 0}
+      className="sale-add-button h-11 rounded-xl px-6 font-semibold"
+    >
+      <Plus />
+      <span className="sale-add-label">Agregar</span>
+    </Button>
+  );
+  if (operational) {
+    const showCatalog = open && query.trim().length > 0;
+    return (
+      <div ref={wrapRef} className="sale-search-wrap space-y-3">
+        <div className="sale-product-search grid gap-3 rounded-xl bg-muted/60 p-3 md:items-end">
+          {quantityControl}
+          {priceLevelControl}
+          {addButtonControl}
+          <div className="sale-search-row">
+            <div className="sale-search-input relative space-y-1.5">
+              <Label htmlFor={inputId} className="text-xs text-muted-foreground">
+                {"Código o nombre del producto"}
+              </Label>
+              <div className="relative">
+                <ScanBarcode className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id={inputId}
+                  ref={inputRef}
+                  disabled={disabled}
+                  autoComplete="off"
+                  spellCheck={false}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  aria-invalid={!!error}
+                  aria-describedby={error ? `${inputId}-error` : undefined}
+                  value={query}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    setHighlight(0);
+                    setSelected(false);
+                    setError("");
+                    setOpen(true);
+                  }}
+                  onFocus={() => setOpen(true)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Escanea o escribe… ej. BUJ-C7HSA"
+                  className={cn("h-11 rounded-xl bg-card pl-9", query && "pr-9")}
+                />
+                {query && (
+                  <button
+                    type="button"
+                    aria-label="Limpiar búsqueda"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      setQuery("");
+                      setHighlight(0);
+                      setSelected(false);
+                      setError("");
+                      setOpen(false);
+                      focusSearch();
+                    }}
+                    className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+            <Button type="button" variant="outline" size="icon" disabled={disabled}
+              aria-label="Escanear con cámara" title="Escanear con cámara"
+              className="sale-camera-button h-11 w-11 rounded-xl bg-card text-muted-foreground"
+              onClick={() => {
+                dismissScan();
+                prepareScanAudio(); setOpen(false); setError(""); setCameraOpen(true);
+              }}>
+              <Camera className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          </div>
+          {error && <p id={`${inputId}-error`} role="alert" className="sale-search-error text-xs text-destructive">{error}</p>}
+        </div>
+        {showCatalog && (
+          <div
+            className="sale-search-catalog overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/50 px-3 py-1.5 text-[11px] text-muted-foreground">
+              <span className="font-medium text-foreground">
+                {results.length === 0
+                  ? "Sin coincidencias"
+                  : `Catálogo de búsqueda · ${results.length} ${results.length === 1 ? "producto" : "productos"}`}
+              </span>
+              <div className="sale-keyboard-hint flex items-center gap-3">
+                <span>{"↑↓ navegar"}</span>
+                <span>{"Enter agregar"}</span>
+                <span>{"Esc cerrar"}</span>
+              </div>
+            </div>
+            {results.length === 0 ? (
+              <div className="flex items-center gap-2 px-4 py-5 text-sm text-muted-foreground">
+                <Search className="h-4 w-4 shrink-0" />
+                <span>{"No se encontraron productos para “"}{query}{"”"}</span>
+              </div>
+            ) : (
+              <ul className="sale-search-catalog-list divide-y divide-border overflow-y-auto">
+                {results.map((p, i) => (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onMouseEnter={() => setHighlight(i)}
+                      onClick={() => commit(p)}
+                      className={cn(
+                        "sale-search-result flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors",
+                        i === highlight ? "bg-accent" : "hover:bg-muted/40",
+                      )}
+                    >
+                      <span className="w-28 shrink-0 truncate font-mono text-xs text-muted-foreground">
+                        {p.code}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+                        {p.name}
+                      </span>
+                      <span
+                        className={cn(
+                          "shrink-0 text-xs",
+                          p.stock === 0
+                            ? "text-primary"
+                            : p.stock <= p.minStock
+                              ? "text-amber-600 dark:text-amber-400"
+                              : "text-muted-foreground",
+                        )}
+                      >
+                        {p.stock === 0 ? "Agotado" : `${p.stock} disp.`}
+                      </span>
+                      <span className="shrink-0 whitespace-nowrap text-right font-semibold tabular-nums">
+                        {formatUnitMoney((p.pricesExact ?? p.prices)[priceLevel])}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+        {cameraOpen && !disabled && <BarcodeCameraDialog
+          onClose={() => { setCameraOpen(false); focusSearch(); }}
+          onCode={scanCode}
+        />}
+      </div>
+    );
+  }
   return (
     <div className="sale-product-search grid gap-3 rounded-xl bg-muted/60 p-3 md:grid-cols-[minmax(0,1fr)_140px_190px_auto] md:items-end">
-      <div className={operational ? "sale-search-row" : undefined}>
       <div className="sale-search-input relative space-y-1.5">
         <Label htmlFor={inputId} className="text-xs text-muted-foreground">
           {"Código o nombre del producto"}
@@ -188,86 +415,9 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, ope
           </div>
         )}
       </div>
-      {operational && <Button type="button" variant="outline" size="icon" disabled={disabled}
-        aria-label="Escanear con cámara" title="Escanear con cámara"
-        className="sale-camera-button h-11 w-11 rounded-xl bg-card text-muted-foreground"
-        onClick={() => {
-          dismissScan();
-          prepareScanAudio(); setOpen(false); setError(""); setCameraOpen(true);
-        }}>
-        <Camera className="h-4 w-4" aria-hidden="true" />
-      </Button>}
-      </div>
-      <div className="sale-search-quantity space-y-1.5">
-        <Label className="text-xs text-muted-foreground">{"Cantidad"}</Label>
-        <div className="flex h-11 items-center rounded-xl border border-input bg-card">
-          <button
-            type="button"
-            onClick={() => setQuantity((q) => {
-              const n = Math.round(Number(q) * 100);
-              return n <= 100 ? 1 : (n - 100) / 100;
-            })}
-            className="flex h-full w-10 items-center justify-center text-muted-foreground hover:text-foreground"
-            aria-label="Restar"
-          >
-            <Minus className="h-4 w-4" />
-          </button>
-          <input
-            type="number"
-            inputMode="decimal"
-            aria-label="Cantidad"
-            min={operational ? 0.01 : 1}
-            step={operational ? 0.01 : 1}
-            value={quantity}
-            onChange={(e) => setQuantity(operational ? e.target.value : Number(e.target.value) || 1)}
-            className="h-full w-full min-w-0 bg-transparent text-center text-sm font-semibold tabular-nums outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
-          />
-          <button
-            type="button"
-            onClick={() => setQuantity((q) => (Math.round(Number(q) * 100) + 100) / 100)}
-            className="flex h-full w-10 items-center justify-center text-muted-foreground hover:text-foreground"
-            aria-label="Sumar"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-      <div className="space-y-1.5">
-        <Label className="text-xs text-muted-foreground">
-          {"Nivel de precio"}
-        </Label>
-        <Select
-          value={priceLevel}
-          onValueChange={(v) => onPriceLevelChange(v)}
-        >
-          <SelectTrigger aria-label="Nivel de precio" className="h-11 rounded-xl bg-card">
-            <SelectValue>{operational ? <>
-              <span className="sale-desktop-only">{PRICE_LEVELS.find(level => level.value === priceLevel)?.label}</span>
-              <span className="sale-mobile-only">{{ p1: 'P1 · Detalle', p2: 'P2 · Mayor', p3: 'P3 · Taller' }[priceLevel]}</span>
-            </> : undefined}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {PRICE_LEVELS.map((l) => (
-              <SelectItem value={l.value} key={l.value}>
-                {l.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <Button
-        aria-label="Agregar"
-        onClick={() => commit()}
-        disabled={disabled || results.length === 0}
-        className="h-11 rounded-xl px-6 font-semibold"
-      >
-        <Plus />
-        <span className="sale-add-label">Agregar</span>
-      </Button>
-      {cameraOpen && !disabled && <BarcodeCameraDialog
-        onClose={() => { setCameraOpen(false); focusSearch(); }}
-        onCode={scanCode}
-      />}
+      {quantityControl}
+      {priceLevelControl}
+      {addButtonControl}
     </div>
   );
 }

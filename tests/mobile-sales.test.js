@@ -71,16 +71,17 @@ test('venta corta en teléfono: cobro confirmado, más sin perder el carrito, re
       const row = page.getByRole('row').filter({ hasText: 'Filtro de prueba móvil' });
       await row.waitFor();
       assert.equal(await row.evaluate(element => element.scrollWidth <= element.clientWidth), true);
+      const qtyInput = row.locator('.sale-cart-qty-input');
       await row.getByRole('button', { name: 'Sumar', exact: true }).tap();
-      assert.equal((await row.getByRole('cell').nth(1).innerText()).trim(), '2');
+      assert.equal(await qtyInput.inputValue(), '2');
       const focusRead = page.waitForResponse(response => new URL(response.url()).pathname === '/api/state');
       await page.evaluate(() => window.dispatchEvent(new Event('focus')));
       await focusRead;
-      assert.equal((await row.getByRole('cell').nth(1).innerText()).trim(), '2', 'Refrescar datos conserva el borrador');
+      assert.equal(await qtyInput.inputValue(), '2', 'Refrescar datos conserva el borrador');
       await page.getByRole('button', { name: 'Más', exact: true }).tap();
       await page.getByRole('dialog', { name: 'Más opciones' }).waitFor();
       await page.keyboard.press('Escape');
-      assert.equal((await row.getByRole('cell').nth(1).innerText()).trim(), '2', 'Abrir Más conserva la venta');
+      assert.equal(await qtyInput.inputValue(), '2', 'Abrir Más conserva la venta');
       // A navigation must revalidate immediately, without relying on the five-second poll.
       await page.clock.install();
       await page.clock.pauseAt(new Date());
@@ -89,7 +90,7 @@ test('venta corta en teléfono: cobro confirmado, más sin perder el carrito, re
       await stateRead;
       await page.getByRole('link', { name: 'Ventas', exact: true }).tap();
       await row.waitFor();
-      assert.equal((await row.getByRole('cell').nth(1).innerText()).trim(), '2', 'Navegar conserva las dos unidades del borrador');
+      assert.equal(await qtyInput.inputValue(), '2', 'Navegar conserva las dos unidades del borrador');
       await search.fill('MOVIL-01'); await search.press('Enter');
       await row.waitFor();
       await page.clock.resume();

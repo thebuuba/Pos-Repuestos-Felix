@@ -77,6 +77,9 @@ async function physicalScan(page, code = product.codigo, delay = 0) {
   await page.keyboard.type(code, { delay });
   await page.keyboard.press('Enter');
 }
+async function rowQty(row) {
+  return (await row.locator('.sale-cart-qty-input').inputValue()).trim();
+}
 
 test('el lector global agrega fuera de Ventas y conserva el borrador sin cobrar', async t => {
   const { page, writes } = await openSale(t);
@@ -90,14 +93,14 @@ test('el lector global agrega fuera de Ventas y conserva el borrador sin cobrar'
   await page.waitForFunction(() => window.scanAudio.beeps.length === 1 && window.scanAudio.beeps[0].ended);
   await page.getByRole('button', { name: 'Ver venta', exact: true }).click();
   const row = page.locator('.sale-cart tbody tr').filter({ hasText: product.nombre });
-  assert.equal((await row.locator('td').nth(1).innerText()).trim(), '1');
+  assert.equal(await rowQty(row), '1');
   await page.getByRole('button', { name: 'Tarjeta', exact: true }).click();
   await navigateModule(page, '/caja');
   await page.getByRole('heading').first().click();
   await physicalScan(page);
   await navigateModule(page, '/ventas');
   await row.waitFor();
-  assert.equal((await row.locator('td').nth(1).innerText()).trim(), '2');
+  assert.equal(await rowQty(row), '2');
   assert.match(await page.getByRole('button', { name: 'Tarjeta', exact: true }).getAttribute('class'), /bg-card/);
   // A third read is accepted; a fourth exceeds the exact available stock.
   await page.getByRole('heading', { name: 'Agregar productos', exact: true }).click();
@@ -107,7 +110,7 @@ test('el lector global agrega fuera de Ventas y conserva el borrador sin cobrar'
   await page.getByText(/Existencias insuficientes/).waitFor();
   await physicalScan(page, 'DESCONOCIDO');
   await page.getByText(/No hay un artículo con el código exacto/).waitFor();
-  assert.equal((await row.locator('td').nth(1).innerText()).trim(), '3');
+  assert.equal(await rowQty(row), '3');
   assert.equal(await page.evaluate(() => window.scanAudio.beeps.length), 3);
   assert.deepEqual(writes, []);
 });
@@ -143,7 +146,7 @@ test('el lector global respeta formularios, diálogos, escritura lenta y su inte
   await physicalScan(page);
   const row = page.locator('.sale-cart tbody tr').filter({ hasText: product.nombre });
   await row.waitFor();
-  assert.equal((await row.locator('td').nth(1).innerText()).trim(), '1');
+  assert.equal(await rowQty(row), '1');
   // A reader's Enter must never activate a focused checkout button.
   await page.getByRole('button', { name: 'Tarjeta', exact: true }).click();
   await page.getByRole('button', { name: /Registrar venta/ }).focus();
@@ -163,7 +166,7 @@ test('el lector global respeta formularios, diálogos, escritura lenta y su inte
     }
   });
   assert.equal(await page.evaluate(() => window.scannerSpacePrevented), true);
-  assert.equal((await row.locator('td').nth(1).innerText()).trim(), '1');
+  assert.equal(await rowQty(row), '1');
   assert.deepEqual(writes, []);
   // Preserve accessible activation with a single human Space.
   await toggle.focus();
@@ -212,14 +215,14 @@ test('el escáner se detiene al perder foco y el borrador se separa por base y s
   });
   await physicalScan(page);
   await page.evaluate(() => { delete document.hasFocus; });
-  assert.equal((await rows.locator('td').nth(1).innerText()).trim(), '1');
+  assert.equal(await rowQty(rows), '1');
   snapshot.databaseId = randomUUID();
   await page.getByRole('button', { name: 'Actualizar datos', exact: true }).click();
   await rows.waitFor({ state: 'hidden' });
   await page.getByRole('heading', { name: 'Agregar productos', exact: true }).click();
   await physicalScan(page);
   await rows.waitFor();
-  assert.equal((await rows.locator('td').nth(1).innerText()).trim(), '1');
+  assert.equal(await rowQty(rows), '1');
   await context.route('**/api/state', route => route.fulfill({ status: 401, json: { error: 'Sesión cerrada' } }));
   await page.getByRole('button', { name: 'Actualizar datos', exact: true }).click();
   await page.getByRole('link', { name: 'Iniciar sesión', exact: true }).waitFor();
@@ -257,9 +260,9 @@ test('el control global cabe en cabecera y el aviso permite volver a Ventas', as
   assert.deepEqual(writes, []);
 });
 
-test('el catálogo de venta omite filtros importados y pagina sin desplazamientos internos', async t => {
+test('la pantalla de venta 60/40 adapta 14 pulgadas sin scroll derecho, permite editar cantidad con teclado y despliega catálogo sólo al buscar', async t => {
   const categories = ['ALIM./PAJARROS', 'ALIMENTOS', 'ANABOLICOS', 'ANTIBIOTICOS', 'ART/PERROS', 'BAÑOS PARA ANIMALES', 'CICATRIZANTE'];
-  const products = Array.from({ length: 19 }, (_, index) => ({ ...product, id: index + 1,
+  const products = Array.from({ length: 19 }, (_, index) => ({ ...product, id: index + 1, stock: 10,
     codigo: `TALLER-${String(index + 1).padStart(2, '0')}${index === 0 ? '-CODIGO-EXTENSO-12345678901234567890' : ''}`,
     nombre: `Repuesto del taller ${index + 1}${index === 0 ? ' con descripción extensa para comprobar su ajuste' : ''}`,
     categoria: index === 0 ? categories[0] : 'Repuestos', precio1: 12345.6789,
@@ -273,53 +276,87 @@ test('el catálogo de venta omite filtros importados y pagina sin desplazamiento
     'La cámara tiene un botón independiente de la búsqueda');
   assert.equal(await page.getByText('Facturación / Punto de venta', { exact: true }).count(), 0);
   assert.equal(await page.getByText('Agrega productos, revisa el detalle y registra la venta.', { exact: true }).count(), 0);
-  const grid = page.locator('.sale-product-catalog');
-  for (const category of categories)
-    assert.equal(await grid.getByRole('button', { name: category, exact: true }).count(), 0, 'No aparecen las categorías importadas ajenas al taller');
-  assert.equal(await grid.getByRole('button', { name: /Repuesto del taller/ }).count(), 8);
-  const next = grid.getByRole('button', { name: 'Siguiente', exact: true });
-  const previous = grid.getByRole('button', { name: 'Anterior', exact: true });
-  assert.equal(await previous.isDisabled(), true);
-  await next.click(); await next.click();
-  assert.equal(await grid.getByRole('button', { name: /Repuesto del taller/ }).count(), 3);
-  assert.equal(await next.isDisabled(), true);
-  await grid.getByRole('button', { name: /Repuesto del taller 19/ }).click();
-  const row = page.getByRole('row').filter({ hasText: 'Repuesto del taller 19' });
-  await row.waitFor();
-  await previous.click(); await previous.click();
-  await search.fill('TALLER-19'); await search.press('Enter');
-  assert.equal((await row.getByRole('cell').nth(1).innerText()).trim(), '2', 'La búsqueda encuentra productos de cualquier página');
+  assert.equal(await page.getByText(/El efectivo recibido calcula el cambio/).count(), 0, 'Se retiró el comentario del efectivo recibido');
+  assert.equal(await page.getByText('Pendiente de registro', { exact: true }).count(), 0, 'Se retiró el encabezado redundante del resumen');
+  assert.equal(await page.locator('.sale-product-catalog').count(), 0, 'No hay catálogo fijo permanente');
+  assert.equal(await page.locator('.sale-search-catalog').count(), 0, 'El catálogo de búsqueda sólo aparece al escribir');
+  assert.equal(await page.locator('.sale-cash-change').count(), 0, 'Sin artículos no se muestra Cambio a devolver RD$ 0.00');
+
+  // Punto 8: al escribir aparece el catálogo desplegable debajo del buscador y desaparece al seleccionar.
+  await search.fill('Repuesto del taller 1');
+  const searchCatalog = page.locator('.sale-search-catalog');
+  await searchCatalog.waitFor();
+  assert.ok(await searchCatalog.getByRole('button', { name: /Repuesto del taller/ }).count() >= 2);
+  await searchCatalog.getByRole('button', { name: /Repuesto del taller 19/ }).click();
+  await searchCatalog.waitFor({ state: 'hidden' });
+
+  // Punto 2: al agregar un segundo artículo, aparece arriba del todo.
+  await search.fill(products[0].codigo);
+  await search.press('Enter');
+  const rows = page.locator('.sale-cart tbody tr');
+  assert.equal(await rows.count(), 2);
+  assert.match(await rows.nth(0).innerText(), /Repuesto del taller 1 con descripción extensa/);
+  assert.match(await rows.nth(1).innerText(), /Repuesto del taller 19/);
+
+  // Punto 1: editar cantidad directamente desde el teclado en el carrito (mantiene su fila y valida stock).
+  const firstQtyInput = rows.nth(0).locator('.sale-cart-qty-input');
+  await firstQtyInput.click();
+  await firstQtyInput.fill('4');
+  await firstQtyInput.press('Enter');
+  assert.equal(await firstQtyInput.inputValue(), '4');
+  // Escape revierte sin cambiar la cantidad.
+  await firstQtyInput.click();
+  await firstQtyInput.fill('9');
+  await firstQtyInput.press('Escape');
+  assert.equal(await firstQtyInput.inputValue(), '4');
+  // Re-escanear el segundo artículo lo sube a la primera fila sumando su cantidad.
+  await search.fill('TALLER-19');
+  await search.press('Enter');
+  assert.match(await rows.nth(0).innerText(), /Repuesto del taller 19/);
+  assert.equal(await rowQty(rows.nth(0)), '2');
+
+  // El interruptor % / RD$ alterna al otro modo al pulsar en cualquiera de sus lados.
+  const pctBtn = page.getByRole('button', { name: 'Descuento en porcentaje', exact: true });
+  const rdsBtn = page.getByRole('button', { name: 'Descuento en pesos', exact: true });
+  assert.equal(await pctBtn.getAttribute('aria-pressed'), 'true');
+  await pctBtn.click();
+  assert.equal(await rdsBtn.getAttribute('aria-pressed'), 'true');
+  await rdsBtn.click();
+  assert.equal(await pctBtn.getAttribute('aria-pressed'), 'true');
+
+  // La barra lateral operativa es más estrecha (208 px) y conserva los enlaces sin truncar.
+  assert.equal((await page.locator('aside').boundingBox()).width, 208);
+
+  // Cambio a devolver sólo aparece cuando el efectivo supera el total (no en pago exacto).
+  await page.getByRole('button', { name: 'Exacto', exact: true }).click();
+  assert.equal(await page.locator('.sale-cash-change').count(), 0, 'En pago exacto no se muestra Cambio a devolver RD$ 0.00');
+  const receivedInput = page.getByRole('spinbutton', { name: 'Monto recibido', exact: true });
+  await receivedInput.fill('80000');
+  await page.locator('.sale-cash-change').filter({ hasText: 'Cambio a devolver' }).waitFor();
+  await receivedInput.fill('');
+
   await page.mouse.move(0, 0);
-  await page.getByText('Agregado a la venta', { exact: true }).waitFor({ state: 'hidden' });
-  const evidence = path.resolve('dist/verification/compact-camera');
+  await page.waitForFunction(() => document.querySelectorAll('[data-sonner-toast]').length === 0);
+  const evidence = path.resolve('dist/verification/pos-14-pulgadas');
   await mkdir(evidence, { recursive: true });
-  for (const [width, height] of [[320, 844], [390, 844], [768, 1024], [1024, 1000], [1280, 1000], [1440, 1000]]) {
+  for (const [width, height] of [[320, 844], [390, 844], [768, 1024], [1024, 768], [1280, 720], [1366, 768], [1536, 800], [1920, 1080]]) {
     await page.setViewportSize({ width, height });
-    if (width < 1024) {
-      const toggle = page.getByRole('button', { name: 'Ver catálogo de productos', exact: true });
-      if (await toggle.getAttribute('aria-expanded') === 'false') await toggle.click();
-    }
     for (const theme of ['light', 'dark']) {
       await page.evaluate(theme => document.documentElement.classList.toggle('dark', theme === 'dark'), theme);
-      const overflow = await grid.evaluate(element => [element, ...element.querySelectorAll('*')]
-        .filter(node => {
-          const css = getComputedStyle(node);
-          return node.clientWidth && ((['auto', 'scroll'].includes(css.overflowX) && node.scrollWidth > node.clientWidth + 1)
-            || (['auto', 'scroll'].includes(css.overflowY) && node.scrollHeight > node.clientHeight + 1));
-        }).map(node => ({ tag: node.tagName, className: node.className })));
-      assert.deepEqual(overflow, [], `El catálogo no necesita barras internas en ${width}px`);
       const horizontal = await page.locator('.pos-sale').evaluate(element => [...element.querySelectorAll('*')]
         .filter(node => node.clientWidth && ['auto', 'scroll'].includes(getComputedStyle(node).overflowX) && node.scrollWidth > node.clientWidth + 1)
         .map(node => ({ tag: node.tagName, className: node.className })));
-      assert.deepEqual(horizontal, [], `La venta no necesita barras horizontales en ${width}px`);
-      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `La página cabe en ${width}px`);
-      const positions = await page.locator('.sale-items').evaluate(element => {
-        const bounds = selector => element.querySelector(selector).getBoundingClientRect();
-        const selection = bounds('.sale-selection'), cart = bounds('.sale-cart'), catalog = bounds('.sale-product-catalog');
-        return { selectionBeforeCart: selection.bottom <= cart.top, cartBeforeCatalog: cart.bottom <= catalog.top,
-          selectionFirst: element.firstElementChild.matches('.sale-selection') };
-      });
-      assert.deepEqual(positions, { selectionBeforeCart: true, cartBeforeCatalog: true, selectionFirst: true });
+      assert.deepEqual(horizontal, [], `La venta no necesita barras horizontales en ${width}x${height}`);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `La página cabe en ${width}x${height}`);
+
+      // Punto 3: la barra de búsqueda está debajo de Cantidad, Nivel de precio y Agregar.
+      const qtyBounds = await page.getByRole('spinbutton', { name: 'Cantidad', exact: true }).boundingBox();
+      const addBounds = await page.getByRole('button', { name: 'Agregar', exact: true }).boundingBox();
+      const searchBounds = await search.boundingBox();
+      assert.ok(searchBounds.y > qtyBounds.y + qtyBounds.height - 2, `Buscador debajo de Cantidad en ${width}x${height}`);
+      assert.ok(searchBounds.y > addBounds.y + addBounds.height - 2, `Buscador debajo de Agregar en ${width}x${height}`);
+
+      // Cámara independiente 44x44 alineada a la derecha del buscador.
       const camera = page.getByRole('button', { name: 'Escanear con cámara' });
       const cameraBounds = await camera.boundingBox();
       assert.equal(cameraBounds.width, 44);
@@ -327,17 +364,41 @@ test('el catálogo de venta omite filtros importados y pagina sin desplazamiento
       assert.equal(await camera.innerText(), '');
       const icon = await camera.locator('svg').boundingBox();
       assert.equal(icon.width, 16); assert.equal(icon.height, 16);
-      const searchBounds = await search.boundingBox();
       assert.ok(searchBounds.width >= 200, `La búsqueda conserva ancho útil en ${width}px`);
       assert.ok(Math.abs(cameraBounds.y - searchBounds.y) < 1, `Cámara y búsqueda comparten una fila: ${JSON.stringify({ width, cameraBounds, searchBounds })}`);
       assert.ok(cameraBounds.x >= searchBounds.x + searchBounds.width + 7, 'La cámara está separada a la derecha');
-      const cards = grid.getByRole('button', { name: /Repuesto del taller/ });
-      for (const card of await cards.all())
-        assert.equal(await card.evaluate(element => element.scrollWidth <= element.clientWidth + 1), true, `El texto cabe en ${width}px`);
-      for (const control of [previous, next]) assert.ok((await control.boundingBox()).height >= 44);
-      await page.evaluate(() => window.scrollTo(0, 0));
-      await page.screenshot({ path: path.join(evidence, `${engine}-venta-${width}-${theme}.png`), fullPage: true, animations: 'disabled' });
+
+      // Punto 5: Datos de la factura está dentro de la columna derecha (.sale-summary).
+      assert.equal(await page.locator('.sale-summary .sale-invoice-embedded').count(), 1);
+
+      // Puntos 6, 9 y 10 en escritorio 60/40 (>= 1180px):
+      if (width >= 1180) {
+        const layout = await page.locator('.sale-layout').evaluate(el => {
+          const left = el.querySelector('.sale-items').getBoundingClientRect();
+          const right = el.querySelector('.sale-summary').getBoundingClientRect();
+          const totalBox = el.querySelector('.sale-summary-total').getBoundingClientRect();
+          const ratio = left.width / (left.width + right.width);
+          return { ratio, rightTop: right.top, rightBottom: right.bottom, rightHeight: right.height, totalHeight: totalBox.height };
+        });
+        assert.ok(layout.ratio >= 0.56 && layout.ratio <= 0.62, `Columna izquierda ~60% en ${width}x${height}: ${(layout.ratio * 100).toFixed(1)}%`);
+        assert.ok(layout.rightBottom <= height, `Columna derecha completa sin scroll en ${width}x${height}: bottom=${layout.rightBottom} > ${height}`);
+        assert.ok(layout.totalHeight <= 60, `Total a pagar compacto en ${width}x${height}: ${layout.totalHeight}px`);
+      }
+
+      if (engine === 'chromium' && [390, 1280, 1366, 1536, 1920].includes(width)) {
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.screenshot({ path: path.join(evidence, `venta-${width}x${height}-${theme}.png`), fullPage: false, animations: 'disabled' });
+      }
     }
+  }
+  // Captura con el catálogo de búsqueda abierto en 1366x768 (14")
+  if (engine === 'chromium') {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.evaluate(() => document.documentElement.classList.remove('dark'));
+    await search.fill('Repuesto');
+    await searchCatalog.waitFor();
+    await page.screenshot({ path: path.join(evidence, 'venta-1366x768-buscando-light.png'), fullPage: false, animations: 'disabled' });
+    await search.press('Escape');
   }
   assert.deepEqual(writes, []);
   }
@@ -352,7 +413,7 @@ test('el escaneo aceptado muestra producto y cantidad y emite un pitido; los rec
   await notice.waitFor();
   assert.match(await notice.innerText(), /2 × Repuesto sintético/);
   const row = page.getByRole('row').filter({ hasText: product.nombre });
-  assert.equal((await row.getByRole('cell').nth(1).innerText()).trim(), '2');
+  assert.equal(await rowQty(row), '2');
   await page.waitForFunction(() => window.scanAudio.peak > 0.01 && window.scanAudio.beeps[0]?.ended);
   assert.equal(await page.evaluate(() => window.scanAudio.beeps.length), 1);
   // A new invalid read must remove the preceding confirmation, not reuse it.
@@ -363,7 +424,7 @@ test('el escaneo aceptado muestra producto y cantidad y emite un pitido; los rec
   await page.getByRole('spinbutton', { name: 'Cantidad', exact: true }).fill('2');
   await search.fill(product.codigo); await search.press('Enter');
   await page.getByText(/Existencias insuficientes/).waitFor();
-  assert.equal((await row.getByRole('cell').nth(1).innerText()).trim(), '2');
+  assert.equal(await rowQty(row), '2');
   assert.equal(await page.evaluate(() => window.scanAudio.beeps.length), 1);
   assert.equal(await notice.count(), 0);
   await page.getByRole('spinbutton', { name: 'Cantidad', exact: true }).fill('1');
@@ -390,7 +451,7 @@ test('un equipo sin audio conserva el agregado y su confirmación visual', async
     }, unavailable);
     await search.fill(product.codigo); await search.press('Enter');
     await page.getByText('Agregado a la venta', { exact: true }).waitFor();
-    assert.equal((await page.getByRole('row').filter({ hasText: product.nombre }).getByRole('cell').nth(1).innerText()).trim(), '1');
+    assert.equal(await rowQty(page.getByRole('row').filter({ hasText: product.nombre })), '1');
     assert.deepEqual(errors, []);
     assert.deepEqual(writes, []);
   }
@@ -417,7 +478,7 @@ test('lecturas USB rápidas suman el mismo artículo y respetan existencias', as
     await search.press('Enter');
   }
   const row = page.getByRole('row').filter({ hasText: product.nombre });
-  assert.equal((await row.getByRole('cell').nth(1).innerText()).trim(), '3');
+  assert.equal(await rowQty(row), '3');
   await page.getByText(/Existencias insuficientes/).waitFor();
   assert.deepEqual(writes, []);
 });
@@ -432,7 +493,7 @@ test('varios Enter antes del siguiente render conservan todas las lecturas', asy
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     }
   }, product.codigo);
-  assert.equal((await page.getByRole('row').filter({ hasText: product.nombre }).getByRole('cell').nth(1).innerText()).trim(), '3');
+  assert.equal(await rowQty(page.getByRole('row').filter({ hasText: product.nombre })), '3');
 });
 
 test('la lectura no modifica una venta mientras su confirmación está pendiente', async t => {
@@ -454,7 +515,7 @@ test('la lectura no modifica una venta mientras su confirmación está pendiente
     input.value = code;
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   }, product.codigo);
-  assert.equal((await page.getByRole('row').filter({ hasText: product.nombre }).getByRole('cell').nth(1).innerText()).trim(), '1');
+  assert.equal(await rowQty(page.getByRole('row').filter({ hasText: product.nombre })), '1');
   response.resolve();
   await page.getByRole('button', { name: 'Reintentar venta', exact: true }).waitFor();
   assert.equal(await search.isDisabled(), true);
@@ -483,7 +544,9 @@ test('tres pestañas permiten agregar productos mientras otra confirma su propia
       const input = other.getByLabel('Código o nombre del producto', { exact: true });
       assert.equal(await input.isDisabled(), false, 'La espera de otra pestaña no debe bloquear el borrador actual');
     }
-    await second.getByRole('button', { name: new RegExp(product.codigo + '.*' + product.nombre) }).click();
+    const secondSearch = second.getByLabel('Código o nombre del producto', { exact: true });
+    await secondSearch.fill(product.nombre);
+    await second.locator('.sale-search-catalog').getByRole('button', { name: new RegExp(product.codigo + '.*' + product.nombre) }).click();
     const thirdSearch = third.getByLabel('Código o nombre del producto', { exact: true });
     await thirdSearch.fill(product.codigo); await thirdSearch.press('Enter');
     for (const other of [second, third]) {
@@ -633,7 +696,7 @@ test('la cámara permite lecturas continuas, no duplica un código sostenido y c
   }
   await row.waitFor({ timeout: 7000 });
   assert.match(await row.innerText(), /0012345678905/);
-  assert.equal((await row.locator('td').nth(1).innerText()).trim(), '1');
+  assert.equal(await rowQty(row), '1');
   assert.equal(await dialog.isVisible(), true, 'La cámara sigue abierta después de agregar');
   await dialog.getByRole('status').filter({ hasText: /Agregado: 1 × Repuesto sintético/ }).waitFor();
   assert.deepEqual(await page.evaluate(() => window.cameraStreams.flatMap(stream => stream.getTracks().map(track => track.readyState))), ['live']);
@@ -641,16 +704,19 @@ test('la cámara permite lecturas continuas, no duplica un código sostenido y c
   await page.waitForFunction(() => window.scanAudio.peak > 0.01 && window.scanAudio.beeps[0]?.ended);
   assert.equal(await page.evaluate(() => window.scanAudio.contexts[0].openedByGesture), true, 'El audio se habilita al pulsar la cámara');
   await page.waitForTimeout(1400); // More than several real decoder passes over a stationary code.
-  assert.equal((await row.locator('td').nth(1).innerText()).trim(), '1');
+  assert.equal(await rowQty(row), '1');
   await page.evaluate(() => window.setCameraBits(''));
   await page.waitForTimeout(200); // A brief blur must not count the same package again.
   await page.evaluate(bits => window.setCameraBits(bits), eanBits);
   await page.waitForTimeout(500);
-  assert.equal((await row.locator('td').nth(1).innerText()).trim(), '1');
+  assert.equal(await rowQty(row), '1');
   await page.evaluate(() => window.setCameraBits(''));
   await page.waitForTimeout(1300);
   await page.evaluate(bits => window.setCameraBits(bits), eanBits);
-  await row.locator('td').nth(1).filter({ hasText: /^2$/ }).waitFor();
+  await page.waitForFunction(name => {
+    const tr = [...document.querySelectorAll('.sale-cart tbody tr')].find(r => r.textContent.includes(name));
+    return tr?.querySelector('.sale-cart-qty-input')?.value === '2';
+  }, product.nombre);
   await page.waitForFunction(() => window.scanAudio.beeps.length === 2 && window.scanAudio.beeps[1].ended);
   await page.evaluate(bits => window.setCameraBits(bits), secondBits);
   await dialog.getByRole('status').filter({ hasText: /Agregado: 1 × Segundo repuesto/ }).waitFor();
@@ -662,13 +728,16 @@ test('la cámara permite lecturas continuas, no duplica un código sostenido y c
   await checkFeedbackLayout('desconocido');
   assert.equal(await page.evaluate(() => window.scanAudio.beeps.length), 3);
   await page.evaluate(bits => window.setCameraBits(bits), eanBits);
-  await row.locator('td').nth(1).filter({ hasText: /^3$/ }).waitFor();
+  await page.waitForFunction(name => {
+    const tr = [...document.querySelectorAll('.sale-cart tbody tr')].find(r => r.textContent.includes(name));
+    return tr?.querySelector('.sale-cart-qty-input')?.value === '3';
+  }, product.nombre);
   await page.waitForFunction(() => window.scanAudio.beeps.length === 4 && window.scanAudio.beeps[3].ended);
   await page.evaluate(() => window.setCameraBits(''));
   await page.waitForTimeout(1300);
   await page.evaluate(bits => window.setCameraBits(bits), eanBits);
   await dialog.getByRole('alert').filter({ hasText: /No se agregó/ }).waitFor();
-  assert.equal((await row.locator('td').nth(1).innerText()).trim(), '3', 'No excede las existencias');
+  assert.equal(await rowQty(row), '3', 'No excede las existencias');
   assert.equal(await page.evaluate(() => window.scanAudio.beeps.length), 4, 'El rechazo no pita');
   assert.equal(await page.evaluate(() => window.cameraRequests), 1, 'Todas las lecturas usan el mismo permiso y vídeo');
   await dialog.getByRole('button', { name: 'Cerrar cámara', exact: true }).click();

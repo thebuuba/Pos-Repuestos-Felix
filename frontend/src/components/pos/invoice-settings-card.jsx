@@ -14,6 +14,7 @@ import { CircleAlert } from "lucide-react";
 import { Fragment, memo } from "react";
 const InvoiceSettingsCard = memo(function InvoiceSettingsCard({
   operational = false,
+  embedded = false,
   customers,
   customerId,
   onCustomerChange,
@@ -28,6 +29,121 @@ const InvoiceSettingsCard = memo(function InvoiceSettingsCard({
   const needsRnc = comprobante !== "B02" && !customer?.rnc;
   const creditBlocked = condition === "credito" && !customer?.creditLimit;
   const available = customer ? customer.creditLimit - customer.balance : 0;
+  const showCustomerMeta = Boolean(customer && !customer.isCashCustomer && customer.id !== "c-000");
+  const hasEmbeddedMeta = showCustomerMeta || needsRnc || creditBlocked || (operational && Boolean(ncfWarning));
+  if (embedded) {
+    return (
+      <div className="sale-invoice-embedded">
+        <div className="sale-invoice-embedded-header">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <FileText className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
+            <h2 className="text-xs font-semibold text-foreground">{"Datos de la factura"}</h2>
+          </div>
+          {nextNcf ? (
+            <span className="sale-invoice-ncf-badge font-mono text-[11px] font-semibold text-foreground">
+              {nextNcf}
+            </span>
+          ) : (
+            operational && !ncfWarning && (
+              <span className="text-[11px] text-muted-foreground">Sin emisión de NCF</span>
+            )
+          )}
+        </div>
+        <div className="sale-invoice-fields">
+          <div className="sale-invoice-customer min-w-0">
+            <Label className="sale-invoice-label text-muted-foreground">{"Cliente"}</Label>
+            <Select value={customer ? String(customer.id) : ""} onValueChange={value => onCustomerChange(operational ? Number(value) : value)}>
+              <SelectTrigger aria-label="Cliente" className="sale-invoice-trigger rounded-xl bg-card">
+                <SelectValue placeholder="Selecciona un cliente" />
+              </SelectTrigger>
+              <SelectContent>
+                {customers.map((c) => (
+                  <SelectItem value={String(c.id)} key={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="sale-invoice-comprobante min-w-0">
+            <Label className="sale-invoice-label text-muted-foreground">
+              {"Tipo de comprobante"}
+            </Label>
+            <Select value={comprobante} onValueChange={onComprobanteChange}>
+              <SelectTrigger aria-label="Tipo de comprobante" className="sale-invoice-trigger rounded-xl bg-card">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {COMPROBANTES.filter(c => !operational || c.value !== "B15").map((c) => (
+                  <SelectItem value={c.value} key={c.value}>
+                    {c.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="sale-invoice-condition min-w-0">
+            <Label className="sale-invoice-label text-muted-foreground">
+              {"Condición"}
+            </Label>
+            <Select
+              value={condition}
+              onValueChange={(v) => onConditionChange(v)}
+            >
+              <SelectTrigger aria-label="Condición" className="sale-invoice-trigger rounded-xl bg-card">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CONDITIONS.map((c) => (
+                  <SelectItem value={c.value} key={c.value}>
+                    {operational && c.value === "credito" ? "Crédito" : c.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        {hasEmbeddedMeta && (
+          <div className="sale-invoice-meta flex flex-wrap items-center gap-1.5 text-[11px]">
+            {showCustomerMeta && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-muted-foreground">
+                <User className="h-3 w-3 shrink-0" />
+                {"RNC:"}{" "}
+                <span className="font-medium text-foreground">{customer.rnc || "—"}</span>
+                {customer.creditLimit > 0 && (
+                  <Fragment>
+                    <span className="mx-0.5 text-border">{"|"}</span>
+                    {"Disp.:"}{" "}
+                    <span className="font-medium text-foreground">
+                      {formatMoney(available)}
+                    </span>
+                  </Fragment>
+                )}
+              </span>
+            )}
+            {needsRnc && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-1 font-medium text-amber-700 dark:text-amber-400">
+                <CircleAlert className="h-3 w-3 shrink-0" />
+                {"Requiere cliente con RNC"}
+              </span>
+            )}
+            {creditBlocked && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-accent px-2 py-1 font-medium text-accent-foreground">
+                <CircleAlert className="h-3 w-3 shrink-0" />
+                {"Sin crédito aprobado"}
+              </span>
+            )}
+            {operational && ncfWarning && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-1 font-medium text-amber-700 dark:text-amber-400">
+                <CircleAlert className="h-3 w-3 shrink-0" />
+                {ncfWarning}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
   return (
     <section className="sale-invoice-card rounded-2xl border border-border bg-card p-5">
       <div className="sale-invoice-header mb-4 flex items-center gap-2">

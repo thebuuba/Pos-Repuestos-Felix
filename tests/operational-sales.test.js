@@ -24,13 +24,23 @@ test('los totales incluyen el ITBIS por línea y usan cuatro decimales de precio
   cart = updateSaleLine(cart, second, 'p1', '0.01');
   const quote = quoteSale(cart, 18);
   assert.deepEqual(quote.totals, { items: 2.51, subtotal: 21.24, grossTotal: 25.06, discount: 0, discountPercent: 0, itbis: 3.82, total: 25.06 });
-  assert.equal(quote.lines[0].subtotal, 25.01);
-  assert.equal(quote.lines[0].unitPrice, '10.0030');
+  // El último artículo agregado aparece en la parte superior.
+  assert.equal(quote.lines[0].product.id, 20);
+  assert.equal(quote.lines[1].subtotal, 25.01);
+  assert.equal(quote.lines[1].unitPrice, '10.0030');
   assert.deepEqual(saleRequest(cart, settings, 9, 'contado', 'B02'), {
     databaseId: 'catalog', clienteId: 9, condicion: 'Contado', tipoComprobante: 'B02', versionConfiguracion: 3,
-    items: [{ productoId: 19, versionProducto: 7, nivelPrecio: 'precio1', cantidad: '2.50' },
-      { productoId: 20, versionProducto: 7, nivelPrecio: 'precio1', cantidad: '0.01' }],
+    items: [{ productoId: 20, versionProducto: 7, nivelPrecio: 'precio1', cantidad: '0.01' },
+      { productoId: 19, versionProducto: 7, nivelPrecio: 'precio1', cantidad: '2.50' }],
   });
+  // Al volver a agregar un producto existente sube al inicio; editar cantidad en sitio (replace=true) mantiene su fila.
+  const movedTop = updateSaleLine(cart, product, 'p1', '0.50', false);
+  assert.equal(movedTop[0].product.id, 19);
+  assert.equal(movedTop[0].quantity, 3);
+  const editedInPlace = updateSaleLine(movedTop, second, 'p1', '1.00', true);
+  assert.equal(editedInPlace[0].product.id, 19);
+  assert.equal(editedInPlace[1].product.id, 20);
+  assert.equal(editedInPlace[1].quantity, 1);
 });
 
 test('la suma del stock abarca todos los precios y el carrito conserva la base y versión originales', () => {

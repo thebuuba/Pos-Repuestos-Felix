@@ -20,9 +20,12 @@ export function updateSaleLine(items, product, level, value, replace = false) {
   }
   const quantity = Number(decimalUnits(units + (!replace && existing ? quantityOf(existing.quantity) : 0n), 2));
   const line = { key, product, priceLevel: level, quantity };
-  if (existing) return items.map(item => item.key === key ? line : item);
+  if (existing) {
+    if (replace) return items.map(item => item.key === key ? line : item);
+    return [line, ...items.filter(item => item.key !== key)];
+  }
   if (items.length >= 1000) throw new Error('La factura admite hasta 1000 líneas.');
-  return [...items, line];
+  return [line, ...items];
 }
 
 function normalizeDiscount(discount) {

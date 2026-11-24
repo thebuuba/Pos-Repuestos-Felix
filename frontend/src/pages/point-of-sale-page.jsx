@@ -38,15 +38,15 @@ function MobileSaleDetails({ label, children }) {
     <div id={id} className="sale-details-content">{children}</div>
   </div>;
 }
-function SaleLayout({ invoice, selection, selectionActions, cart, catalog, summary, locked = false }) {
-  const SelectionHeading = catalog ? 'h1' : 'h2';
+function SaleLayout({ operational = false, invoice, selection, selectionActions, cart, catalog, summary, locked = false }) {
+  const SelectionHeading = operational ? 'h1' : 'h2';
   return (
     <div
       inert={locked ? "" : undefined}
       className="sale-layout grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_400px]"
     >
       <div className="sale-items min-w-0 space-y-6">
-        {!catalog && invoice}
+        {!operational && invoice}
         <section className="sale-selection space-y-4 rounded-2xl border border-border bg-card p-5">
           <div className="sale-selection-heading flex items-center gap-2">
             <div className="sale-selection-icon flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-primary">
@@ -58,10 +58,9 @@ function SaleLayout({ invoice, selection, selectionActions, cart, catalog, summa
           {selection}
         </section>
         {cart}
-        {catalog && <div className="sale-invoice-wrap min-w-0">{invoice}</div>}
-        {catalog}
+        {!operational && catalog}
       </div>
-      <div className="lg:sticky lg:top-24">{summary}</div>
+      <div className="sale-summary-rail lg:sticky lg:top-24">{summary}</div>
     </div>
   );
 }
@@ -372,8 +371,6 @@ function PointOfSalePage() {
 }
 export { PointOfSalePage };
 
-const EMPTY_CATEGORIES = [];
-
 export function OperationalPointOfSalePage() {
   const { sales } = usePosStore();
   const { products, customers, settings, cashSession, runtime, cashCustomer,
@@ -381,7 +378,7 @@ export function OperationalPointOfSalePage() {
     paymentMethod, setPaymentMethod, discountMode, setDiscountMode, discountValue, setDiscountValue, discountError,
     discountPercent, setDiscountPercent, received, setReceived, priceLevel, setPriceLevel,
     items, setItems, heldSales, activeHoldLabel, holdCurrentSale, resumeHeldSale, renameHeldSale, removeHeldSale, openQuote,
-    receipt, failure, sending, customer, lines, totals, cartQuantities,
+    receipt, failure, sending, customer, lines, totals,
     locked, disabledReason, resetSale, editQuantity, checkout } = useSaleDraft();
   const [heldOpen, setHeldOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -439,6 +436,7 @@ export function OperationalPointOfSalePage() {
         <Button asChild className="min-h-11 rounded-xl"><Link to="/caja">Abrir caja</Link></Button>
       </div>}
       <SaleLayout
+        operational
         locked={locked}
         selectionActions={<>
           {activeHoldLabel && items.length > 0 && (
@@ -476,59 +474,23 @@ export function OperationalPointOfSalePage() {
             <span className="sale-desktop-only">Nueva venta</span><span className="sale-mobile-only">Limpiar</span>
           </Button>
         </>}
-        invoice={
-          <MobileSaleDetails label={`Datos de factura · ${customer?.name ?? "Seleccionar cliente"} · ${condition === "contado" ? "Contado" : "Crédito"}`}>
-          <InvoiceSettingsCard
-            operational
-            customers={customers}
-            customerId={customerId}
-            onCustomerChange={(id) => {
-              setCustomerId(id);
-              if (id === cashCustomer?.id) {
-                setCondition("contado");
-                setComprobante("B02");
-              }
-            }}
-            comprobante={comprobante}
-            onComprobanteChange={setComprobante}
-            condition={condition}
-            onConditionChange={setCondition}
-            nextNcf={nextNcfPreview}
-            ncfWarning={ncfWarning}
-          />
-          </MobileSaleDetails>
-        }
         selection={
-            <ProductSearchBar
-              operational
-              disabled={locked || !!receipt}
-              products={products}
-              priceLevel={priceLevel}
-              onPriceLevelChange={setPriceLevel}
-              onAdd={(p, qty) => editQuantity(p, priceLevel, qty)}
-            />
-        }
-        catalog={
-          <section className="sale-product-catalog rounded-2xl border border-border bg-card p-5">
-            <MobileSaleDetails label="Ver catálogo de productos">
-            <h2 className="sale-desktop-only mb-4 text-base font-semibold">Catálogo de productos</h2>
-            <QuickProductsGrid
-              products={products}
-              categories={EMPTY_CATEGORIES}
-              pageSize={8}
-              priceLevel={priceLevel}
-              onAdd={(p) => editQuantity(p, priceLevel, 1)}
-              cartQuantities={cartQuantities}
-            />
-            </MobileSaleDetails>
-          </section>
+          <ProductSearchBar
+            operational
+            disabled={locked || !!receipt}
+            products={products}
+            priceLevel={priceLevel}
+            onPriceLevelChange={setPriceLevel}
+            onAdd={(p, qty) => editQuantity(p, priceLevel, qty)}
+          />
         }
         cart={
           <CartTable
+            operational
             lines={lines}
             onQuantityChange={(key, quantity) => {
               const item = items.find((row) => row.key === key);
-              editQuantity(item.product, item.priceLevel, quantity, true);
+              return item ? editQuantity(item.product, item.priceLevel, quantity, true) : false;
             }}
             onRemove={(key) =>
               setItems((prev) => prev.filter((row) => row.key !== key))
@@ -539,6 +501,29 @@ export function OperationalPointOfSalePage() {
         summary={
           <OrderSummaryPanel
             operational
+            invoiceSlot={
+              <MobileSaleDetails label={`Datos de factura · ${customer?.name ?? "Seleccionar cliente"} · ${condition === "contado" ? "Contado" : "Crédito"}`}>
+                <InvoiceSettingsCard
+                  operational
+                  embedded
+                  customers={customers}
+                  customerId={customerId}
+                  onCustomerChange={(id) => {
+                    setCustomerId(id);
+                    if (id === cashCustomer?.id) {
+                      setCondition("contado");
+                      setComprobante("B02");
+                    }
+                  }}
+                  comprobante={comprobante}
+                  onComprobanteChange={setComprobante}
+                  condition={condition}
+                  onConditionChange={setCondition}
+                  nextNcf={nextNcfPreview}
+                  ncfWarning={ncfWarning}
+                />
+              </MobileSaleDetails>
+            }
             invoiceNumber="Pendiente de registro"
             customerName={activeHoldLabel || customer?.name}
             comprobante={comprobante}

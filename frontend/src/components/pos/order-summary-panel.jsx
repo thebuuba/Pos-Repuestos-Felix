@@ -32,6 +32,7 @@ var METHODS = [
 var DISCOUNTS = [0, 5, 10, 15];
 function OrderSummaryPanel({
   operational = false,
+  invoiceSlot = null,
   invoiceNumber,
   customerName,
   comprobante,
@@ -63,33 +64,39 @@ function OrderSummaryPanel({
   const isCash = condition === "contado" && paymentMethod === "efectivo";
   const receivedNum = Number(received) || 0;
   const change = receivedNum - totals.total;
+  const hasChangeToReturn = !empty && Math.round(change * 100) > 0;
   const insufficient = isCash && !empty && receivedNum < totals.total;
+  const showCashBalance = !operational || insufficient || hasChangeToReturn;
   const quickAmounts = [totals.total, 50, 100, 200, 500, 1000, 2000];
   const blocked = empty || insufficient || Boolean(disabledReason);
   return (
     <section ref={summaryRef} data-payment-open={paymentOpen} className="sale-summary flex flex-col overflow-hidden rounded-2xl border border-border bg-card">
-      <div className="sale-summary-heading flex items-start justify-between gap-3 border-b border-dashed border-border px-5 py-4">
-        <div className="min-w-0">
-          <p className="text-xs text-muted-foreground">{"Factura"}</p>
-          <p className="text-lg font-semibold tracking-tight">
-            {invoiceNumber}
-          </p>
-        </div>
-        <div className="min-w-0 text-right">
-          <p className="truncate text-sm font-medium">{customerName}</p>
-          <p className="text-xs text-muted-foreground">
-            {comprobante}
-            {" · "}
-            {condition === "contado" ? "Contado" : "Crédito"}
-          </p>
-          {ncf && (
-            <p className="font-mono text-[11px] text-muted-foreground">
-              {"NCF "}
-              {ncf}
+      {operational && invoiceSlot ? (
+        <div className="sale-summary-invoice">{invoiceSlot}</div>
+      ) : !operational ? (
+        <div className="sale-summary-heading flex items-start justify-between gap-3 border-b border-dashed border-border px-5 py-4">
+          <div className="min-w-0">
+            <p className="text-xs text-muted-foreground">{"Factura"}</p>
+            <p className="text-lg font-semibold tracking-tight">
+              {invoiceNumber}
             </p>
-          )}
+          </div>
+          <div className="min-w-0 text-right">
+            <p className="truncate text-sm font-medium">{customerName}</p>
+            <p className="text-xs text-muted-foreground">
+              {comprobante}
+              {" · "}
+              {condition === "contado" ? "Contado" : "Crédito"}
+            </p>
+            {ncf && (
+              <p className="font-mono text-[11px] text-muted-foreground">
+                {"NCF "}
+                {ncf}
+              </p>
+            )}
+          </div>
         </div>
-      </div>
+      ) : null}
       <div className="sale-summary-breakdown space-y-2.5 px-5 py-4 text-sm">
         <div className="flex justify-between">
           <span className="text-muted-foreground">
@@ -101,8 +108,8 @@ function OrderSummaryPanel({
             {formatMoney(operational && totals.discount > 0 && totals.grossTotal > 0 ? totals.grossTotal : totals.subtotal)}
           </span>
         </div>
-        <div className="sale-summary-discounts space-y-2">
-          <div className="flex items-center justify-between gap-2">
+        <div className={cn("sale-summary-discounts", operational ? "sale-discount-compact" : "space-y-2")}>
+          <div className="sale-discount-presets flex items-center justify-between gap-2">
             <span className="text-muted-foreground">{"Descuento"}</span>
             <div className="flex items-center gap-1">
               {DISCOUNTS.map((d) => {
@@ -141,16 +148,22 @@ function OrderSummaryPanel({
           {operational && (onDiscountValueChange || onDiscountChange) && (
             <div className="sale-summary-discount-custom flex items-center gap-1.5">
               {onDiscountModeChange && (
-                <div className="flex shrink-0 rounded-lg bg-muted p-0.5">
+                <div
+                  onClick={() => {
+                    onDiscountModeChange(discountMode === "percent" ? "amount" : "percent");
+                    onDiscountValueChange?.("");
+                  }}
+                  title={discountMode === "percent" ? "Cambiar a descuento en RD$" : "Cambiar a descuento en %"}
+                  className="sale-discount-mode-toggle flex shrink-0 cursor-pointer rounded-lg bg-muted p-0.5"
+                >
                   <button
                     type="button"
                     aria-label="Descuento en porcentaje"
                     aria-pressed={discountMode === "percent"}
-                    onClick={() => {
-                      if (discountMode !== "percent") {
-                        onDiscountModeChange("percent");
-                        onDiscountValueChange?.("");
-                      }
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDiscountModeChange(discountMode === "percent" ? "amount" : "percent");
+                      onDiscountValueChange?.("");
                     }}
                     className={cn(
                       "h-7 rounded-md px-2 text-[11px] font-semibold transition-colors",
@@ -165,11 +178,10 @@ function OrderSummaryPanel({
                     type="button"
                     aria-label="Descuento en pesos"
                     aria-pressed={discountMode === "amount"}
-                    onClick={() => {
-                      if (discountMode !== "amount") {
-                        onDiscountModeChange("amount");
-                        onDiscountValueChange?.("");
-                      }
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDiscountModeChange(discountMode === "percent" ? "amount" : "percent");
+                      onDiscountValueChange?.("");
                     }}
                     className={cn(
                       "h-7 rounded-md px-2 text-[11px] font-semibold transition-colors",
@@ -202,13 +214,13 @@ function OrderSummaryPanel({
                   if (onDiscountValueChange) onDiscountValueChange(val);
                   else onDiscountChange?.(val === "" ? 0 : Math.min(100, Math.max(0, Number(val) || 0)));
                 }}
-                placeholder={discountMode === "amount" ? "Monto libre RD$" : "Otro porcentaje %"}
-                className="h-8 flex-1 rounded-lg bg-card px-2.5 text-right text-xs font-medium tabular-nums"
+                placeholder={discountMode === "amount" ? "RD$" : "%"}
+                className="sale-discount-input h-8 flex-1 rounded-lg bg-card px-2.5 text-right text-xs font-medium tabular-nums"
               />
             </div>
           )}
           {discountError && (
-            <p role="alert" className="text-xs font-medium text-primary">
+            <p role="alert" className="sale-discount-error text-xs font-medium text-primary">
               {discountError}
             </p>
           )}
@@ -244,13 +256,13 @@ function OrderSummaryPanel({
           </span>
         </div>
       </div>
-      <div className="sale-summary-total mx-5 rounded-xl bg-accent px-4 py-3.5">
+      <div className={cn("sale-summary-total rounded-xl bg-accent", operational ? "sale-summary-total-compact" : "mx-5 px-4 py-3.5")}>
         <p className="text-xs font-medium uppercase tracking-wider text-accent-foreground/80">
           {"Total a pagar"}
         </p>
         <MoneyDisplay
           value={totals.total}
-          className="text-[34px] leading-tight text-primary"
+          className={operational ? "sale-summary-total-amount text-primary" : "text-[34px] leading-tight text-primary"}
           symbolClassName="text-primary/70"
           centsClassName="text-primary/50"
         />
@@ -288,25 +300,26 @@ function OrderSummaryPanel({
               );
             })}
           </div>
-          {operational && isCash && <p className="sale-desktop-only text-xs text-muted-foreground">El efectivo recibido calcula el cambio. En caja se registra el total de la venta.</p>}
           {isCash && (
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">
-                {"Monto recibido"}
-              </Label>
-              <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                  {"RD$"}
-                </span>
-                <Input
-                  aria-label="Monto recibido"
-                  type="number"
-                  inputMode="decimal"
-                  value={received}
-                  onChange={(e) => onReceivedChange(e.target.value)}
-                  placeholder="0.00"
-                  className="h-11 rounded-xl pl-11 text-base font-semibold tabular-nums"
-                />
+            <div className="sale-cash-box space-y-2">
+              <div className={operational ? "sale-received-field" : "space-y-2"}>
+                <Label className="sale-received-label text-xs text-muted-foreground">
+                  {"Monto recibido"}
+                </Label>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                    {"RD$"}
+                  </span>
+                  <Input
+                    aria-label="Monto recibido"
+                    type="number"
+                    inputMode="decimal"
+                    value={received}
+                    onChange={(e) => onReceivedChange(e.target.value)}
+                    placeholder="0.00"
+                    className="sale-received-input h-11 rounded-xl pl-11 text-base font-semibold tabular-nums"
+                  />
+                </div>
               </div>
               {!empty && (
                 <div className="sale-quick-amounts flex flex-wrap gap-1.5">
@@ -324,26 +337,28 @@ function OrderSummaryPanel({
                   ))}
                 </div>
               )}
-              <div
-                className={cn(
-                  "flex items-center justify-between rounded-xl px-3.5 py-2.5 text-sm",
-                  insufficient
-                    ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
-                    : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-                )}
-              >
-                <span className="font-medium">
-                  {insufficient ? "Falta" : "Cambio a devolver"}
-                </span>
-                <span className="text-base font-semibold tabular-nums">
-                  {formatMoney(Math.abs(empty ? 0 : change))}
-                </span>
-              </div>
+              {showCashBalance && (
+                <div
+                  className={cn(
+                    "sale-cash-change flex items-center justify-between rounded-xl px-3.5 py-2.5 text-sm",
+                    insufficient
+                      ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                      : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+                  )}
+                >
+                  <span className="font-medium">
+                    {insufficient ? "Falta" : "Cambio a devolver"}
+                  </span>
+                  <span className="sale-cash-change-amount text-base font-semibold tabular-nums">
+                    {formatMoney(Math.abs(empty ? 0 : change))}
+                  </span>
+                </div>
+              )}
             </div>
           )}
         </div>
       ) : (
-        <div className="mx-5 mt-4 rounded-xl border border-dashed border-border px-4 py-3 text-xs text-muted-foreground">
+        <div className="sale-credit-note mx-5 mt-4 rounded-xl border border-dashed border-border px-4 py-3 text-xs text-muted-foreground">
           {"La factura se registrará en "}
           <span className="font-medium text-foreground">
             {"Cuentas x cobrar"}
@@ -360,7 +375,7 @@ function OrderSummaryPanel({
         <Button
           onClick={onCheckout}
           disabled={blocked}
-          className="h-12 w-full rounded-xl text-[15px] font-semibold shadow-md shadow-primary/20"
+          className="sale-checkout-btn h-12 w-full rounded-xl text-[15px] font-semibold shadow-md shadow-primary/20"
         >
           <Printer />
           {operational ? "Registrar venta" : "Guardar e imprimir factura"}

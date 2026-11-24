@@ -52,8 +52,8 @@ function PosLayout({ children }) {
   };
   const closeMenu = () => setMenuOpen(false);
   return (
-    <div className="pos-layout flex min-h-screen bg-background">
-      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 border-r border-sidebar-border lg:block">
+    <div className="pos-layout flex min-h-screen bg-background" data-operational={runtime ? "true" : undefined}>
+      <aside className="pos-sidebar sticky top-0 hidden h-screen w-64 shrink-0 border-r border-sidebar-border lg:block">
         <AppSidebar />
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">

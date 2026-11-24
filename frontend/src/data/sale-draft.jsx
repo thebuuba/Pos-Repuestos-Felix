@@ -39,7 +39,8 @@ function restoreDraftState(saved, products, customers, cashCustomer, defaultPric
   if (!saved) return null;
   const byId = new Map(products.map(p => [p.id, p]));
   let items = [];
-  for (const entry of saved.items) {
+  for (let i = saved.items.length - 1; i >= 0; i--) {
+    const entry = saved.items[i];
     const live = byId.get(entry?.productId);
     if (!live) continue;
     try {
@@ -282,7 +283,8 @@ export function SaleDraftProvider({ children }) {
     if (!entry) return false;
     let restored = [];
     const skipped = [];
-    for (const saved of entry.items) {
+    for (let i = entry.items.length - 1; i >= 0; i--) {
+      const saved = entry.items[i];
       const live = catalog.get(saved.productId);
       if (!live) { skipped.push("un artículo ya no está activo"); continue; }
       try {

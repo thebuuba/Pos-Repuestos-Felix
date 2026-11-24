@@ -86,7 +86,7 @@ function SidebarNav({ onNavigate, className, groupsClassName, touch = false, ...
                           {badge}
                         </span>
                       )}
-                      {item.shortcut && !badge && !touch && (
+                      {!runtime && item.shortcut && !badge && !touch && (
                         <kbd className="hidden rounded-md border border-border bg-card px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground xl:inline-block">
                           {item.shortcut}
                         </kbd>

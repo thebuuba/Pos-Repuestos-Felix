@@ -44,185 +44,317 @@ label {
   overflow-y: auto;
 }
 .scan-confirmation [data-description] { overflow-wrap: anywhere; }
+@media (min-width: 1024px) {
+  .pos-layout[data-operational="true"] .pos-main {
+    padding: 20px clamp(16px, 2vw, 32px) 24px;
+  }
+  .pos-layout[data-operational="true"] .pos-main > div {
+    max-width: 1640px;
+  }
+}
+
+.pos-layout[data-operational="true"] > .pos-sidebar {
+  width: 208px;
+}
+.pos-layout[data-operational="true"] > .pos-sidebar > div > div:first-child {
+  padding-inline: 14px;
+}
+.pos-layout[data-operational="true"] > .pos-sidebar nav {
+  padding-inline: 10px;
+}
+.pos-layout[data-operational="true"] > .pos-sidebar nav p {
+  padding-inline: 10px;
+}
+.pos-layout[data-operational="true"] > .pos-sidebar nav a {
+  padding-inline: 10px;
+  gap: 10px;
+  font-size: 13.5px;
+}
+.pos-layout[data-operational="true"] > .pos-sidebar nav li > span.bg-primary {
+  left: -10px;
+}
+
 .pos-sale .sale-selection-heading { flex-wrap: wrap; }
 .sale-selection-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; }
-.pos-sale .sale-product-search { grid-template-columns: 140px minmax(0, 1fr) auto; }
-.sale-search-row { grid-column: 1 / -1; display: flex; align-items: flex-start; gap: 8px; }
-.sale-search-row .sale-search-input { flex: 1; min-width: 0; }
-.sale-camera-button { flex-shrink: 0; margin-top: 22px; }
+.pos-sale .sale-product-search {
+  grid-template-columns: 128px minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px 12px;
+}
+.pos-sale .sale-search-row {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.pos-sale .sale-search-row .sale-search-input { flex: 1; min-width: 0; }
+.pos-sale .sale-camera-button { flex-shrink: 0; }
+.pos-sale .sale-search-error { grid-column: 1 / -1; }
+.pos-sale .sale-search-catalog-list { max-height: clamp(220px, 44vh, 460px); }
+.pos-sale .sale-search-catalog-list > li + li { border-top: 1px solid hsl(var(--border)); }
+.pos-sale .sale-search-result > span:last-child { white-space: nowrap; }
+.pos-sale .sale-search-result:hover { background-color: hsl(var(--accent) / 0.65); }
 
-/* The workshop's sale catalog uses short pages and the page's own scrolling. */
-.pos-sale .sale-catalog-products {
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 120px), 1fr));
-  margin-top: 0;
-  max-height: none;
-  overflow: visible;
-  padding-right: 0;
-}
-.pos-sale .sale-catalog-products > button { min-width: 0; }
-.pos-sale .sale-catalog-products > button > span { max-width: 100%; overflow-wrap: anywhere; }
-.pos-sale .sale-catalog-products > button > div { flex-wrap: wrap; }
-.pos-sale .sale-catalog-pagination { justify-content: space-between; }
-.pos-sale .sale-catalog-pagination button {
-  min-height: 44px;
-  padding: 8px 12px;
-  border: 1px solid hsl(var(--border));
-  border-radius: 12px;
-  background: hsl(var(--card));
-  color: hsl(var(--foreground));
-}
-.pos-sale .sale-catalog-pagination button:disabled { opacity: .45; }
-.pos-sale .sale-catalog-pagination button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+/* Operational cart table: full Polymet readability with keyboard quantity input. */
 .pos-sale .sale-cart table { min-width: 0; }
+.pos-sale .sale-cart th { padding: 10px 12px; }
+.pos-sale .sale-cart td { padding: 11px 12px; }
+.pos-sale .sale-cart th:first-child,
+.pos-sale .sale-cart td:first-child { padding-left: 18px; }
+.pos-sale .sale-cart th:last-child,
+.pos-sale .sale-cart td:last-child { padding-right: 12px; width: 44px; }
 .pos-sale .sale-cart tbody tr:nth-child(odd) { background-color: hsl(var(--card)); }
 .pos-sale .sale-cart tbody tr:nth-child(even) { background-color: hsl(var(--accent) / 0.75); }
 .dark .pos-sale .sale-cart tbody tr:nth-child(even) { background-color: hsl(var(--accent) / 0.45); }
 .pos-sale .sale-cart tbody tr:hover { background-color: hsl(var(--accent)); }
-.pos-sale .sale-cart .sale-cart-quantity > div { background-color: hsl(var(--card)); }
+.pos-sale .sale-cart .sale-cart-quantity > div { background-color: hsl(var(--card)); width: 104px; }
+.pos-sale .sale-cart .sale-cart-quantity > div:focus-within {
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 1px hsl(var(--ring));
+}
+.pos-sale .sale-cart .sale-cart-qty-input { font-size: 14px; padding: 0 2px; }
+.pos-sale .sale-cart-price,
+.pos-sale .sale-cart-tax,
+.pos-sale .sale-cart-subtotal { white-space: nowrap; }
 .pos-sale .sale-cart-product { overflow-wrap: anywhere; }
 .pos-sale .sale-cart-product > div { flex-wrap: wrap; }
 .pos-sale .sale-cart-product > div > span { min-width: 0; max-width: 100%; }
-@media (min-width: 1024px) and (max-width: 1279px) {
-  .pos-sale .sale-layout { grid-template-columns: minmax(0, 1fr); }
+
+/* Operational right column: integrated Datos de la factura + fluid scaling across 14" and desktop monitors.
+ * Preserves Polymet's native border-radius classes (rounded-xl 18px, rounded-lg 14px, rounded-md 12px). */
+.pos-sale .sale-summary-invoice {
+  border-bottom: 1px solid hsl(var(--border));
+}
+.pos-sale .sale-invoice-embedded {
+  padding: clamp(8px, calc(3.8vh - 19px), 16px) clamp(14px, 1.5vw, 20px);
+}
+.pos-sale .sale-invoice-embedded-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: clamp(4px, calc(2vh - 10px), 10px);
+}
+.pos-sale .sale-invoice-embedded-header h2 {
+  font-size: clamp(12.5px, calc(1.2vh + 3.5px), 14px);
+  line-height: 1.3;
+}
+.pos-sale .sale-invoice-ncf-badge {
+  border-radius: 9999px;
+  background: hsl(var(--muted));
+  padding: 2px 8px;
+}
+.pos-sale .sale-invoice-embedded .sale-invoice-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(114px, 10vw, 144px);
+  gap: clamp(5px, calc(2.2vh - 11px), 10px) 10px;
+}
+.pos-sale .sale-invoice-embedded .sale-invoice-customer {
+  grid-column: 1 / -1;
+}
+.pos-sale .sale-invoice-embedded .sale-invoice-label {
+  font-size: clamp(11px, calc(0.8vh + 5px), 12.5px);
+  line-height: 1.25;
+  margin-bottom: clamp(2px, calc(1vh - 5px), 5px);
+}
+.pos-sale .sale-invoice-embedded .sale-invoice-trigger {
+  height: clamp(31px, calc(5.5vh - 8px), 42px);
+  padding-inline: 12px;
+  font-size: clamp(12.5px, calc(1.1vh + 4.5px), 14px);
+}
+.pos-sale .sale-invoice-embedded .sale-invoice-meta {
+  margin-top: clamp(5px, calc(1.5vh - 6px), 10px);
+}
+.pos-sale .sale-summary-breakdown {
+  padding: clamp(6px, calc(3.8vh - 21px), 16px) clamp(14px, 1.5vw, 20px);
+  font-size: clamp(12.5px, calc(1vh + 5.5px), 14px);
+  line-height: 1.35;
+}
+.pos-sale .sale-summary-breakdown > :not([hidden]) ~ :not([hidden]) {
+  margin-top: clamp(4px, calc(2.5vh - 14px), 10px);
+}
+.pos-sale .sale-discount-compact {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 6px;
+}
+.pos-sale .sale-discount-compact .sale-discount-presets {
+  flex: 1 1 auto;
+  gap: 4px;
+}
+.pos-sale .sale-discount-compact .sale-discount-presets button {
+  height: clamp(24px, calc(2vh + 10px), 28px);
+  padding-inline: clamp(5px, 0.5vw, 8px);
+  font-size: clamp(11px, calc(0.7vh + 6px), 12px);
+}
+.pos-sale .sale-discount-compact .sale-summary-discount-custom {
+  flex: 0 0 auto;
+}
+.pos-sale .sale-discount-compact .sale-discount-input {
+  width: clamp(56px, 4.8vw, 84px);
+  height: clamp(28px, calc(2.5vh + 10px), 32px);
+  padding-inline: 6px;
+  font-size: clamp(12px, calc(0.7vh + 6.5px), 13px);
+  flex: 0 0 auto;
+}
+.pos-sale .sale-discount-compact .sale-discount-error {
+  flex-basis: 100%;
+}
+.pos-sale .sale-summary-total-compact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 clamp(14px, 1.5vw, 20px);
+  padding: clamp(6px, calc(3vh - 15px), 12px) clamp(12px, 1.2vw, 16px);
+}
+.pos-sale .sale-summary-total-compact > p {
+  font-size: clamp(11px, calc(0.7vh + 6px), 12.5px);
+  line-height: 1.25;
+}
+.pos-sale .sale-summary-total-amount {
+  font-size: clamp(21px, calc(3.8vh - 6px), 28px);
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.pos-sale .sale-payment-methods {
+  padding: clamp(6px, calc(3.8vh - 21px), 16px) clamp(14px, 1.5vw, 20px) 0;
+}
+.pos-sale .sale-payment-methods > :not([hidden]) ~ :not([hidden]) {
+  margin-top: clamp(6px, calc(3vh - 15px), 12px);
+}
+.pos-sale .sale-payment-tabs {
+  padding: 4px;
+  gap: 4px;
+}
+.pos-sale .sale-payment-tabs button {
+  height: clamp(30px, calc(4.2vh), 38px);
+  font-size: clamp(12px, calc(0.8vh + 6px), 13.5px);
+}
+.pos-sale .sale-cash-box > :not([hidden]) ~ :not([hidden]) {
+  margin-top: clamp(6px, calc(2.6vh - 13px), 11px);
+}
+.pos-sale .sale-received-field {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+.pos-sale .sale-received-label {
+  font-size: clamp(12px, calc(0.8vh + 6px), 13.5px);
+  white-space: nowrap;
+}
+.pos-sale .sale-received-input {
+  height: clamp(33px, calc(5.5vh - 6px), 44px);
+  font-size: clamp(14.5px, calc(1.2vh + 5.5px), 16px);
+}
+.pos-sale .sale-quick-amounts {
+  gap: clamp(4px, calc(1.2vh - 4px), 6px);
+}
+.pos-sale .sale-quick-amounts button {
+  height: clamp(24px, calc(3.6vh - 2px), 30px);
+  padding-inline: clamp(8px, 0.8vw, 11px);
+  font-size: clamp(11px, calc(0.9vh + 4.5px), 12.5px);
+}
+.pos-sale .sale-cash-change {
+  padding: clamp(5px, calc(2.5vh - 13px), 10px) 14px;
+  font-size: clamp(12.5px, calc(1vh + 5.5px), 14px);
+}
+.pos-sale .sale-cash-change-amount {
+  font-size: clamp(13.5px, calc(1.2vh + 5px), 16px);
+}
+.pos-sale .sale-credit-note {
+  margin: clamp(8px, 1.5vh, 14px) clamp(14px, 1.5vw, 20px) 0;
+  padding: 10px 14px;
+  font-size: 13px;
+}
+.pos-sale .sale-payment-actions {
+  padding: clamp(8px, calc(3.8vh - 19px), 16px) clamp(14px, 1.5vw, 20px) clamp(10px, calc(4vh - 18px), 18px);
+}
+.pos-sale .sale-payment-actions > :not([hidden]) ~ :not([hidden]) {
+  margin-top: clamp(6px, calc(2vh - 8px), 10px);
+}
+.pos-sale .sale-checkout-btn {
+  height: clamp(37px, calc(6vh - 6px), 48px);
+  font-size: clamp(13.5px, calc(1vh + 6px), 15px);
+}
+.pos-sale .sale-secondary-actions {
+  gap: 8px;
+}
+.pos-sale .sale-secondary-actions button {
+  height: clamp(31px, calc(4.8vh - 3px), 40px);
+  font-size: clamp(12.5px, calc(1vh + 5.5px), 14px);
 }
 
-/* Desktop side-by-side: compact Datos de la factura to the left of Agregar productos. */
-@media (min-width: 1024px) and (max-width: 1279px), (min-width: 1360px) {
-  .pos-sale .sale-items {
-    display: grid;
-    grid-template-columns: 252px minmax(0, 1fr);
-    gap: 16px;
-    align-items: stretch;
+@media (min-width: 1024px) and (max-width: 1179px) {
+  .pos-sale .sale-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+}
+
+/* Desktop 60% / 40% split from 1180px (covers 14" laptops 1280/1366/1440/1536 and wide monitors). */
+@media (min-width: 1180px) {
+  .pos-layout[data-operational="true"] .pos-main:has(.pos-sale) {
+    padding-top: clamp(8px, calc(4.5vh - 24px), 24px);
+    padding-bottom: clamp(12px, calc(4vh - 18px), 24px);
+  }
+  .pos-sale .sale-layout {
+    grid-template-columns: minmax(0, 60fr) minmax(360px, 40fr);
+    gap: clamp(16px, 1.6vw, 24px);
+  }
+  .pos-sale .sale-summary-rail {
+    top: calc(64px + clamp(8px, calc(4.5vh - 24px), 24px));
   }
   .pos-sale .sale-items > :not([hidden]) ~ :not([hidden]) {
-    margin-top: 0;
-  }
-  .pos-sale .sale-invoice-wrap {
-    grid-column: 1;
-    grid-row: 1;
-    display: flex;
-    flex-direction: column;
-  }
-  .pos-sale .sale-invoice-wrap .sale-details,
-  .pos-sale .sale-invoice-wrap .sale-details-content {
-    display: flex;
-    flex: 1 1 auto;
-    flex-direction: column;
-    min-width: 0;
-  }
-  .pos-sale .sale-invoice-wrap .sale-invoice-card {
-    display: flex;
-    flex: 1 1 auto;
-    flex-direction: column;
-    padding: 16px;
-  }
-  .pos-sale .sale-invoice-wrap .sale-invoice-header {
-    margin-bottom: 10px;
-  }
-  .pos-sale .sale-invoice-wrap .sale-invoice-header h2 {
-    font-size: 14px;
-    line-height: 20px;
-  }
-  .pos-sale .sale-invoice-wrap .sale-invoice-fields {
-    grid-template-columns: minmax(0, 1fr) 88px;
-    gap: 8px 6px;
-  }
-  .pos-sale .sale-invoice-wrap .sale-invoice-customer {
-    grid-column: 1 / -1;
-  }
-  .pos-sale .sale-invoice-wrap .sale-invoice-trigger {
-    height: 38px;
-    padding-inline: 10px;
-    font-size: 12.5px;
-  }
-  .pos-sale .sale-invoice-wrap .sale-invoice-meta {
-    margin-top: auto;
-    padding-top: 8px;
+    margin-top: clamp(14px, 2vh, 22px);
   }
   .pos-sale .sale-selection {
-    grid-column: 2;
-    grid-row: 1;
-    min-width: 0;
-    padding: 16px;
+    padding: clamp(14px, 2vh, 20px) clamp(16px, 1.5vw, 20px);
   }
-  .pos-sale .sale-selection-heading {
+  .pos-sale .sale-selection > :not([hidden]) ~ :not([hidden]) {
+    margin-top: clamp(10px, 1.6vh, 16px);
+  }
+  .pos-sale .sale-selection-actions {
+    gap: clamp(6px, 0.6vw, 8px);
+  }
+  .pos-sale .sale-selection-actions button {
+    height: clamp(36px, calc(4vh + 6px), 42px);
+    padding-inline: clamp(10px, 1vw, 14px);
+    font-size: clamp(12.5px, calc(1vh + 5px), 14px);
     gap: 6px;
   }
-  .pos-sale .sale-selection-heading h1,
-  .pos-sale .sale-selection-heading h2 {
-    font-size: 14px;
-    line-height: 20px;
-  }
-  .pos-sale .sale-selection-actions {
-    gap: 4px;
-  }
-  .pos-sale .sale-selection-actions button {
-    height: 34px;
-    padding-inline: 8px;
-    font-size: 12px;
-    gap: 4px;
-  }
   .pos-sale .sale-selection-actions button.sale-history-btn {
-    width: 34px;
+    width: clamp(36px, calc(4vh + 6px), 42px);
     padding-inline: 0;
   }
   .pos-sale .sale-product-search {
-    grid-template-columns: 104px minmax(0, 1fr) auto;
-    gap: 8px;
-    padding: 12px;
+    padding: clamp(10px, 1.6vh, 16px);
+    gap: clamp(8px, 1.4vh, 12px) 12px;
   }
-  .pos-sale .sale-product-search > button {
-    padding-inline: 14px;
-  }
-  .pos-sale .sale-cart,
-  .pos-sale .sale-product-catalog {
-    grid-column: 1 / -1;
+  .pos-sale .sale-cart-heading {
+    padding: clamp(12px, 1.8vh, 16px) clamp(14px, 1.5vw, 20px);
   }
 }
-@media (min-width: 1536px) {
-  .pos-sale .sale-items {
-    grid-template-columns: 304px minmax(0, 1fr);
-    gap: 20px;
-  }
-  .pos-sale .sale-invoice-wrap .sale-invoice-card,
-  .pos-sale .sale-selection {
-    padding: 20px;
-  }
-  .pos-sale .sale-invoice-wrap .sale-invoice-header {
-    margin-bottom: 14px;
-  }
-  .pos-sale .sale-invoice-wrap .sale-invoice-header h2,
-  .pos-sale .sale-selection-heading h1,
-  .pos-sale .sale-selection-heading h2 {
-    font-size: 16px;
-    line-height: 24px;
-  }
-  .pos-sale .sale-invoice-wrap .sale-invoice-fields {
-    grid-template-columns: minmax(0, 1fr) 104px;
-    gap: 12px 10px;
-  }
-  .pos-sale .sale-invoice-wrap .sale-invoice-trigger {
-    height: 40px;
-    padding-inline: 12px;
-    font-size: 14px;
-  }
-  .pos-sale .sale-selection-actions {
-    gap: 8px;
-  }
-  .pos-sale .sale-selection-actions button {
-    height: 40px;
-    padding-inline: 14px;
-    font-size: 14px;
-    gap: 8px;
-  }
-  .pos-sale .sale-selection-actions button.sale-history-btn {
-    width: 40px;
-    padding-inline: 0;
-  }
+
+/* Tighten cart columns only on 14" widths (1180–1439px) so 60% left column never scrolls horizontally. */
+@media (min-width: 1180px) and (max-width: 1439px) {
+  .pos-sale .sale-cart th,
+  .pos-sale .sale-cart td { padding: 8px 6px; }
+  .pos-sale .sale-cart th:first-child,
+  .pos-sale .sale-cart td:first-child { padding-left: 12px; }
+  .pos-sale .sale-cart .sale-cart-quantity > div { width: 88px; }
+  .pos-sale .sale-cart .sale-cart-quantity button { width: 26px; }
+  .pos-sale .sale-cart .sale-cart-qty-input { font-size: 13px; }
+  .pos-sale .sale-cart-price,
+  .pos-sale .sale-cart-tax,
+  .pos-sale .sale-cart-subtotal { font-size: 12.5px; }
   .pos-sale .sale-product-search {
-    grid-template-columns: 132px minmax(0, 1fr) auto;
-    gap: 12px;
-    padding: 16px;
+    grid-template-columns: 112px minmax(0, 1fr) auto;
+    gap: 8px 10px;
+    padding: 10px;
+  }
+  .pos-sale .sale-product-search .sale-add-button {
+    padding-inline: 14px;
   }
 }
 
@@ -282,8 +414,6 @@ label {
   .pos-sale .sale-details[data-open="true"] > .sale-details-content { margin-top: 8px; }
   .pos-sale .sale-selection { padding: 12px; }
   .pos-sale .sale-selection > * + * { margin-top: 8px; }
-  .pos-sale .sale-product-catalog { padding: 0; border: 0; background: none; }
-  .pos-sale .sale-product-catalog .sale-details-content { padding: 12px; border: 1px solid hsl(var(--border)); border-radius: 12px; background: hsl(var(--card)); }
   .pos-sale .sale-product-search {
     grid-template-columns: 72px minmax(0, 1fr) 44px;
     align-items: end;
@@ -291,7 +421,6 @@ label {
     padding: 0;
     background: none;
   }
-  .pos-sale .sale-search-input { grid-column: 1 / -1; }
   .pos-sale .sale-search-input > label { display: none; }
   .pos-sale .sale-search-input > div.relative { margin-top: 0; }
   .pos-sale .sale-search-quantity button, .pos-sale .sale-add-label { display: none; }
@@ -317,9 +446,10 @@ label {
   .pos-sale .sale-cart-product { grid-column: 1; grid-row: 1; align-self: center; }
   .pos-sale .sale-cart-remove { grid-column: 2; grid-row: 1; }
   .pos-sale .sale-cart-remove button { width: 44px; height: 44px; }
-  .pos-sale .sale-cart-quantity { grid-column: 1; grid-row: 2; }
-  .pos-sale .sale-cart-quantity > div { width: 132px; height: 44px; margin: 0; }
-  .pos-sale .sale-cart-quantity button { width: 44px; }
+  .pos-sale .sale-cart .sale-cart-quantity { grid-column: 1; grid-row: 2; }
+  .pos-sale .sale-cart .sale-cart-quantity > div { width: 144px; height: 44px; margin: 0; }
+  .pos-sale .sale-cart .sale-cart-quantity button { width: 44px; flex-shrink: 0; }
+  .pos-sale .sale-cart .sale-cart-qty-input { min-width: 44px; font-size: 16px; }
   .pos-sale .sale-cart-subtotal { grid-column: 2; grid-row: 2; align-self: center; }
   .pos-sale .sale-cart-subtotal[data-label]::before { display: block; margin-bottom: 2px; }
   .pos-sale .sale-cart-price { grid-column: 1; grid-row: 3; text-align: left; }
@@ -327,19 +457,41 @@ label {
   .pos-sale .sale-cart [data-label]::before { content: attr(data-label) " "; font-size: 11px; font-weight: 400; color: hsl(var(--muted-foreground)); }
   .pos-sale .sale-summary { scroll-margin-top: 80px; }
   .pos-sale .sale-summary-heading { display: none; }
+  .pos-sale .sale-summary-invoice { border-bottom: 0; padding: 12px 12px 0; }
+  .pos-sale .sale-invoice-embedded {
+    padding: 12px;
+    border: 1px solid hsl(var(--border));
+    border-radius: calc(var(--radius) + 4px);
+  }
+  .pos-sale .sale-invoice-embedded .sale-invoice-fields {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+  .pos-sale .sale-invoice-embedded .sale-invoice-trigger {
+    height: 44px;
+    font-size: 16px;
+  }
   .pos-sale .sale-summary:not([data-payment-open="true"]) .sale-summary-breakdown,
   .pos-sale .sale-summary:not([data-payment-open="true"]) .sale-payment-content { display: none; }
   .pos-sale .sale-summary-discounts button { min-height: 36px; min-width: 36px; }
-  .pos-sale .sale-summary-discount-custom input { min-height: 40px; }
+  .pos-sale .sale-discount-compact .sale-summary-discount-custom { flex: 1 1 100%; }
+  .pos-sale .sale-discount-compact .sale-discount-input { flex: 1 1 auto; width: auto; min-height: 40px; }
   .pos-sale .sale-summary-breakdown { padding: 12px; }
-  .pos-sale .sale-summary-total { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 12px 12px 0; padding: 10px 12px; }
-  .pos-sale .sale-summary-total > :last-child { font-size: 26px; white-space: nowrap; }
+  .pos-sale .sale-summary-total,
+  .pos-sale .sale-summary-total-compact { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 12px 12px 0; padding: 10px 12px; }
+  .pos-sale .sale-summary-total > :last-child,
+  .pos-sale .sale-summary-total-amount { font-size: 24px; white-space: nowrap; }
   .pos-sale .sale-open-payment { display: flex; min-height: 44px; margin: 8px 12px 12px; }
   .pos-sale .sale-payment-methods { padding: 0 12px; }
-  .pos-sale .sale-payment-tabs button { min-height: 44px; }
-  .pos-sale .sale-quick-amounts button { min-height: 44px; }
+  .pos-sale .sale-payment-tabs button { min-height: 44px; height: 44px; font-size: 13px; }
+  .pos-sale .sale-received-field { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .pos-sale .sale-received-input { height: 44px; }
+  .pos-sale .sale-quick-amounts { gap: 6px; }
+  .pos-sale .sale-quick-amounts button { min-height: 44px; height: 44px; padding-inline: 10px; font-size: 13px; }
+  .pos-sale .sale-cash-change { padding: 10px 12px; font-size: 14px; }
   .pos-sale .sale-payment-actions { padding: 12px; }
-  .pos-sale .sale-secondary-actions button { min-height: 44px; }
+  .pos-sale .sale-checkout-btn { min-height: 48px; height: 48px; font-size: 15px; }
+  .pos-sale .sale-secondary-actions button { min-height: 44px; height: 44px; font-size: 14px; }
 }
 
 .barcode-camera-dialog {
