@@ -29,7 +29,7 @@ function PosLayout({ children }) {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { runtime } = usePosStore();
-  const isOwner = !runtime || runtime.isOwner !== false;
+  const isOwner = !runtime || (runtime.isOwner !== false && (!runtime.accountDetailsAvailable || Boolean(runtime.account?.username)));
   const reload = runtime?.reload;
   const previousPath = useRef(pathname);
   useEffect(() => {

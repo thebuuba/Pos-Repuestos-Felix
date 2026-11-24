@@ -203,9 +203,10 @@ test('E2E operación completa por teclado: navegación, Ctrl+K, Inventario, Caja
     await page.keyboard.press('n');
     await receiptDialog2.waitFor({ state: 'hidden' });
 
-    // 4c. Doble Enter en tarjeta: agregar producto -> esperar >400ms -> Enter en buscador vacío cobra directo
+    // 4c. Escribir parcial a mano ("kb0" sin tocar flechas) + Enter agrega el resaltado; luego doble Enter en tarjeta cobra directo
     await page.keyboard.press('F7'); // Tarjeta
-    await page.keyboard.type('KB-001');
+    await page.keyboard.type('kb0', { delay: 60 });
+    await page.locator('.sale-search-result', { hasText: 'Bujía Teclado NGK' }).waitFor();
     await page.keyboard.press('Enter');
     await page.locator('.sale-cart tbody tr', { hasText: 'Bujía Teclado NGK' }).waitFor();
     await page.waitForTimeout(450);
@@ -256,6 +257,7 @@ test('E2E operación completa por teclado: navegación, Ctrl+K, Inventario, Caja
     cashierPage.on('pageerror', err => errors.push(err.message));
     await cashierPage.goto(appOrigin + '/ventas');
     await cashierPage.getByRole('heading', { name: 'Agregar productos', exact: true }).waitFor();
+    await cashierPage.locator('aside').getByRole('link', { name: 'Compras', exact: true }).waitFor({ state: 'hidden' });
     await cashierPage.keyboard.press('Alt+4');
     await cashierPage.keyboard.press('Alt+8');
     await cashierPage.waitForTimeout(150);

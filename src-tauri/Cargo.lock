@@ -2794,7 +2794,7 @@ checksum = "d902046e6a28a1e4c3cab97258a0ce11e994903f01c2d97a9447a0b3df85f4f6"
 
 [[package]]
 name = "repuestos-felix"
-version = "1.2.12"
+version = "1.2.13"
 dependencies = [
  "dunce",
  "serde_json",

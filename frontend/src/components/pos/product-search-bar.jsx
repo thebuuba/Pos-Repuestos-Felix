@@ -22,7 +22,7 @@ import { useId } from "react";
 import { useEffect } from "react";
 import { Camera } from "lucide-react";
 import { BarcodeCameraDialog } from "./barcode-camera-dialog.jsx";
-import { productForBarcode } from "../../data/barcode-scanner.js";
+import { createKeyboardScan, productForBarcode } from "../../data/barcode-scanner.js";
 import { searchTopProducts } from "../../data/product-search.js";
 import { useScanFeedback } from "../../data/use-scan-feedback.js";
 import { hasOpenModal, isEditableElement, isTouchMobile } from "../../data/keyboard-shortcuts.js";
@@ -38,6 +38,8 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, onE
   const inputRef = useRef(null);
   const wrapRef = useRef(null);
   const optionRefs = useRef([]);
+  const keyboardScanRef = useRef(createKeyboardScan());
+  const typedByHumanRef = useRef(false);
   const { prepareScanAudio, confirmScan, dismissScan } = useScanFeedback();
   const focusSearch = (select = false) => {
     if (isTouchMobile()) inputRef.current?.blur();
@@ -96,6 +98,8 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, onE
     setOpen(false);
     setSelected(false);
     setError("");
+    typedByHumanRef.current = false;
+    keyboardScanRef.current.reset();
     if (!cameraOpen) focusSearch();
     return true;
   };
@@ -117,6 +121,8 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, onE
     setQuery("");
     setOpen(false);
     setSelected(false);
+    typedByHumanRef.current = false;
+    keyboardScanRef.current.reset();
     if (!cameraOpen) focusSearch();
     return feedback;
   };
@@ -124,30 +130,54 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, onE
     if (disabled || e.nativeEvent.isComposing) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
+      keyboardScanRef.current.reset();
       setSelected(true);
       setHighlight((h) => Math.min(h + 1, results.length - 1));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
+      keyboardScanRef.current.reset();
       setSelected(true);
       setHighlight((h) => Math.max(h - 1, 0));
     } else if (e.key === "Enter") {
       e.preventDefault();
       if (e.repeat) return;
+      const fastScan = keyboardScanRef.current.push(e);
       if (operational && !e.currentTarget.value.trim()) {
+        typedByHumanRef.current = false;
         onEmptyEnter?.();
         return;
       }
-      if (operational && !selected) {
+      if (!operational || selected) {
+        commit();
+        return;
+      }
+      // Si las teclas llegaron en ráfaga de lector USB (o pegado masivo sin tecleo humano),
+      // exige código literal para que una lectura mala nunca venda otra pieza por error.
+      if (fastScan !== null || !typedByHumanRef.current) {
         if (e.currentTarget.value) scanCode(e.currentTarget.value);
-      } else commit();
+        return;
+      }
+      // Escritura manual: agrega el artículo resaltado en la lista (p. ej. "343", "y0858", "rolo").
+      if (results.length > 0) {
+        commit(results[highlight] ?? results[0]);
+      } else if (e.currentTarget.value) {
+        scanCode(e.currentTarget.value);
+      }
     } else if (e.key === "Escape") {
+      keyboardScanRef.current.reset();
       if (open) setOpen(false);
       else if (query || error) {
         setQuery("");
         setError("");
         setSelected(false);
         setHighlight(0);
+        typedByHumanRef.current = false;
       }
+    } else {
+      if (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key.length === 1 || e.key === "Backspace" || e.key === "Delete")) {
+        typedByHumanRef.current = true;
+      }
+      keyboardScanRef.current.push(e);
     }
   };
   const quantityControl = (
@@ -260,7 +290,12 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, onE
                   aria-describedby={error ? `${inputId}-error` : undefined}
                   value={query}
                   onChange={(e) => {
-                    setQuery(e.target.value);
+                    const next = e.target.value;
+                    if (!next) {
+                      typedByHumanRef.current = false;
+                      keyboardScanRef.current.reset();
+                    }
+                    setQuery(next);
                     setHighlight(0);
                     setSelected(false);
                     setError("");
