@@ -755,6 +755,15 @@ label {
 @media (min-width: 768px) {
   .md\:grid-cols-\[minmax\(0\,1fr\)_104px_132px_auto\] { grid-template-columns: minmax(0, 1fr) 104px 132px auto; }
 }
+/* Clean desktop keyboard focus ring without ugly mouse-click outlines. */
+.pos-layout[data-operational="true"] :is(a, button, [role="tab"], [role="combobox"], [role="option"]):focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+.pos-layout[data-operational="true"] .sale-cart .sale-cart-qty-btn:focus-visible {
+  outline: none;
+}
+
 @media (min-width: 1024px) {
   .lg\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }

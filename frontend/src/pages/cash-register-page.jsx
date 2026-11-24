@@ -142,6 +142,7 @@ function CashRegisterPage() {
             <Fragment>
               <Button
                 variant="outline"
+                data-shortcut-new="true"
                 className="h-10 rounded-full bg-card px-5"
                 disabled={disabled}
                 onClick={() => changeDialog(setMoveOpen)(true)}
@@ -184,11 +185,18 @@ function CashRegisterPage() {
             </span>
             <Input disabled={disabled}
               aria-label="Fondo inicial"
+              data-shortcut-search="true"
               type="number"
               min={0}
               step="0.01"
               value={opening}
               onChange={(e) => setOpening(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !disabled && validOpening) {
+                  e.preventDefault();
+                  if (!e.repeat) submit("open", { amount: opening });
+                }
+              }}
               className="h-14 rounded-xl pl-14 text-center text-2xl font-semibold tabular-nums"
             />
           </div>

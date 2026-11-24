@@ -25,6 +25,7 @@ import { BarcodeCameraDialog } from "./barcode-camera-dialog.jsx";
 import { productForBarcode } from "../../data/barcode-scanner.js";
 import { searchTopProducts } from "../../data/product-search.js";
 import { useScanFeedback } from "../../data/use-scan-feedback.js";
+import { hasOpenModal, isTouchMobile } from "../../data/keyboard-shortcuts.js";
 function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, operational = false, disabled = false }) {
   const [query, setQuery] = useState("");
   const [quantity, setQuantity] = useState(1);
@@ -36,12 +37,36 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, ope
   const inputId = useId();
   const inputRef = useRef(null);
   const wrapRef = useRef(null);
+  const optionRefs = useRef([]);
   const { prepareScanAudio, confirmScan, dismissScan } = useScanFeedback();
-  const focusSearch = () => {
-    if (window.matchMedia('(max-width: 1023px) and (pointer: coarse)').matches) inputRef.current?.blur();
-    else inputRef.current?.focus();
+  const focusSearch = (select = false) => {
+    if (isTouchMobile()) inputRef.current?.blur();
+    else {
+      inputRef.current?.focus();
+      if (select) inputRef.current?.select();
+    }
   };
   useEffect(() => { if (disabled) setCameraOpen(false); }, [disabled]);
+  useEffect(() => {
+    if (!operational || disabled || isTouchMobile()) return undefined;
+    const raf = window.requestAnimationFrame(() => {
+      if (!hasOpenModal() && document.activeElement === document.body) {
+        inputRef.current?.focus();
+      }
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [operational, disabled]);
+  useEffect(() => {
+    if (!operational) return undefined;
+    const onShortcut = (event) => {
+      if (event.detail?.action === "focus-search" && !disabled) {
+        event.preventDefault();
+        focusSearch(true);
+      }
+    };
+    window.addEventListener("felix:shortcut", onShortcut);
+    return () => window.removeEventListener("felix:shortcut", onShortcut);
+  }, [operational, disabled]);
   useEffect(() => {
     if (!operational || !open) return undefined;
     const onPointerDown = (event) => {
@@ -55,6 +80,10 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, ope
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [operational, open]);
   const results = useMemo(() => searchTopProducts(products, query, operational ? 12 : 6), [products, query, operational]);
+  useEffect(() => {
+    if (!open || !results.length) return;
+    optionRefs.current[highlight]?.scrollIntoView?.({ block: "nearest" });
+  }, [highlight, open, results.length]);
   const commit = (product) => {
     if (disabled) return false;
     const target = product ?? results[highlight] ?? results[0];
@@ -107,7 +136,13 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, ope
         if (e.currentTarget.value) scanCode(e.currentTarget.value);
       } else commit();
     } else if (e.key === "Escape") {
-      setOpen(false);
+      if (open) setOpen(false);
+      else if (query || error) {
+        setQuery("");
+        setError("");
+        setSelected(false);
+        setHighlight(0);
+      }
     }
   };
   const quantityControl = (
@@ -129,10 +164,18 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, ope
           type="number"
           inputMode="decimal"
           aria-label="Cantidad"
+          data-sale-search-qty={operational ? "true" : undefined}
           min={operational ? 0.01 : 1}
           step={operational ? 0.01 : 1}
           value={quantity}
           onChange={(e) => setQuantity(operational ? e.target.value : Number(e.target.value) || 1)}
+          onKeyDown={(e) => {
+            if (operational && e.key === "Enter") {
+              e.preventDefault();
+              if (query.trim() && results.length > 0 && selected) commit();
+              else focusSearch(true);
+            }
+          }}
           className="h-full w-full min-w-0 bg-transparent text-center text-sm font-semibold tabular-nums outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
         />
         <button
@@ -201,6 +244,8 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, ope
                 <Input
                   id={inputId}
                   ref={inputRef}
+                  data-shortcut-search="true"
+                  data-sale-search="true"
                   disabled={disabled}
                   autoComplete="off"
                   spellCheck={false}
@@ -281,6 +326,7 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, ope
                   <li key={p.id}>
                     <button
                       type="button"
+                      ref={(el) => { optionRefs.current[i] = el; }}
                       onMouseDown={(e) => e.preventDefault()}
                       onMouseEnter={() => setHighlight(i)}
                       onClick={() => commit(p)}
@@ -373,6 +419,7 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, ope
                   <li key={p.id}>
                     <button
                       type="button"
+                      ref={(el) => { optionRefs.current[i] = el; }}
                       onMouseDown={(e) => e.preventDefault()}
                       onMouseEnter={() => setHighlight(i)}
                       onClick={() => commit(p)}

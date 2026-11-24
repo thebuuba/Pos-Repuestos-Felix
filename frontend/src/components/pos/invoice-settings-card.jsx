@@ -53,7 +53,7 @@ const InvoiceSettingsCard = memo(function InvoiceSettingsCard({
           <div className="sale-invoice-customer min-w-0">
             <Label className="sale-invoice-label text-muted-foreground">{"Cliente"}</Label>
             <Select value={customer ? String(customer.id) : ""} onValueChange={value => onCustomerChange(operational ? Number(value) : value)}>
-              <SelectTrigger aria-label="Cliente" className="sale-invoice-trigger rounded-xl bg-card">
+              <SelectTrigger aria-label="Cliente" data-sale-customer="true" className="sale-invoice-trigger rounded-xl bg-card">
                 <SelectValue placeholder="Selecciona un cliente" />
               </SelectTrigger>
               <SelectContent>
@@ -70,7 +70,7 @@ const InvoiceSettingsCard = memo(function InvoiceSettingsCard({
               {"Tipo de comprobante"}
             </Label>
             <Select value={comprobante} onValueChange={onComprobanteChange}>
-              <SelectTrigger aria-label="Tipo de comprobante" className="sale-invoice-trigger rounded-xl bg-card">
+              <SelectTrigger aria-label="Tipo de comprobante" data-sale-comprobante="true" className="sale-invoice-trigger rounded-xl bg-card">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -90,7 +90,7 @@ const InvoiceSettingsCard = memo(function InvoiceSettingsCard({
               value={condition}
               onValueChange={(v) => onConditionChange(v)}
             >
-              <SelectTrigger aria-label="Condición" className="sale-invoice-trigger rounded-xl bg-card">
+              <SelectTrigger aria-label="Condición" data-sale-condition="true" className="sale-invoice-trigger rounded-xl bg-card">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

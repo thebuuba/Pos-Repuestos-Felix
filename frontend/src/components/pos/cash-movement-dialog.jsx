@@ -129,6 +129,7 @@ function CashMovementDialog({
         </Field>
         <DialogFooter>
           <Button
+            data-shortcut-submit="true"
             className="h-11 w-full rounded-xl"
             disabled={disabled || !valid}
             onClick={() => onConfirm(type, amount, description.trim())}

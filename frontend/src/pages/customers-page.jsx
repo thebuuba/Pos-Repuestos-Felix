@@ -135,6 +135,7 @@ function CustomersPage() {
         description="Datos fiscales, límites de crédito y balance de cada cliente."
         actions={
           <Button
+            data-shortcut-new="true"
             className="h-10 rounded-full px-5 shadow-md shadow-primary/20"
             onClick={() => {
               setEditing(null);
@@ -171,6 +172,7 @@ function CustomersPage() {
           <div className="relative max-w-md">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
+              data-shortcut-search="true"
               value={query}
               onChange={(e) => { setQuery(e.target.value); setPage(0); }}
               placeholder="Buscar por nombre, RNC o teléfono…"

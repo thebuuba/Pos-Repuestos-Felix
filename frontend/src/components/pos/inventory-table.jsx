@@ -108,6 +108,7 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             aria-label="Buscar por código, nombre o marca"
+            data-shortcut-search="true"
             value={query}
             onChange={(e) => setFilters({ ...filters, query: e.target.value, page: 0 })}
             placeholder="Buscar por código, nombre o marca…"
@@ -450,6 +451,7 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
               type="button"
               variant="outline"
               size="sm"
+              data-shortcut-prev="true"
               className="rounded-xl bg-card"
               disabled={page === 0}
               onClick={() => setFilters({ ...filters, page: page - 1 })}
@@ -460,6 +462,7 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
               type="button"
               variant="outline"
               size="sm"
+              data-shortcut-next="true"
               className="rounded-xl bg-card"
               disabled={page === lastPage}
               onClick={() => setFilters({ ...filters, page: page + 1 })}

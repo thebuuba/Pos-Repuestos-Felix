@@ -8,7 +8,8 @@ import { DialogDescription } from "../ui/dialog.jsx";
 import { formatMoney, formatUnitMoney } from "../../lib/format.js";
 import { Button } from "../ui/button.jsx";
 import { Printer } from "lucide-react";
-import { Fragment } from "react";
+import { Fragment, useRef } from "react";
+import { isEditableElement, isTouchMobile } from "../../data/keyboard-shortcuts.js";
 import "./receipt-print.css";
 var dateFmt2 = new Intl.DateTimeFormat("es-DO", {
   timeZone: "America/Santo_Domingo",
@@ -31,6 +32,7 @@ function ReceiptDialog({
   const isVoided = Boolean(sale?.voided);
   const isOperational = Boolean(isReprint || isQuote || sale?.dateOnly || sale?.useExactUnitMoney || sale?.localReference);
   const closeAction = onNewSale ?? (() => onOpenChange?.(false));
+  const printBtnRef = useRef(null);
   const resolvedTitle = title !== "Venta registrada"
     ? title
     : isQuote
@@ -55,7 +57,28 @@ function ReceiptDialog({
           : <>La factura {sale?.invoiceNumber} se guardó correctamente.</>;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent data-print-format={printFormat} className="pos-receipt-dialog max-w-md gap-0 rounded-2xl p-0">
+      <DialogContent
+        data-print-format={printFormat}
+        className="pos-receipt-dialog max-w-md gap-0 rounded-2xl p-0"
+        onOpenAutoFocus={(event) => {
+          if (isOperational && !isTouchMobile() && printBtnRef.current) {
+            event.preventDefault();
+            printBtnRef.current.focus();
+          }
+        }}
+        onKeyDown={(event) => {
+          if (!isOperational || event.ctrlKey || event.altKey || event.metaKey || event.repeat) return;
+          if (isEditableElement(event.target)) return;
+          const key = event.key.toLowerCase();
+          if (key === "p") {
+            event.preventDefault();
+            window.print();
+          } else if (key === "n" && !isQuote && !isReprint) {
+            event.preventDefault();
+            closeAction();
+          }
+        }}
+      >
         <DialogHeader className="items-center space-y-2 px-6 pb-4 pt-6 text-center">
           <div className={isVoided ? "flex h-12 w-12 items-center justify-center rounded-full bg-accent text-primary" : isReprint ? "flex h-12 w-12 items-center justify-center rounded-full bg-accent text-primary" : "flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/10"}>
             {isVoided ? <Ban className="h-6 w-6" /> : isReprint ? <ReceiptText className="h-6 w-6" /> : <CircleCheck className="h-6 w-6 text-emerald-600" />}
@@ -226,15 +249,26 @@ function ReceiptDialog({
         )}
         <div className="grid grid-cols-2 gap-2 p-6">
           <Button
+            ref={printBtnRef}
             variant="outline"
             className="h-11 rounded-xl bg-card"
             onClick={() => window.print()}
           >
             <Printer />
             {isOperational ? "Imprimir" : "Reimprimir"}
+            {isOperational && (
+              <kbd aria-hidden="true" className="sale-keyboard-hint ml-1 rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                {"P"}
+              </kbd>
+            )}
           </Button>
           <Button className="h-11 rounded-xl" onClick={closeAction}>
             {isQuote || isReprint ? "Cerrar" : "Nueva venta"}
+            {isOperational && !isQuote && !isReprint && (
+              <kbd aria-hidden="true" className="sale-keyboard-hint ml-1 rounded bg-primary-foreground/20 px-1.5 py-0.5 font-mono text-[10px]">
+                {"N"}
+              </kbd>
+            )}
           </Button>
         </div>
       </DialogContent>

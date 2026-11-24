@@ -89,11 +89,30 @@ var FAQ = [
   },
 ];
 function HelpPage({ reference }) {
-  const { settings } = usePosStore();
+  const { settings, runtime } = usePosStore();
+  const isOwner = !runtime || runtime.isOwner !== false;
   const phone = reference?.phone ?? settings.business.phone;
   const digits = phone?.replace(/[^0-9+]/g, "") ?? "";
   const canCall = /^\+?\d{7,15}$/.test(digits);
   const shortcuts = SHORTCUTS;
+  const operationalShortcuts = !reference
+    ? [
+        ["F1", "Ir a Ventas / enfocar buscador"],
+        ["F2", "Enfocar buscador de la pantalla"],
+        ["F3", "Editar cantidad en el carrito"],
+        ["F4", "Cambiar nivel de precio (P1–P3)"],
+        ["F6", "Ventas en espera"],
+        ["F7", "Cambiar método de pago"],
+        ["F8", "Monto recibido (2.ª vez: Exacto)"],
+        ["F9", isOwner ? "Registrar venta / compra" : "Registrar la venta"],
+        ["F10", "Generar cotización"],
+        ["Alt+1…0", "Cambiar entre módulos"],
+        ["Alt+N", "Nuevo artículo / cliente / venta"],
+        ["Ctrl+Enter", "Guardar diálogo abierto"],
+        ["Ctrl+K", "Búsqueda general y módulos"],
+        ["Alt+H", "Ver todos los atajos"],
+      ]
+    : null;
 
   return (
     <div className="space-y-6">
@@ -145,13 +164,13 @@ function HelpPage({ reference }) {
         <div className="space-y-4">
           <SectionCard title="Atajos de teclado" icon={Keyboard}>
             <ul className="space-y-2.5">
-              {shortcuts.map(([key, label]) => (
+              {(operationalShortcuts ?? shortcuts).map(([key, label]) => (
                 <li
                   className="flex items-center justify-between gap-3 text-sm"
                   key={key}
                 >
-                  <span className="text-muted-foreground">{key === "F9" && !reference ? "Registrar la venta" : label}</span>
-                  <kbd className="rounded-md border border-border bg-muted px-2 py-0.5 font-mono text-xs">
+                  <span className="text-muted-foreground">{label}</span>
+                  <kbd className="shrink-0 rounded-md border border-border bg-muted px-2 py-0.5 font-mono text-xs">
                     {key}
                   </kbd>
                 </li>

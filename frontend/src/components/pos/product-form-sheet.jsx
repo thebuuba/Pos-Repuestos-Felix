@@ -610,6 +610,7 @@ function ProductFormSheet({
             {retryPayload ? "Cerrar" : product ? "Cancelar" : "Limpiar"}
           </Button>
           <Button
+            data-shortcut-submit="true"
             className="h-11 flex-1 rounded-xl font-semibold"
             aria-disabled={sending || undefined}
             onClick={handleSubmit}

@@ -12,6 +12,7 @@ import { Printer } from "lucide-react";
 import { FileClock } from "lucide-react";
 import { X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
+import { focusFirstSelector, isTouchMobile } from "../../data/keyboard-shortcuts.js";
 var METHODS = [
   {
     value: "efectivo",
@@ -197,6 +198,7 @@ function OrderSummaryPanel({
               <Input
                 type="number"
                 inputMode="decimal"
+                data-sale-discount="true"
                 min="0"
                 max={discountMode === "percent" ? "100" : undefined}
                 step="0.01"
@@ -213,6 +215,13 @@ function OrderSummaryPanel({
                   const val = e.target.value;
                   if (onDiscountValueChange) onDiscountValueChange(val);
                   else onDiscountChange?.(val === "" ? 0 : Math.min(100, Math.max(0, Number(val) || 0)));
+                }}
+                onKeyDown={(e) => {
+                  if (operational && (e.key === "Enter" || e.key === "Escape")) {
+                    e.preventDefault();
+                    e.currentTarget.blur();
+                    if (!isTouchMobile()) focusFirstSelector("[data-sale-search]");
+                  }
                 }}
                 placeholder={discountMode === "amount" ? "RD$" : "%"}
                 className="sale-discount-input h-8 flex-1 rounded-lg bg-card px-2.5 text-right text-xs font-medium tabular-nums"
@@ -312,10 +321,22 @@ function OrderSummaryPanel({
                   </span>
                   <Input
                     aria-label="Monto recibido"
+                    data-sale-received={operational ? "true" : undefined}
                     type="number"
                     inputMode="decimal"
                     value={received}
                     onChange={(e) => onReceivedChange(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (!operational) return;
+                      if (e.key === "Enter" && !blocked) {
+                        e.preventDefault();
+                        if (!e.repeat) onCheckout?.();
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        e.currentTarget.blur();
+                        if (!isTouchMobile()) focusFirstSelector("[data-sale-search]");
+                      }
+                    }}
                     placeholder="0.00"
                     className="sale-received-input h-11 rounded-xl pl-11 text-base font-semibold tabular-nums"
                   />

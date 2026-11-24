@@ -154,6 +154,7 @@ function PaymentDialog({ doc, partyName, verb, operational = false, cashOpen = t
         )}
         <DialogFooter>
           <Button
+            data-shortcut-submit="true"
             className="h-11 w-full rounded-xl font-semibold"
             disabled={(!retryFn && invalid) || sending}
             onClick={async () => {

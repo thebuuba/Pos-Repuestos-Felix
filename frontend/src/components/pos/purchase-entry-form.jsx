@@ -25,6 +25,7 @@ import { Upload } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { businessTodayIso } from "../../lib/dates.js";
 import { searchTopProducts } from "../../data/product-search.js";
+import { hasOpenModal, isPlainAlt, isPrimaryMod, isTouchMobile } from "../../data/keyboard-shortcuts.js";
 var EMPTY_ENTRY = {
   code: "",
   name: "",
@@ -67,6 +68,8 @@ function PurchaseEntryForm({
   const [tried, setTried] = useState(false);
   const codeRef = useRef(null);
   const qtyRef = useRef(null);
+  const costRef = useRef(null);
+  const submitRef = useRef(null);
   const supplierBoxRef = useRef(null);
   const supplierSearchRef = useRef(null);
   const [supplierOpen, setSupplierOpen] = useState(false);
@@ -136,6 +139,11 @@ function PurchaseEntryForm({
     setSupplierOpen(false);
     setSupplierQuery("");
     setSupplierHighlight(0);
+    if (runtime && !isTouchMobile()) {
+      const inv = document.getElementById("purchase-invoice");
+      if (inv && !invoice.trim()) inv.focus();
+      else codeRef.current?.focus();
+    }
   };
   const productResults = useMemo(() => {
     if (!entry.code.trim()) return [];
@@ -153,10 +161,8 @@ function PurchaseEntryForm({
     setProductMenuOpen(false);
     setProductHighlight(0);
     setProductSelected(false);
-    requestAnimationFrame(() => {
-      qtyRef.current?.focus();
-      qtyRef.current?.select();
-    });
+    qtyRef.current?.focus();
+    qtyRef.current?.select();
   };
   const showNewDescription = Boolean(entry.code.trim() && !match && !altCodeOwner);
   const evaluate = (line, catalogPrices) => {
@@ -266,6 +272,32 @@ function PurchaseEntryForm({
       setSending(false);
     }
   };
+  const submitDisabled = sending || databaseChanged || (!retryInput && (hasInvalidLine || !!runtime?.pending || runtime?.connection === "unavailable"));
+  submitRef.current = { submit, submitDisabled, locked, linesCount: lines.length };
+  useEffect(() => {
+    if (!runtime) return undefined;
+    const onKeyDown = (event) => {
+      if (event.defaultPrevented || event.isComposing || hasOpenModal()) return;
+      const st = submitRef.current;
+      if (isPlainAlt(event) && event.code === "KeyS") {
+        event.preventDefault();
+        if (event.repeat || st.locked) return;
+        setSupplierOpen(true);
+        setSupplierQuery("");
+        setSupplierHighlight(0);
+        window.requestAnimationFrame(() => supplierSearchRef.current?.focus());
+        return;
+      }
+      const isF9 = event.key === "F9" && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey;
+      const isCtrlEnter = isPrimaryMod(event) && event.key === "Enter";
+      if ((isF9 || isCtrlEnter) && !st.submitDisabled && st.linesCount > 0) {
+        event.preventDefault();
+        if (!event.repeat) st.submit();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [runtime]);
   const restart = () => {
     setDatabaseId(runtime.databaseId);
     setSupplierId("");
@@ -314,6 +346,7 @@ function PurchaseEntryForm({
                     <Search className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       ref={supplierSearchRef}
+                      autoFocus
                       value={supplierQuery}
                       onChange={(e) => {
                         setSupplierQuery(e.target.value);
@@ -394,6 +427,12 @@ function PurchaseEntryForm({
               id="purchase-invoice" maxLength={2000}
               value={invoice}
               onChange={(e) => setInvoice(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  codeRef.current?.focus();
+                }
+              }}
               placeholder="Ej. FAC-4589"
               className={inputClass}
             />
@@ -450,6 +489,7 @@ function PurchaseEntryForm({
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   maxLength={2000} ref={codeRef} aria-label="Código"
+                  data-shortcut-search="true"
                   autoComplete="off"
                   value={entry.code}
                   onFocus={() => { setProductMenuOpen(true); setProductHighlight(0); setProductSelected(false); }}
@@ -539,12 +579,23 @@ function PurchaseEntryForm({
                     quantity: e.target.value,
                   })
                 }
-                onKeyDown={(e) => e.key === "Enter" && addLine()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (!String(entry.cost).trim()) {
+                      costRef.current?.focus();
+                      costRef.current?.select();
+                    } else {
+                      addLine();
+                    }
+                  }
+                }}
                 className={cn(inputClass, "tabular-nums")}
               />
             </Field>
             <Field label="Costo unit.">
               <Input
+                ref={costRef}
                 type="number"
                 inputMode="decimal" step="0.0001" min="0" aria-label="Costo unitario"
                 aria-invalid={Boolean(entryError)}

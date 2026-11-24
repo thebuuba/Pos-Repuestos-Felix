@@ -1,21 +1,35 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
 import { AppSidebar, SidebarNav } from "../components/pos/app-sidebar.jsx";
 import { TopBar } from "../components/pos/top-bar.jsx";
+import { ShortcutsDialog } from "../components/pos/shortcuts-dialog.jsx";
 import { useEffect, useRef, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { LayoutGrid } from "lucide-react";
 import { NAV_GROUPS } from "../data/navigation.js";
 import { usePosStore } from "../data/pos-context.jsx";
+import {
+  MODULE_SHORTCUTS,
+  clickFirstSelector,
+  dispatchShortcut,
+  focusFirstSelector,
+  hasOpenModal,
+  isPlainAlt,
+  isPrimaryMod,
+  submitActiveDialog,
+} from "../data/keyboard-shortcuts.js";
 const quickLinks = ["/ventas", "/inventario", "/caja"].map(path =>
   NAV_GROUPS[0].items.find(item => item.path === path),
 );
 const isQuickActive = (item, pathname) => pathname === item.path || pathname.startsWith(item.path + "/");
 function PosLayout({ children }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const menuTrigger = useRef(null);
   const menuPanel = useRef(null);
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const { runtime } = usePosStore();
+  const isOwner = !runtime || runtime.isOwner !== false;
   const reload = runtime?.reload;
   const previousPath = useRef(pathname);
   useEffect(() => {
@@ -24,6 +38,92 @@ function PosLayout({ children }) {
     setMenuOpen(false);
     reload?.({ background: true }).catch(() => {});
   }, [pathname, reload]);
+  // Atajos globales de escritorio (solo en modo operativo; nunca interfieren con AltGr ni lector USB).
+  useEffect(() => {
+    if (!runtime) return undefined;
+    const onKeyDown = (event) => {
+      if (event.defaultPrevented || event.isComposing) return;
+      if (isPrimaryMod(event) && event.key === "Enter") {
+        if (hasOpenModal()) {
+          event.preventDefault();
+          if (!event.repeat) submitActiveDialog();
+        }
+        return;
+      }
+      if (isPlainAlt(event) && event.code === "KeyH") {
+        if (shortcutsOpen) {
+          event.preventDefault();
+          setShortcutsOpen(false);
+          return;
+        }
+        if (!hasOpenModal() && !menuOpen) {
+          event.preventDefault();
+          setShortcutsOpen(true);
+        }
+        return;
+      }
+      if (menuOpen || hasOpenModal()) return;
+      if (event.key === "F1" && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey) {
+        event.preventDefault();
+        if (event.repeat) return;
+        if (pathname === "/ventas") {
+          if (!dispatchShortcut("focus-search")) {
+            focusFirstSelector("[data-shortcut-search]", { select: true });
+          }
+        } else {
+          navigate("/ventas");
+        }
+        return;
+      }
+      if (event.key === "F2" && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey) {
+        event.preventDefault();
+        if (event.repeat) return;
+        if (!dispatchShortcut("focus-search")) {
+          focusFirstSelector("[data-shortcut-search]", { select: true });
+        }
+        return;
+      }
+      if (isPlainAlt(event)) {
+        const mod = MODULE_SHORTCUTS.find((item) => item.digit === event.code);
+        if (mod) {
+          event.preventDefault();
+          if (event.repeat) return;
+          if (!mod.ownerOnly || isOwner) {
+            if (pathname === mod.path) {
+              if (!dispatchShortcut("focus-search")) {
+                focusFirstSelector("[data-shortcut-search]", { select: true });
+              }
+            } else {
+              navigate(mod.path);
+            }
+          }
+          return;
+        }
+        if (event.code === "KeyN") {
+          event.preventDefault();
+          if (event.repeat) return;
+          if (!dispatchShortcut("primary-new")) {
+            clickFirstSelector("[data-shortcut-new]");
+          }
+          return;
+        }
+        if (event.key === "ArrowLeft") {
+          if (dispatchShortcut("page-prev") || clickFirstSelector("[data-shortcut-prev]")) {
+            event.preventDefault();
+          }
+          return;
+        }
+        if (event.key === "ArrowRight") {
+          if (dispatchShortcut("page-next") || clickFirstSelector("[data-shortcut-next]")) {
+            event.preventDefault();
+          }
+          return;
+        }
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [runtime, isOwner, pathname, navigate, menuOpen, shortcutsOpen]);
   // «Más» is a full page between the top bar and the bottom navigation, below lg only.
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -93,6 +193,14 @@ function PosLayout({ children }) {
           <span>Más</span>
         </button>
       </nav>
+      {runtime && (
+        <ShortcutsDialog
+          open={shortcutsOpen}
+          onOpenChange={setShortcutsOpen}
+          isOwner={isOwner}
+          pathname={pathname}
+        />
+      )}
     </div>
   );
 }

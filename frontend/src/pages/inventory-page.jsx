@@ -77,6 +77,7 @@ function InventoryPage() {
               </Button>
               <Button
                 ref={newProductButtonRef}
+                data-shortcut-new="true"
                 className="h-10 rounded-full px-5 shadow-md shadow-primary/20"
                 onClick={() => openProduct()}
               >

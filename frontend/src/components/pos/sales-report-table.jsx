@@ -60,6 +60,7 @@ function SalesReportTable({ sales, allSales, onVoid, onReprint, operational = fa
         <div className="relative w-full sm:w-72">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
+            data-shortcut-search="true"
             value={query}
             aria-label="Buscar facturas"
             onChange={(e) => { setQuery(e.target.value); setLimit(15); }}

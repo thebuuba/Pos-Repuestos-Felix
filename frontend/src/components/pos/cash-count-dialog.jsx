@@ -119,7 +119,7 @@ function CashCountDialog({ open, onOpenChange, expected, onConfirm, disabled = f
           >
             {"Limpiar conteo"}
           </Button>
-          <Button disabled={disabled || !valid} className="rounded-xl" onClick={() => onConfirm(counted)}>
+          <Button data-shortcut-submit="true" disabled={disabled || !valid} className="rounded-xl" onClick={() => onConfirm(counted)}>
             {"Cerrar caja con "}
             {formatMoney(counted)}
           </Button>

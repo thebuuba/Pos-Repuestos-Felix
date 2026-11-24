@@ -20,6 +20,12 @@ import { QuickProductsGrid } from "../components/pos/quick-products-grid.jsx";
 import { CartTable } from "../components/pos/cart-table.jsx";
 import { OrderSummaryPanel } from "../components/pos/order-summary-panel.jsx";
 import { ReceiptDialog } from "../components/pos/receipt-dialog.jsx";
+import {
+  focusFirstSelector,
+  hasOpenModal,
+  isPlainAlt,
+  isTouchMobile,
+} from "../data/keyboard-shortcuts.js";
 import { Fragment } from "react";
 import { useCallback } from "react";
 import { useEffect } from "react";
@@ -394,6 +400,14 @@ export function OperationalPointOfSalePage() {
       : `La secuencia NCF ${comprobante} está agotada. Actualízala en Configuración.`)
     : null;
   const nextNcfPreview = activeNcf ? `${activeNcf.prefix}${String(activeNcf.current + 1).padStart(8, "0")}` : null;
+  const wasOverlayOpenRef = useRef(false);
+  const anyOverlayOpen = Boolean(receipt || heldOpen || historyOpen || reprintSale);
+  useEffect(() => {
+    if (wasOverlayOpenRef.current && !anyOverlayOpen && !locked && !isTouchMobile()) {
+      window.requestAnimationFrame(() => focusFirstSelector("[data-sale-search]"));
+    }
+    wasOverlayOpenRef.current = anyOverlayOpen;
+  }, [anyOverlayOpen, locked]);
   const checkoutRef = useRef(null);
   checkoutRef.current = () => {
     if (failure?.retry) {
@@ -402,9 +416,40 @@ export function OperationalPointOfSalePage() {
     }
     if (!ncfWarning) checkout();
   };
+  const shortcutStateRef = useRef(null);
+  shortcutStateRef.current = {
+    locked,
+    sending,
+    lines,
+    totals,
+    priceLevel,
+    setPriceLevel,
+    condition,
+    setCondition,
+    paymentMethod,
+    setPaymentMethod,
+    comprobante,
+    setComprobante,
+    setReceived,
+    setHeldOpen,
+    openQuote,
+    resetSale,
+  };
   useEffect(() => {
+    const LEVEL_ORDER = ["p1", "p2", "p3"];
+    const LEVEL_NAMES = { p1: "Precio 1 · Detalle", p2: "Precio 2 · Mayor", p3: "Precio 3 · Taller" };
+    const METHOD_ORDER = ["efectivo", "tarjeta", "transferencia"];
+    const METHOD_NAMES = { efectivo: "Efectivo", tarjeta: "Tarjeta", transferencia: "Transferencia" };
+    const COMP_ORDER = ["B02", "B01", "B14"];
+    const COMP_NAMES = { B02: "B02 · Consumo final", B01: "B01 · Crédito fiscal", B14: "B14 · Regímenes especiales" };
+
     const onKey = (event) => {
-      if (event.key === "F9") {
+      if (event.defaultPrevented || event.isComposing) return;
+      if (hasOpenModal()) return;
+      const st = shortcutStateRef.current;
+      const noMods = !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey;
+
+      if (event.key === "F9" && noMods) {
         event.preventDefault();
         if (event.repeat) return;
         const active = document.activeElement;
@@ -414,10 +459,129 @@ export function OperationalPointOfSalePage() {
           return;
         }
         checkoutRef.current();
+        return;
+      }
+      if (st.locked) return;
+
+      if (event.key === "F3" && noMods) {
+        event.preventDefault();
+        if (event.repeat) return;
+        if (!focusFirstSelector(".sale-cart-qty-input", { select: true })) {
+          focusFirstSelector("[data-sale-search-qty]", { select: true });
+        }
+        return;
+      }
+      if (event.key === "F4" && noMods) {
+        event.preventDefault();
+        if (event.repeat) return;
+        const next = LEVEL_ORDER[(LEVEL_ORDER.indexOf(st.priceLevel) + 1) % LEVEL_ORDER.length];
+        st.setPriceLevel(next);
+        ue(LEVEL_NAMES[next]);
+        return;
+      }
+      if (event.key === "F6" && noMods) {
+        event.preventDefault();
+        if (event.repeat) return;
+        st.setHeldOpen(true);
+        return;
+      }
+      if (event.key === "F7" && noMods) {
+        event.preventDefault();
+        if (event.repeat) return;
+        if (st.condition !== "contado") {
+          st.setCondition("contado");
+          st.setPaymentMethod("efectivo");
+          ue("Pago: Contado · Efectivo");
+          return;
+        }
+        const next = METHOD_ORDER[(METHOD_ORDER.indexOf(st.paymentMethod) + 1) % METHOD_ORDER.length];
+        st.setPaymentMethod(next);
+        ue(`Método de pago: ${METHOD_NAMES[next]}`);
+        return;
+      }
+      if (event.key === "F8" && noMods) {
+        event.preventDefault();
+        if (event.repeat) return;
+        if (st.condition !== "contado") st.setCondition("contado");
+        if (st.paymentMethod !== "efectivo") st.setPaymentMethod("efectivo");
+        const active = document.activeElement;
+        if (active instanceof HTMLElement && active.hasAttribute("data-sale-received")) {
+          if (st.totals.total > 0) {
+            st.setReceived(String(st.totals.total));
+            window.requestAnimationFrame(() => focusFirstSelector("[data-sale-received]", { select: true }));
+          }
+          return;
+        }
+        window.requestAnimationFrame(() => focusFirstSelector("[data-sale-received]", { select: true }));
+        return;
+      }
+      if (event.key === "F10" && noMods) {
+        event.preventDefault();
+        if (event.repeat) return;
+        if (st.lines.length > 0) st.openQuote();
+        return;
+      }
+      if (isPlainAlt(event)) {
+        if (event.code === "KeyE") {
+          event.preventDefault();
+          if (event.repeat || st.totals.total <= 0) return;
+          if (st.condition !== "contado") st.setCondition("contado");
+          if (st.paymentMethod !== "efectivo") st.setPaymentMethod("efectivo");
+          st.setReceived(String(st.totals.total));
+          window.requestAnimationFrame(() => focusFirstSelector("[data-sale-received]", { select: true }));
+          return;
+        }
+        if (event.code === "KeyC") {
+          event.preventDefault();
+          if (event.repeat) return;
+          const trigger = document.querySelector("[data-sale-customer]");
+          if (trigger instanceof HTMLElement) {
+            trigger.focus();
+            trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+          }
+          return;
+        }
+        if (event.code === "KeyB") {
+          event.preventDefault();
+          if (event.repeat) return;
+          const next = COMP_ORDER[(COMP_ORDER.indexOf(st.comprobante) + 1) % COMP_ORDER.length];
+          st.setComprobante(next);
+          ue(`Comprobante: ${COMP_NAMES[next]}`);
+          return;
+        }
+        if (event.code === "KeyK") {
+          event.preventDefault();
+          if (event.repeat) return;
+          const next = st.condition === "contado" ? "credito" : "contado";
+          st.setCondition(next);
+          ue(`Condición: ${next === "contado" ? "Contado" : "Crédito"}`);
+          return;
+        }
+        if (event.code === "KeyD") {
+          event.preventDefault();
+          if (event.repeat) return;
+          focusFirstSelector("[data-sale-discount]", { select: true });
+          return;
+        }
+      }
+    };
+    const onShortcut = (event) => {
+      if (event.detail?.action === "primary-new") {
+        const st = shortcutStateRef.current;
+        if (st.locked || st.sending) return;
+        event.preventDefault();
+        st.resetSale();
+        if (!isTouchMobile()) {
+          window.requestAnimationFrame(() => focusFirstSelector("[data-sale-search]"));
+        }
       }
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("felix:shortcut", onShortcut);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("felix:shortcut", onShortcut);
+    };
   }, []);
 
   return (

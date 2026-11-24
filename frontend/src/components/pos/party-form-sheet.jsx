@@ -110,6 +110,7 @@ function PartyFormSheet({
             {"Cancelar"}
           </Button>
           <Button
+            data-shortcut-submit="true"
             className="h-11 flex-1 rounded-xl font-semibold"
             disabled={sending}
             onClick={async () => {

@@ -8,12 +8,13 @@ import { Minus } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import { Plus } from "lucide-react";
 import { formatMoney, formatUnitMoney } from "../../lib/format.js";
+import { focusFirstSelector, isTouchMobile } from "../../data/keyboard-shortcuts.js";
 var LEVEL_LABEL = {
   p1: "P1",
   p2: "P2",
   p3: "P3",
 };
-function CartQuantityInput({ value, label, overStock, onCommit }) {
+function CartQuantityInput({ value, label, overStock, onCommit, onRemoveLine }) {
   const [draft, setDraft] = useState(String(value));
   const [editing, setEditing] = useState(false);
   const cancelledRef = useRef(false);
@@ -71,12 +72,40 @@ function CartQuantityInput({ value, label, overStock, onCommit }) {
         if (e.key === "Enter") {
           e.preventDefault();
           e.currentTarget.blur();
+          if (!isTouchMobile()) focusFirstSelector("[data-sale-search]");
         } else if (e.key === "Escape") {
           e.preventDefault();
           cancelledRef.current = true;
           setEditing(false);
           setDraft(String(value));
           e.currentTarget.blur();
+          if (!isTouchMobile()) focusFirstSelector("[data-sale-search]");
+        } else if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !e.altKey && !e.ctrlKey && !e.metaKey) {
+          const all = Array.from(document.querySelectorAll(".sale-cart-qty-input"));
+          const idx = all.indexOf(e.currentTarget);
+          if (idx !== -1 && all.length > 1) {
+            const nextIdx = Math.max(0, Math.min(all.length - 1, idx + (e.key === "ArrowDown" ? 1 : -1)));
+            if (nextIdx !== idx) {
+              e.preventDefault();
+              all[nextIdx].focus();
+            }
+          }
+        } else if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === "Backspace" || e.key === "Delete") && onRemoveLine) {
+          e.preventDefault();
+          cancelledRef.current = true;
+          const all = Array.from(document.querySelectorAll(".sale-cart-qty-input"));
+          const idx = all.indexOf(e.currentTarget);
+          onRemoveLine();
+          if (!isTouchMobile()) {
+            window.setTimeout(() => {
+              const remaining = Array.from(document.querySelectorAll(".sale-cart-qty-input"));
+              if (remaining.length > 0) {
+                remaining[Math.min(idx, remaining.length - 1)]?.focus();
+              } else {
+                focusFirstSelector("[data-sale-search]");
+              }
+            }, 0);
+          }
         }
       }}
       className={cn(
@@ -190,6 +219,7 @@ function CartTable({ operational = false, lines, onQuantityChange, onRemove, onC
                             label={`Cantidad de ${line.product.name}`}
                             overStock={overStock}
                             onCommit={(nextQty) => onQuantityChange(line.key, nextQty)}
+                            onRemoveLine={() => onRemove(line.key)}
                           />
                         ) : (
                           <span

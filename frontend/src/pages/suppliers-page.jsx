@@ -114,6 +114,7 @@ function SuppliersPage() {
         description="Cada suplidor tiene su propia fórmula de precios y condiciones de crédito."
         actions={
           <Button
+            data-shortcut-new="true"
             className="h-10 rounded-full px-5 shadow-md shadow-primary/20"
             onClick={() => {
               setEditing(null);
@@ -148,6 +149,7 @@ function SuppliersPage() {
       <div className="relative max-w-md">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
+          data-shortcut-search="true"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Buscar por nombre, RNC, contacto o teléfono…"

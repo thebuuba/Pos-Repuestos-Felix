@@ -3,7 +3,7 @@ import { TooltipProvider } from "../ui/tooltip.jsx";
 import { Button } from "../ui/button.jsx";
 import { Link, useNavigate } from "react-router-dom";
 import { BrandLogo } from "./brand-logo.jsx";
-import { Search, RefreshCw, Download, Sun, Moon, Bell, Box, Users, Truck, ReceiptText, AlertTriangle } from "lucide-react";
+import { Search, RefreshCw, Download, Sun, Moon, Bell, Box, Users, Truck, ReceiptText, AlertTriangle, CornerDownLeft } from "lucide-react";
 import { Input } from "../ui/input.jsx";
 import { cn } from "../../lib/utils.js";
 import { Tooltip, TooltipTrigger, TooltipContent } from "../ui/tooltip.jsx";
@@ -17,6 +17,7 @@ import { SalesScanner } from './sales-scanner.jsx';
 import { formatMoney } from "../../lib/format.js";
 import { businessTodayIso } from "../../lib/dates.js";
 import { searchTopProducts } from "../../data/product-search.js";
+import { EXTRA_MODULES, MODULE_SHORTCUTS } from "../../data/keyboard-shortcuts.js";
 
 var dateFormatter = new Intl.DateTimeFormat("es-DO", {
   timeZone: "America/Santo_Domingo",
@@ -57,9 +58,11 @@ function TopBar({ onBrandClick } = {}) {
   const [searchQuery, setSearchQuery] = useState("");
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [highlight, setHighlight] = useState(0);
   const [notifOpen, setNotifOpen] = useState(false);
   const searchRef = useRef(null);
   const searchBoxRef = useRef(null);
+  const optionRefs = useRef([]);
   const syncing = runtime ? runtime.busy : demoSyncing;
   const connected = !runtime || runtime.connection === "connected";
   const desktop = !!window.__FELIX_DESKTOP__;
@@ -76,9 +79,13 @@ function TopBar({ onBrandClick } = {}) {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
         searchRef.current?.focus();
+        searchRef.current?.select();
+        setHighlight(0);
         setSearchOpen(true);
       } else if (event.key === 'Escape' && searchOpen) {
+        event.preventDefault();
         setSearchOpen(false);
+        searchRef.current?.blur();
       }
     };
     const onClickOutside = (event) => {
@@ -126,12 +133,29 @@ function TopBar({ onBrandClick } = {}) {
         }
       }
     }
+    const navMods = [...MODULE_SHORTCUTS, ...EXTRA_MODULES];
+    let modCount = 0;
+    for (const mod of navMods) {
+      if (mod.ownerOnly && !isOwner) continue;
+      const hay = `${mod.label} ${mod.keywords || ""} ${mod.shortcut || ""}`.toLowerCase();
+      if (hay.includes(q)) {
+        items.push({ kind: "Módulo", icon: CornerDownLeft, title: mod.label, subtitle: mod.shortcut ? `Atajo ${mod.shortcut}` : "Ir a esta pantalla", to: mod.path });
+        if (++modCount >= 4) break;
+      }
+    }
     return items;
   };
   const searchResults = useMemo(
     () => buildSearchResults(deferredSearchQuery),
     [deferredSearchQuery, products, customers, suppliers, sales, isOwner],
   );
+  useEffect(() => {
+    setHighlight((h) => (searchResults.length === 0 ? 0 : Math.min(h, searchResults.length - 1)));
+  }, [searchResults.length]);
+  useEffect(() => {
+    if (!searchOpen) return;
+    optionRefs.current[highlight]?.scrollIntoView?.({ block: "nearest" });
+  }, [highlight, searchOpen]);
 
   const stockAlerts = useMemo(() => {
     const outNames = [];
@@ -211,21 +235,42 @@ function TopBar({ onBrandClick } = {}) {
           <Input
             ref={searchRef}
             value={searchQuery}
-            onChange={(e) => { setSearchQuery(e.target.value); setSearchOpen(true); }}
+            onChange={(e) => { setSearchQuery(e.target.value); setHighlight(0); setSearchOpen(true); }}
             onFocus={() => setSearchOpen(true)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                const immediate = searchQuery === deferredSearchQuery ? searchResults : buildSearchResults(searchQuery);
-                if (immediate[0]) {
+              const immediate = searchQuery === deferredSearchQuery ? searchResults : buildSearchResults(searchQuery);
+              if (e.key === 'ArrowDown') {
+                if (immediate.length > 0) {
                   e.preventDefault();
-                  navigate(immediate[0].to);
+                  setSearchOpen(true);
+                  setHighlight((h) => (h + 1) % immediate.length);
+                }
+              } else if (e.key === 'ArrowUp') {
+                if (immediate.length > 0) {
+                  e.preventDefault();
+                  setSearchOpen(true);
+                  setHighlight((h) => (h - 1 + immediate.length) % immediate.length);
+                }
+              } else if (e.key === 'Home' && searchOpen && immediate.length > 0) {
+                e.preventDefault();
+                setHighlight(0);
+              } else if (e.key === 'End' && searchOpen && immediate.length > 0) {
+                e.preventDefault();
+                setHighlight(immediate.length - 1);
+              } else if (e.key === 'Enter') {
+                const chosen = immediate[highlight] ?? immediate[0];
+                if (chosen) {
+                  e.preventDefault();
+                  navigate(chosen.to);
                   setSearchQuery("");
+                  setHighlight(0);
                   setSearchOpen(false);
+                  searchRef.current?.blur();
                 }
               }
             }}
             aria-label="Buscar en el sistema"
-            placeholder="Buscar producto, cliente o factura…"
+            placeholder="Buscar producto, cliente, factura o módulo…"
             className="h-10 rounded-xl border-transparent bg-muted pl-9 pr-14 shadow-none focus-visible:bg-card"
           />
           <kbd className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md border border-border bg-card px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
@@ -238,13 +283,20 @@ function TopBar({ onBrandClick } = {}) {
               ) : (
                 searchResults.map((item, idx) => {
                   const Icon = item.icon;
+                  const active = idx === highlight;
                   return (
                     <button
                       type="button"
                       role="option"
+                      aria-selected={active}
+                      ref={(el) => { optionRefs.current[idx] = el; }}
                       key={item.kind + idx + item.title}
-                      onClick={() => { navigate(item.to); setSearchQuery(""); setSearchOpen(false); }}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-muted"
+                      onMouseEnter={() => setHighlight(idx)}
+                      onClick={() => { navigate(item.to); setSearchQuery(""); setHighlight(0); setSearchOpen(false); }}
+                      className={cn(
+                        "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors",
+                        active ? "bg-muted text-foreground" : "hover:bg-muted",
+                      )}
                     >
                       <Icon className="h-4 w-4 shrink-0 text-primary" />
                       <span className="min-w-0 flex-1">
