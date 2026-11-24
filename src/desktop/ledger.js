@@ -5,6 +5,8 @@ import { randomUUID } from 'node:crypto';
 import { tables, backupLayout } from '../pos/relational-backup.js';
 
 const booleans = new Set(['activo', 'gravado', 'es_contado', 'notificar_minimo', 'permitir_stock_negativo', 'activa']);
+// Append-only ledger tables whose monotonic ID order defines running balances (no external FK references them).
+const orderedLedgerTables = new Set(['movimientos_inventario']);
 const columnDefaults = {
   turnos_caja: { version: '1' },
   configuracion: {
@@ -188,10 +190,21 @@ export class DesktopLedger {
     return Math.max(Number(this.database.prepare(`SELECT max(CAST(id AS INTEGER)) AS n FROM local_${table}`).get().n || 0),
       Number(this.database.prepare('SELECT max(local_id) AS n FROM identities WHERE table_name=?').get(table).n || 0));
   }
-  importRemote(backup) {
+  planRemoteImport(backup, { resetAll = false } = {}) {
     backupLayout(backup);
     const localIds = new Map();
+    const bindings = [];
+    const resetIdentityTables = [];
     for (const [table, rows] of Object.entries(backup.tables)) {
+      if (resetAll || orderedLedgerTables.has(table)) {
+        if (!resetAll) resetIdentityTables.push(table);
+        for (const row of rows) {
+          const id = Number(row.id);
+          localIds.set(table + ':' + row.id, String(id));
+          bindings.push([table, id, id]);
+        }
+        continue;
+      }
       const existing = new Map(this.database.prepare('SELECT local_id,remote_id FROM identities WHERE table_name=?').all(table).map(row => [String(row.remote_id), row.local_id]));
       const occupied = new Set(this.database.prepare('SELECT local_id FROM identities WHERE table_name=?').all(table).map(row => row.local_id));
       let next = this.maxId(table);
@@ -199,7 +212,8 @@ export class DesktopLedger {
         let local = existing.get(String(row.id));
         if (local === undefined) {
           local = occupied.has(Number(row.id)) ? ++next : Number(row.id);
-          next = Math.max(next, local); occupied.add(local); this.bind(table, local, row.id);
+          next = Math.max(next, local); occupied.add(local);
+          bindings.push([table, local, Number(row.id)]);
         }
         localIds.set(table + ':' + row.id, String(local));
       }
@@ -215,8 +229,56 @@ export class DesktopLedger {
       }
       return result;
     });
-    this.projection(translated);
-    return translated;
+    return { translated, bindings, resetIdentityTables };
+  }
+  applyRemoteImport(plan) {
+    for (const table of plan.resetIdentityTables) {
+      this.database.prepare('DELETE FROM identities WHERE table_name=?').run(table);
+    }
+    for (const [table, local, remote] of plan.bindings) {
+      this.bind(table, local, remote);
+    }
+    this.projection(plan.translated);
+    return plan.translated;
+  }
+  importRemote(backup) {
+    return this.applyRemoteImport(this.planRemoteImport(backup));
+  }
+  repairInventoryMovementOrder() {
+    if (this.pending().length || this.get('reconciliation')) return false;
+    const mappings = this.database.prepare("SELECT local_id,remote_id FROM identities WHERE table_name='movimientos_inventario'").all();
+    if (!mappings.some(row => Number(row.local_id) !== Number(row.remote_id))) return false;
+    const byLocal = new Map(mappings.map(row => [String(row.local_id), Number(row.remote_id)]));
+    const current = this.database.prepare('SELECT * FROM local_movimientos_inventario ORDER BY CAST(id AS INTEGER)').all();
+    if (!current.length || current.some(row => !byLocal.has(String(row.id)))) return false;
+    const columns = tables.movimientos_inventario;
+    const reordered = current
+      .map(row => ({ ...row, id: String(byLocal.get(String(row.id))) }))
+      .sort((a, b) => Number(a.id) - Number(b.id));
+    if (new Set(reordered.map(row => row.id)).size !== reordered.length) return false;
+    this.transaction(() => {
+      this.database.exec('DELETE FROM local_movimientos_inventario');
+      this.database.prepare("DELETE FROM identities WHERE table_name='movimientos_inventario'").run();
+      const insert = this.database.prepare(`INSERT INTO local_movimientos_inventario(${columns}) VALUES(${columns.map(() => '?')})`);
+      for (const row of reordered) {
+        insert.run(...columns.map(column => row[column]));
+        this.bind('movimientos_inventario', Number(row.id), Number(row.id));
+      }
+    });
+    return true;
+  }
+  clearCachedProjection() {
+    if (this.pending().length || this.get('reconciliation')) return false;
+    this.transaction(() => {
+      for (const table of Object.keys(tables).reverse()) {
+        this.database.exec(`DELETE FROM local_${table}`);
+      }
+      this.database.exec('DELETE FROM identities');
+      for (const key of ['databaseId', 'revision', 'remoteRevision', 'bootstrapEtag', 'needsRefresh', 'catalogo']) {
+        this.database.prepare('DELETE FROM metadata WHERE key=?').run(key);
+      }
+    });
+    return true;
   }
   close() { this.database.close(); }
 }

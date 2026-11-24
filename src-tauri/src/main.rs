@@ -308,16 +308,18 @@ fn main() {
                 let (server, url) = start_server(&resources, dir)?;
                 app.manage(server);
                 let origin = url.origin();
-                WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
+                let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
                     .title("Repuestos Félix")
                     .inner_size(1200.0, 850.0)
                     .min_inner_size(760.0, 600.0)
+                    .maximized(true)
                     .prevent_overflow()
                     .resizable(true)
                     .on_navigation(move |next| next.origin() == origin)
                     .on_new_window(|_, _| NewWindowResponse::Deny)
                     .build()
                     .map_err(|err| format!("No se pudo abrir la ventana del POS (WebView2): {err}"))?;
+                let _ = window.maximize();
                 let update_handle = app.handle().clone();
                 std::thread::spawn(move || {
                     std::thread::sleep(Duration::from_secs(4));

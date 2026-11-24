@@ -266,14 +266,17 @@ export function desktopServer(engine, remote, assetsDirectory) {
       if (path === '/api/desktop/export' && request.method === 'GET') return send(200,
         { format: 'repuestos-felix-pendientes', version: 1, exportedAt: new Date().toISOString(), databaseId: ledger.get('databaseId'), operations: ledger.pending().map(row => ({ ...row.record, error: row.error })) },
         { 'Content-Disposition': 'attachment; filename="operaciones-pendientes-felix.json"' });
-      if (path === '/api/state' && request.method === 'GET') return await engine.serial(async () => {
-        const profile = requireAccess();
-        const role = normalizeRole(profile.role);
-        const tag = stateTag({ databaseId: ledger.get('databaseId'), revision: ledger.get('revision'), databaseLabel: 'Este equipo · almacenamiento local', role });
-        if (engine.pool && matchesStateTag(request.headers['if-none-match'], tag)) return send(304, undefined, { ETag: tag });
-        const compact = request.headers['x-felix-compact'] === '1';
-        return send(200, redactSnapshotForRole(await engine.snapshot({ compact }), role), { ETag: tag });
-      });
+      if (path === '/api/state' && request.method === 'GET') {
+        if (!engine.pool && syncing) await syncing.catch(() => {});
+        return await engine.serial(async () => {
+          const profile = requireAccess();
+          const role = normalizeRole(profile.role);
+          const tag = stateTag({ databaseId: ledger.get('databaseId'), revision: ledger.get('revision'), databaseLabel: 'Este equipo · almacenamiento local', role });
+          if (engine.pool && matchesStateTag(request.headers['if-none-match'], tag)) return send(304, undefined, { ETag: tag });
+          const compact = request.headers['x-felix-compact'] === '1';
+          return send(200, redactSnapshotForRole(await engine.snapshot({ compact }), role), { ETag: tag });
+        });
+      }
       if (path === '/api/backup' && request.method === 'GET') {
         const profile = requireAccess();
         if (!allowedOperation(normalizeRole(profile.role), 'GET', '/api/backup')) throw error('Tu cuenta de cajero no tiene permiso para esta operación.', 403);

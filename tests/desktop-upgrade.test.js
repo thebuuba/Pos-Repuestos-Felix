@@ -277,3 +277,105 @@ test('diagnóstico útil cuando falla el arranque de escritorio (puerto inválid
   const lockLog = await readFile(join(lockedDir, 'startup-error.log'), 'utf8');
   assert.match(lockLog, /Etapa: lock/);
 });
+
+test('ventas concurrentes entre web/otra PC y Windows no invierten movimientos_inventario y auto-reparan pos.sqlite dañado sin borrar pendientes', { timeout: 120000 }, async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'felix-concurrent-mov-'));
+  const assetsDir = await mkdtemp(join(tmpdir(), 'felix-concurrent-assets-'));
+  const database = await temporaryPostgres();
+  const cloud = new pg.Pool({ connectionString: database.connectionString });
+  let app, app2, app3;
+  t.after(async () => {
+    await app3?.stop();
+    await app2?.stop();
+    await app?.stop();
+    await cloud.end();
+    await database.stop();
+    await rm(dir, { recursive: true, force: true });
+    await rm(assetsDir, { recursive: true, force: true });
+  });
+
+  await writeFile(join(assetsDir, 'index.html'), '<!doctype html><title>POS</title>');
+  await migrateDatabase(cloud);
+  const actor = { id: randomUUID(), name: 'Cajero Mostrador' };
+  const remote = (path, options) => path === '/api/sync/bootstrap'
+    ? readSyncBootstrap(cloud, 'Nube')
+    : writeSyncOperation(cloud, options.body, 'Nube', actor);
+
+  const initial = await readSnapshot(cloud, 'Nube');
+  const dbId = initial.databaseId;
+  const prod = await writeOperation(cloud, 'POST', '/api/productos', {
+    databaseId: dbId, codigo: 'BUJ-CONC', nombre: 'Bujía Concurrente',
+    costo: '50', precio1: '100', precio2: '90', precio3: '80', stock: '10',
+  }, randomUUID(), 'Nube', actor);
+  const turn = await writeOperation(cloud, 'POST', '/api/caja/abrir', { databaseId: dbId, monto: '500' }, randomUUID(), 'Nube', actor);
+  const snap0 = await readSnapshot(cloud, 'Nube');
+  const contado = snap0.state.clientes.find(c => c.esContado);
+  const prod0 = snap0.state.productos.find(p => p.id === prod.result.id);
+
+  // 1. Windows PC downloads initial state (stock = 10, movimiento id = 1).
+  app = await startDesktop({ directory: dir, assetsDirectory: assetsDir });
+  await app.engine.adopt(await remote('/api/sync/bootstrap'));
+
+  // 2. While Windows is offline, Web/another PC sells 2 units of the SAME product (remote movimiento id = 2, stock = 8).
+  await writeOperation(cloud, 'POST', '/api/ventas', {
+    databaseId: dbId, cajaId: turn.result.id, clienteId: contado.id, versionCliente: contado.version,
+    versionConfiguracion: snap0.state.configuracionVersion, condicion: 'Contado', tipoComprobante: 'B02', metodoPago: 'efectivo',
+    items: [{ productoId: prod0.id, cantidad: '2', nivelPrecio: 'precio1', versionProducto: prod0.version }],
+  }, randomUUID(), 'Nube', actor);
+
+  // 3. Windows PC sells 3 units of the SAME product locally (local movimiento id = 2, stock = 7).
+  const localSnap = await app.engine.snapshot();
+  const localProd = localSnap.state.productos.find(p => p.codigo === 'BUJ-CONC');
+  const localContado = localSnap.state.clientes.find(c => c.esContado);
+  await app.engine.write('POST', '/api/ventas', {
+    databaseId: dbId, cajaId: localSnap.state.caja.session.id, clienteId: localContado.id, versionCliente: localContado.version,
+    versionConfiguracion: localSnap.state.configuracionVersion, condicion: 'Contado', tipoComprobante: 'B02', metodoPago: 'efectivo',
+    items: [{ productoId: localProd.id, cantidad: '3', nivelPrecio: 'precio1', versionProducto: localProd.version }],
+  }, randomUUID(), actor);
+
+  // 4. Windows syncs: Supabase assigns remote movimiento id = 3 (stock = 5).
+  // Previously importRemote swapped local 2 <-> 3, breaking rebuild() permanently!
+  const status = await app.engine.synchronize(remote, actor);
+  assert.equal(status.pending, 0, JSON.stringify(status));
+  assert.equal(status.connection, 'online', JSON.stringify(status));
+  assert.equal((await app.engine.snapshot()).state.productos.find(p => p.codigo === 'BUJ-CONC').stock, 5);
+  await app.stop();
+  app = null;
+
+  // 5. Reopening Windows cleanly loads pos.sqlite with zero consistency errors!
+  app2 = await startDesktop({ directory: dir, assetsDirectory: assetsDir });
+  assert.equal((await app2.engine.snapshot()).state.productos.find(p => p.codigo === 'BUJ-CONC').stock, 5);
+  await app2.stop();
+  app2 = null;
+
+  // 6. Simulate an ALREADY-BROKEN pos.sqlite from v1.2.3/v1.2.4 where movimientos_inventario 2 and 3 were swapped in SQLite!
+  const db = new DatabaseSync(join(dir, 'pos.sqlite'));
+  db.exec('BEGIN IMMEDIATE');
+  const m2 = db.prepare("SELECT * FROM local_movimientos_inventario WHERE id='2'").get();
+  const m3 = db.prepare("SELECT * FROM local_movimientos_inventario WHERE id='3'").get();
+  assert.ok(m2 && m3);
+  db.exec("DELETE FROM local_movimientos_inventario WHERE id IN ('2','3')");
+  const cols = Object.keys(m2);
+  const ins = db.prepare(`INSERT INTO local_movimientos_inventario(${cols.join(',')}) VALUES(${cols.map(() => '?').join(',')})`);
+  ins.run(...cols.map(c => c === 'id' ? '2' : m3[c]));
+  ins.run(...cols.map(c => c === 'id' ? '3' : m2[c]));
+  db.exec("DELETE FROM identities WHERE table_name='movimientos_inventario' AND local_id IN (2,3)");
+  db.prepare("INSERT INTO identities VALUES('movimientos_inventario',2,3),('movimientos_inventario',3,2)").run();
+  db.close();
+
+  // Reopening MUST auto-repair the swapped IDs losslessly (even completely offline!)
+  app3 = await startDesktop({ directory: dir, assetsDirectory: assetsDir });
+  assert.equal((await app3.engine.snapshot()).state.productos.find(p => p.codigo === 'BUJ-CONC').stock, 5);
+
+  // 7. Safety guard: if there IS a pending offline operation, clearCachedProjection() must refuse to clear.
+  const snap3 = await app3.engine.snapshot();
+  const prod3 = snap3.state.productos.find(p => p.codigo === 'BUJ-CONC');
+  const cont3 = snap3.state.clientes.find(c => c.esContado);
+  await app3.engine.write('POST', '/api/ventas', {
+    databaseId: dbId, cajaId: snap3.state.caja.session.id, clienteId: cont3.id, versionCliente: cont3.version,
+    versionConfiguracion: snap3.state.configuracionVersion, condicion: 'Contado', tipoComprobante: 'B02', metodoPago: 'efectivo',
+    items: [{ productoId: prod3.id, cantidad: '1', nivelPrecio: 'precio1', versionProducto: prod3.version }],
+  }, randomUUID(), actor);
+  assert.equal(app3.engine.ledger.clearCachedProjection(), false, 'Nunca limpia la proyección si hay pendientes');
+  assert.equal(app3.engine.status().pending, 1);
+});

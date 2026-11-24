@@ -81,7 +81,24 @@ export async function startDesktop({ directory, assetsDirectory, remoteOptions }
     const ledger = new DesktopLedger(directory);
     engine = new DesktopEngine(ledger);
     stage = 'rebuild';
-    await engine.rebuild();
+    try {
+      await engine.rebuild();
+    } catch (rebuildError) {
+      let recovered = false;
+      // Lossless repair for previously inverted movimientos_inventario IDs from prior versions.
+      if (ledger.repairInventoryMovementOrder()) {
+        try {
+          await engine.rebuild();
+          recovered = true;
+        } catch { /* fall through to safe cache reset when pending === 0 */ }
+      }
+      if (!recovered && ledger.clearCachedProjection()) {
+        // Safe only when pending === 0 and no reconciliation is open: drop corrupt cache and re-sync on launch.
+        engine.lastError = 'Se restableció la caché local dañada; conectando para descargar datos actualizados.';
+        recovered = true;
+      }
+      if (!recovered) throw rebuildError;
+    }
     stage = 'server';
     const remote = new RemoteClient(ledger, remoteOptions);
     server = desktopServer(engine, remote, assetsDirectory);
