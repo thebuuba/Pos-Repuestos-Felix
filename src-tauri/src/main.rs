@@ -1,17 +1,18 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::{
+    ffi::OsStr,
     fs,
     io::{BufRead, BufReader, Read, Write},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        mpsc, Mutex,
-    },
+    sync::{mpsc, Mutex},
     time::{Duration, Instant},
 };
+#[cfg(windows)]
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{webview::NewWindowResponse, Manager, RunEvent, Url, WebviewUrl, WebviewWindowBuilder};
+#[cfg(windows)]
 use tauri_plugin_updater::{Update, UpdaterExt};
 
 enum HostCommand {
@@ -19,6 +20,7 @@ enum HostCommand {
     CheckUpdate { manual: bool },
 }
 
+#[cfg(windows)]
 struct UpdateController {
     pending: Mutex<Option<Update>>,
     busy: AtomicBool,
@@ -39,6 +41,7 @@ impl LocalServer {
         }
         false
     }
+    #[cfg(windows)]
     fn replace(&self, next: LocalServer) {
         self.stop();
         if let (Ok(mut dst), Ok(mut src)) = (self.0.lock(), next.0.lock()) {
@@ -105,9 +108,69 @@ fn error_message(line: &str) -> Option<String> {
     (!text.is_empty()).then_some(text)
 }
 
+fn is_posix_absolute(value: &OsStr) -> bool {
+    value
+        .to_str()
+        .map(|s| s.starts_with('/'))
+        .unwrap_or_else(|| Path::new(value).is_absolute())
+}
+
+#[allow(dead_code)]
+fn resolve_linux_data_dir(xdg_data_home: Option<&OsStr>, home: Option<&OsStr>) -> Option<PathBuf> {
+    // Norma XDG Base Directory: ignorar XDG_DATA_HOME vacío o relativo.
+    if let Some(xdg) = xdg_data_home.filter(|v| !v.is_empty() && is_posix_absolute(v)) {
+        return Some(Path::new(xdg).join("RepuestosFelix").join("POS"));
+    }
+    if let Some(home_dir) = home.filter(|v| !v.is_empty() && is_posix_absolute(v)) {
+        return Some(
+            Path::new(home_dir)
+                .join(".local")
+                .join("share")
+                .join("RepuestosFelix")
+                .join("POS"),
+        );
+    }
+    None
+}
+
 fn default_data_dir() -> Option<PathBuf> {
-    std::env::var_os("LOCALAPPDATA")
-        .map(|local| Path::new(&local).join("RepuestosFelix").join("POS"))
+    #[cfg(windows)]
+    {
+        std::env::var_os("LOCALAPPDATA")
+            .map(|local| Path::new(&local).join("RepuestosFelix").join("POS"))
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let xdg = std::env::var_os("XDG_DATA_HOME");
+        let home = std::env::var_os("HOME");
+        resolve_linux_data_dir(xdg.as_deref(), home.as_deref())
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
+    {
+        None
+    }
+}
+
+fn node_binary_name() -> &'static str {
+    #[cfg(windows)]
+    {
+        "node.exe"
+    }
+    #[cfg(not(windows))]
+    {
+        "node"
+    }
+}
+
+fn launcher_origin_label() -> &'static str {
+    #[cfg(windows)]
+    {
+        "lanzador-windows"
+    }
+    #[cfg(not(windows))]
+    {
+        "lanzador-linux"
+    }
 }
 
 fn record_native_startup_error(data_dir: Option<&Path>, detail: &str) -> Option<PathBuf> {
@@ -115,7 +178,8 @@ fn record_native_startup_error(data_dir: Option<&Path>, detail: &str) -> Option<
     let log_path = dir.join("startup-error.log");
     let _ = fs::create_dir_all(dir);
     let content = format!(
-        "Origen: lanzador-windows\nDiagnostico: {}\n",
+        "Origen: {}\nDiagnostico: {}\n",
+        launcher_origin_label(),
         sanitize_diagnostic(detail)
     );
     if !log_path.exists() {
@@ -141,7 +205,8 @@ fn start_server_with_commands(
     // Tauri returns canonical Windows paths. Node's CLI rejects the \\?\ prefix.
     let resources = dunce::simplified(resources);
     let app = resources.join("app");
-    let node = resources.join("runtime").join("node.exe");
+    let node_name = node_binary_name();
+    let node = resources.join("runtime").join(node_name);
     let mut command = Command::new(&node);
     command
         .arg(app.join("src").join("desktop").join("main.js"))
@@ -162,7 +227,7 @@ fn start_server_with_commands(
     }
     let mut child = command.spawn().map_err(|err| {
         format!(
-            "No se pudo iniciar el motor local (node.exe): {}.",
+            "No se pudo iniciar el motor local ({node_name}): {}.",
             sanitize_diagnostic(&err.to_string())
         )
     })?;
@@ -287,36 +352,38 @@ fn message_box(title: &str, text: &str, flags: u32) -> i32 {
 }
 
 fn show_startup_error(detail: &str, log_path: Option<&Path>) {
+    let clean = sanitize_diagnostic(detail);
+    let mut body = String::from("No se pudo abrir Repuestos Félix.");
+    if !clean.is_empty() {
+        body.push_str("\n\nDetalle:\n");
+        body.push_str(&clean);
+    }
+    if let Some(path) = log_path {
+        body.push_str("\n\nRegistro de diagnóstico:\n");
+        body.push_str(&path.display().to_string());
+    }
     #[cfg(windows)]
     {
-        let clean = sanitize_diagnostic(detail);
-        let mut body = String::from("No se pudo abrir Repuestos Félix.");
-        if !clean.is_empty() {
-            body.push_str("\n\nDetalle:\n");
-            body.push_str(&clean);
-        }
-        if let Some(path) = log_path {
-            body.push_str("\n\nRegistro de diagnóstico:\n");
-            body.push_str(&path.display().to_string());
-        }
         body.push_str("\n\nComprueba que no esté abierto, que WebView2 esté instalado y que la carpeta de datos permita escribir.");
         message_box("Repuestos Félix", &body, 0x10);
     }
     #[cfg(not(windows))]
     {
-        let _ = (detail, log_path);
+        body.push_str("\n\nComprueba que no esté abierto, que WebKitGTK 4.1 esté instalado y que la carpeta de datos permita escribir.");
+        eprintln!("{body}");
+        if std::env::var_os("DISPLAY").is_some() || std::env::var_os("WAYLAND_DISPLAY").is_some() {
+            let _ = Command::new("zenity")
+                .args(["--error", "--title=Repuestos Félix", "--no-markup", "--text", &body])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn();
+        }
     }
 }
 
+#[cfg(windows)]
 fn show_update_error(detail: &str) {
-    #[cfg(windows)]
-    {
-        message_box("Repuestos Félix", detail, 0x30);
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = detail;
-    }
+    message_box("Repuestos Félix", detail, 0x30);
 }
 
 fn format_update_event(state: &str, version: &str, error: Option<&str>) -> String {
@@ -334,6 +401,7 @@ fn emit_update_event(app: &tauri::AppHandle, state: &str, version: &str, error: 
     }
 }
 
+#[cfg(windows)]
 async fn check_for_update(app: tauri::AppHandle, manual: bool) {
     let Some(controller) = app.try_state::<UpdateController>() else { return; };
     if controller.busy.load(Ordering::SeqCst) {
@@ -395,6 +463,7 @@ async fn check_for_update(app: tauri::AppHandle, manual: bool) {
     }
 }
 
+#[cfg(windows)]
 async fn apply_pending_update(app: tauri::AppHandle) {
     let Some(controller) = app.try_state::<UpdateController>() else { return; };
     if controller
@@ -484,26 +553,37 @@ async fn apply_pending_update(app: tauri::AppHandle) {
 }
 
 fn main() {
-    let result = tauri::Builder::default()
-        .plugin(tauri_plugin_updater::Builder::new().build())
+    let builder = tauri::Builder::default();
+    #[cfg(windows)]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    let result = builder
         .setup(|app| {
             let data_dir = default_data_dir();
             let configured: Result<(), Box<dyn std::error::Error>> = (|| {
                 let resources = app.path().resource_dir()?;
-                let dir = data_dir.as_deref().ok_or("Falta la carpeta local del usuario (LOCALAPPDATA).")?;
+                let dir = data_dir.as_deref().ok_or(
+                    if cfg!(windows) {
+                        "Falta la carpeta local del usuario (LOCALAPPDATA)."
+                    } else {
+                        "Falta la carpeta local del usuario (XDG_DATA_HOME o HOME)."
+                    },
+                )?;
                 let (cmd_tx, cmd_rx) = mpsc::channel::<HostCommand>();
                 let (server, url) = start_server_with_commands(&resources, dir, Some(cmd_tx.clone()))?;
                 app.manage(server);
+                #[cfg(windows)]
                 app.manage(UpdateController {
                     pending: Mutex::new(None),
                     busy: AtomicBool::new(false),
                     checking: AtomicBool::new(false),
                     sender: cmd_tx,
                 });
+                #[cfg(not(windows))]
+                let _ = cmd_tx;
                 let origin = url.origin();
                 let current_version = app.package_info().version.to_string();
                 refresh_shell_icons_if_version_changed(dir, &current_version);
-                let mut builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
+                let mut win_builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
                     .title("Repuestos Félix")
                     .inner_size(1200.0, 850.0)
                     .min_inner_size(760.0, 600.0)
@@ -513,16 +593,18 @@ fn main() {
                     .on_navigation(move |next| next.origin() == origin)
                     .on_new_window(|_, _| NewWindowResponse::Deny);
                 if let Some(icon) = app.default_window_icon().cloned() {
-                    builder = builder.icon(icon)?;
+                    win_builder = win_builder.icon(icon)?;
                 }
-                let window = builder
+                let engine_name = if cfg!(windows) { "WebView2" } else { "WebKitGTK" };
+                let window = win_builder
                     .build()
-                    .map_err(|err| format!("No se pudo abrir la ventana del POS (WebView2): {err}"))?;
+                    .map_err(|err| format!("No se pudo abrir la ventana del POS ({engine_name}): {err}"))?;
                 let _ = window.maximize();
                 let command_handle = app.handle().clone();
                 std::thread::spawn(move || {
                     for cmd in cmd_rx {
                         let handle = command_handle.clone();
+                        #[cfg(windows)]
                         match cmd {
                             HostCommand::ApplyUpdate => {
                                 tauri::async_runtime::spawn(apply_pending_update(handle));
@@ -531,16 +613,34 @@ fn main() {
                                 tauri::async_runtime::spawn(check_for_update(handle, manual));
                             }
                         }
+                        #[cfg(not(windows))]
+                        match cmd {
+                            // En Linux/ChromeOS las actualizaciones se instalan manualmente con un nuevo paquete .deb.
+                            // No consultar el manifiesto exclusivo de Windows (latest.json).
+                            HostCommand::CheckUpdate { manual: true } | HostCommand::ApplyUpdate => {
+                                let ver = handle.package_info().version.to_string();
+                                emit_update_event(
+                                    &handle,
+                                    "check_error",
+                                    &ver,
+                                    Some("En Linux/ChromeOS instala el nuevo paquete .deb para actualizar conservando tus datos locales."),
+                                );
+                            }
+                            HostCommand::CheckUpdate { manual: false } => {}
+                        }
                     }
                 });
-                let update_handle = app.handle().clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(Duration::from_secs(4));
-                    loop {
-                        tauri::async_runtime::block_on(check_for_update(update_handle.clone(), false));
-                        std::thread::sleep(Duration::from_secs(300));
-                    }
-                });
+                #[cfg(windows)]
+                {
+                    let update_handle = app.handle().clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(Duration::from_secs(4));
+                        loop {
+                            tauri::async_runtime::block_on(check_for_update(update_handle.clone(), false));
+                            std::thread::sleep(Duration::from_secs(300));
+                        }
+                    });
+                }
                 Ok(())
             })();
             if let Err(err) = configured {
@@ -561,7 +661,8 @@ fn main() {
             }
         }),
         Err(err) => {
-            let detail = format!("No se pudo inicializar la aplicación Windows: {err}");
+            let platform_name = if cfg!(windows) { "Windows" } else { "Linux" };
+            let detail = format!("No se pudo inicializar la aplicación {platform_name}: {err}");
             let data_dir = default_data_dir();
             let log_path = record_native_startup_error(data_dir.as_deref(), &detail);
             show_startup_error(&detail, log_path.as_deref());
@@ -571,7 +672,39 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{error_message, format_update_event, ready_url, record_version_change, start_server};
+    use super::{
+        error_message, format_update_event, node_binary_name, ready_url, record_version_change,
+        resolve_linux_data_dir, start_server,
+    };
+    use std::ffi::OsStr;
+    use std::path::PathBuf;
+
+    #[test]
+    fn resolves_xdg_data_dir_per_specification() {
+        assert_eq!(
+            resolve_linux_data_dir(Some(OsStr::new("/home/felix/.data")), Some(OsStr::new("/home/felix"))),
+            Some(PathBuf::from("/home/felix/.data").join("RepuestosFelix").join("POS"))
+        );
+        // XDG relativo debe ignorarse y caer a HOME/.local/share
+        assert_eq!(
+            resolve_linux_data_dir(Some(OsStr::new("relative/dir")), Some(OsStr::new("/home/felix"))),
+            Some(PathBuf::from("/home/felix").join(".local").join("share").join("RepuestosFelix").join("POS"))
+        );
+        assert_eq!(
+            resolve_linux_data_dir(None, Some(OsStr::new("/home/felix"))),
+            Some(PathBuf::from("/home/felix").join(".local").join("share").join("RepuestosFelix").join("POS"))
+        );
+        assert_eq!(resolve_linux_data_dir(None, None), None);
+    }
+
+    #[test]
+    fn selects_expected_node_binary_name() {
+        if cfg!(windows) {
+            assert_eq!(node_binary_name(), "node.exe");
+        } else {
+            assert_eq!(node_binary_name(), "node");
+        }
+    }
 
     #[test]
     fn records_version_change_only_once_per_version() {

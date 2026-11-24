@@ -1,0 +1,152 @@
+name: Compilar instalador Linux (.deb) para ChromeOS
+
+# Ejecución estrictamente manual. No crea releases, no etiqueta ni despliega a producción.
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: "Arquitectura destino de la Chromebook (amd64 = Intel/AMD, arm64 = ARM/MediaTek)"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - amd64
+          - arm64
+
+permissions:
+  contents: read
+
+jobs:
+  build-deb:
+    name: Build Debian 12 (.deb ${{ matrix.deb_arch }})
+    runs-on: ${{ matrix.runner }}
+    # Contenedor Debian 12 (Bookworm, glibc 2.36) compatible con el entorno Linux (Crostini) de ChromeOS.
+    container:
+      image: debian:12-slim
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - deb_arch: amd64
+            node_arch: x64
+            runner: ubuntu-24.04
+            node_sha256: d804845d34eddc21dc1092b519d643ef40b1f58ec5dec5c22b1f4bd8fabde6c9
+          - deb_arch: arm64
+            node_arch: arm64
+            runner: ubuntu-24.04-arm
+            node_sha256: 524659219d6a207a7400f2bde15d19ba060ffbe0d32a8643319ad67e3bb64c78
+    if: ${{ github.event.inputs.arch == 'all' || github.event.inputs.arch == matrix.deb_arch }}
+    steps:
+      - name: Instalar dependencias base de compilación Debian 12 + WebKitGTK 4.1
+        run: |
+          set -euo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates curl git xz-utils build-essential pkg-config file patchelf dpkg \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev \
+            libsecret-tools
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Descargar código del repositorio
+        uses: actions/checkout@v4
+
+      - name: Instalar Node 24.16.0 oficial con verificación SHA-256
+        run: |
+          set -euo pipefail
+          ARCHIVE="node-v24.16.0-linux-${{ matrix.node_arch }}.tar.xz"
+          curl -fsSL "https://nodejs.org/download/release/v24.16.0/${ARCHIVE}" -o "/tmp/${ARCHIVE}"
+          echo "${{ matrix.node_sha256 }}  /tmp/${ARCHIVE}" | sha256sum -c -
+          tar -xJf "/tmp/${ARCHIVE}" -C /usr/local --strip-components=1
+          rm -f "/tmp/${ARCHIVE}"
+          node -v
+          corepack enable
+          corepack prepare pnpm@10.8.0 --activate
+          pnpm -v
+
+      - name: Instalar Rust toolchain (Cargo)
+        run: |
+          set -euo pipefail
+          curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
+          echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
+          "${HOME}/.cargo/bin/rustc" --version
+          "${HOME}/.cargo/bin/cargo" --version
+
+      - name: Instalar dependencias JS (--frozen-lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Ejecutar pruebas unitarias Linux y Rust (--locked)
+        run: |
+          set -euo pipefail
+          node --test tests/linux-desktop.test.js tests/remote-credentials.test.js
+          cargo test --manifest-path src-tauri/Cargo.toml --locked
+
+      - name: Compilar frontend operativo y preparar payload Linux verificado
+        run: |
+          set -euo pipefail
+          pnpm build
+          node scripts/build-linux.mjs
+          node scripts/build-linux.mjs --verify
+
+      - name: Compilar paquete .deb con Tauri v2
+        run: |
+          set -euo pipefail
+          pnpm exec tauri build --bundles deb --config src-tauri/tauri.linux.conf.json -- --locked
+
+      - name: Inspeccionar contenido extraído del .deb y generar SHA256
+        run: |
+          set -euo pipefail
+          mkdir -p dist/chromeos-deb
+          DEB_FILE="$(find src-tauri/target/release/bundle/deb -maxdepth 2 -name '*.deb' | head -n 1)"
+          test -f "${DEB_FILE}"
+          echo "Paquete generado: ${DEB_FILE}"
+          dpkg-deb -I "${DEB_FILE}"
+          EXTRACT_DIR="$(mktemp -d)"
+          dpkg-deb -x "${DEB_FILE}" "${EXTRACT_DIR}"
+          # Verificar ausencia de artefactos Windows o bases/secretos.
+          ! find "${EXTRACT_DIR}" -iname 'node.exe' -o -iname '*.sqlite*' -o -iname '*.key' | grep -q .
+          NODE_BIN="$(find "${EXTRACT_DIR}" -path '*/runtime/node' -type f | head -n 1)"
+          APP_DIR="$(dirname "$(dirname "${NODE_BIN}")")/app"
+          test -x "${NODE_BIN}"
+          "${NODE_BIN}" -v | grep -qx 'v24.16.0'
+          # Probar arranque real del motor extraído del .deb, bloqueo de segunda instancia y permisos 0600 en SQLite.
+          TEST_DATA="$(mktemp -d)"
+          "${NODE_BIN}" -e '
+            const { spawn } = require("node:child_process");
+            const { statSync } = require("node:fs");
+            const [nodeBin, mainJs, dataDir, assetsDir] = process.argv.slice(1);
+            const run = () => spawn(nodeBin, [mainJs, "--data-dir", dataDir, "--assets", assetsDir], { stdio: ["pipe", "pipe", "pipe"] });
+            const p1 = run();
+            let buf1 = "";
+            p1.stdout.setEncoding("utf8");
+            p1.stdout.on("data", (chunk) => {
+              buf1 += chunk;
+              if (!buf1.includes("FELIX_READY=http://127.0.0.1:")) return;
+              const mode = statSync(dataDir + "/pos.sqlite").mode & 0o777;
+              if (mode !== 0o600) { console.error("Permiso SQLite inesperado:", mode.toString(8)); process.exit(1); }
+              const p2 = run();
+              let buf2 = "";
+              p2.stdout.setEncoding("utf8");
+              p2.stdout.on("data", (c) => { buf2 += c; });
+              p2.once("close", (code) => {
+                if (code === 0 || !buf2.includes("FELIX_ERROR=")) { console.error("Segunda instancia no falló:", code, buf2); process.exit(1); }
+                p1.stdin.end();
+              });
+            });
+            p1.once("close", (code) => process.exit(code === 0 ? 0 : 1));
+            setTimeout(() => { console.error("Timeout arrancando .deb extraído"); process.exit(1); }, 30000).unref();
+          ' "${NODE_BIN}" "${APP_DIR}/src/desktop/main.js" "${TEST_DATA}" "${APP_DIR}/assets"
+          rm -rf "${EXTRACT_DIR}" "${TEST_DATA}"
+          VERSION="$(node -e "console.log(JSON.parse(require('fs').readFileSync('src-tauri/tauri.conf.json','utf8')).version)")"
+          OUT_DEB="dist/chromeos-deb/Repuestos-Felix-${VERSION}-chromeos-${{ matrix.deb_arch }}.deb"
+          cp "${DEB_FILE}" "${OUT_DEB}"
+          (cd dist/chromeos-deb && sha256sum "$(basename "${OUT_DEB}")" > "SHA256-${{ matrix.deb_arch }}.txt")
+          cat "dist/chromeos-deb/SHA256-${{ matrix.deb_arch }}.txt"
+
+      - name: Subir artefacto .deb y suma SHA-256
+        uses: actions/upload-artifact@v4
+        with:
+          name: repuestos-felix-chromeos-${{ matrix.deb_arch }}
+          path: dist/chromeos-deb/*
+          if-no-files-found: error
+          retention-days: 14

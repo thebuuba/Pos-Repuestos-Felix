@@ -46,7 +46,7 @@ export function desktopServer(engine, remote, assetsDirectory, desktopHost = nul
       currentProfile();
       let result;
       try { result = await remote.request(path, options); }
-      catch (cause) { if (cause.status === 401) revokeAccess(profile); throw cause; }
+      catch (cause) { if (cause.status === 401 && !cause.localCredentialError) revokeAccess(profile); throw cause; }
       currentProfile(); return result;
     };
     syncing = (async () => {

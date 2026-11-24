@@ -109,7 +109,7 @@ test('gateway Windows autentica, conserva caja y sesión offline, bloquea origen
     assert.equal(html.status, 200);
     assert.ok(html.text.indexOf('/desktop.js') < html.text.indexOf('type="module"'));
     await page.getByRole('link', { name: 'Inventario', exact: true }).click();
-    await page.getByText('Producto sintético Windows', { exact: true }).waitFor();
+    await page.getByRole('table').getByText('Producto sintético Windows', { exact: true }).waitFor();
     network = 'offline';
     await call('/api/desktop/sync', { method: 'POST', body: {}, cookie });
     await page.getByRole('link', { name: 'Caja', exact: true }).click();

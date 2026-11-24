@@ -60,6 +60,21 @@ try {
     await page.close();
   }
 
+  for (const [file, size] of [
+    ['32x32.png', 32],
+    ['128x128.png', 128],
+    ['128x128@2x.png', 256],
+    ['512x512.png', 512],
+  ]) {
+    const page = await browser.newPage({ viewport: { width: size, height: size }, deviceScaleFactor: 1 });
+    await page.setContent(iconHtml(size, { rounded: true }));
+    await page.screenshot({
+      path: fileURLToPath(new URL('../src-tauri/icons/' + file, import.meta.url)),
+      omitBackground: true,
+    });
+    await page.close();
+  }
+
   const icoFrames = [];
   for (const size of [16, 24, 32, 48, 64, 128, 256]) {
     const page = await browser.newPage({ viewport: { width: size, height: size }, deviceScaleFactor: 1 });

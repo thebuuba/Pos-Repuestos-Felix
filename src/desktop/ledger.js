@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { tables, backupLayout } from '../pos/relational-backup.js';
+import { hardenSqliteFiles } from './credentials.js';
 
 const booleans = new Set(['activo', 'gravado', 'es_contado', 'notificar_minimo', 'permitir_stock_negativo', 'activa']);
 // Append-only ledger tables whose monotonic ID order defines running balances (no external FK references them).
@@ -71,9 +72,11 @@ const encoded = value => typeof value === 'boolean' ? Number(value) : value;
 
 export class DesktopLedger {
   constructor(directory) {
-    mkdirSync(directory, { recursive: true });
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    hardenSqliteFiles(directory);
     this.database = new DatabaseSync(join(directory, 'pos.sqlite'));
     this.database.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;');
+    hardenSqliteFiles(directory);
     this.database.exec(`CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL) STRICT;
       CREATE TABLE IF NOT EXISTS operations(sequence INTEGER PRIMARY KEY AUTOINCREMENT,operation_id TEXT NOT NULL UNIQUE,
         fingerprint TEXT NOT NULL,record TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',wire TEXT,receipt TEXT,error TEXT) STRICT;

@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import { DesktopLedger } from './ledger.js';
 import { DesktopEngine } from './engine.js';
-import { RemoteClient } from './credentials.js';
+import { RemoteClient, defaultDesktopSecrets } from './credentials.js';
 import { desktopServer } from './server.js';
 
 const validUpdateStates = new Set(['available', 'downloading', 'installing', 'error', 'checking', 'up_to_date', 'check_error']);
@@ -73,16 +73,37 @@ export function recordStartupError(directory, error, stage) {
   return message;
 }
 
+export function resolveLinuxDataDir(env = process.env) {
+  const xdg = typeof env?.XDG_DATA_HOME === 'string' ? env.XDG_DATA_HOME.trim() : '';
+  // XDG Base Directory Specification: relative XDG_DATA_HOME values must be ignored.
+  if (xdg.startsWith('/')) return `${xdg.replace(/\/+$/, '')}/RepuestosFelix/POS`;
+  const home = typeof env?.HOME === 'string' ? env.HOME.trim() : '';
+  if (home.startsWith('/')) return `${home.replace(/\/+$/, '')}/.local/share/RepuestosFelix/POS`;
+  return null;
+}
+
+export function lockAddressForPlatform(canonicalPath, platform = process.platform) {
+  if (platform === 'win32') {
+    const key = createHash('sha256').update(canonicalPath.toLowerCase()).digest('hex');
+    return '\\\\.\\pipe\\repuestos-felix-' + key;
+  }
+  if (platform === 'linux') {
+    const key = createHash('sha256').update(canonicalPath).digest('hex');
+    // Abstract Unix domain socket: automatically released by the Linux kernel on exit/crash.
+    return '\0repuestos-felix-' + key;
+  }
+  throw new Error('Esta aplicación de escritorio solo es compatible con Windows y Linux/ChromeOS.');
+}
+
 async function lockDirectory(directory) {
-  await mkdir(directory, { recursive: true });
+  await mkdir(directory, { recursive: true, mode: 0o700 });
   // The OS owns exclusivity and releases it even after an abrupt process exit.
   // A stale PID file cannot safely be deleted by competing startup processes.
-  if (process.platform !== 'win32') throw new Error('Esta aplicación de escritorio requiere Windows.');
-  const key = createHash('sha256').update((await realpath(directory)).toLowerCase()).digest('hex');
+  const address = lockAddressForPlatform(await realpath(directory));
   const pipe = createPipeServer(socket => socket.destroy());
   await new Promise((done, reject) => {
     pipe.once('error', () => reject(new Error('El POS ya está abierto en este equipo o no se pudo reservar su acceso.')));
-    pipe.listen('\\\\.\\pipe\\repuestos-felix-' + key, done);
+    pipe.listen(address, done);
   });
   return () => new Promise(done => pipe.close(done));
 }
@@ -116,7 +137,17 @@ export async function startDesktop({ directory, assetsDirectory, remoteOptions, 
       if (!recovered) throw rebuildError;
     }
     stage = 'server';
-    const remote = new RemoteClient(ledger, remoteOptions);
+    const effectiveRemoteOptions = remoteOptions?.secrets
+      ? remoteOptions
+      : {
+          ...remoteOptions,
+          secrets: defaultDesktopSecrets({
+            dataDir: directory,
+            origin: remoteOptions?.origin,
+            installationId: ledger.get('deviceId'),
+          }),
+        };
+    const remote = new RemoteClient(ledger, effectiveRemoteOptions);
     server = desktopServer(engine, remote, assetsDirectory, host);
     const port = ledger.get('port');
     if (port !== null && (!Number.isSafeInteger(port) || port < 1 || port > 65535)) throw new Error('El puerto guardado del POS necesita revisión.');
@@ -172,7 +203,12 @@ async function main() {
     };
     const app = await startDesktop({ directory: options['--data-dir'], assetsDirectory: options['--assets'], host });
     console.log('FELIX_READY=' + app.origin);
-    const stop = () => app.stop().then(() => process.exit(0), () => process.exit(1));
+    let shuttingDown = false;
+    const stop = () => {
+      if (shuttingDown) return;
+      shuttingDown = true;
+      app.stop().then(() => process.exit(0), () => process.exit(1));
+    };
     process.once('SIGINT', stop); process.once('SIGTERM', stop);
     const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
     rl.on('line', line => {

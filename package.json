@@ -25,6 +25,8 @@
     "build:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-build.ps1",
     "release:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-release.ps1",
     "prepare:windows": "node scripts/build-windows.mjs",
+    "prepare:linux": "node scripts/build-linux.mjs",
+    "verify:linux": "node scripts/build-linux.mjs --verify",
     "build:operational": "node scripts/build-operational.mjs",
     "build:design": "node scripts/build-operational.mjs",
     "build:reference": "node scripts/build-design.mjs",
