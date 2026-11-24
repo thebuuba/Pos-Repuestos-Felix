@@ -77,7 +77,7 @@ async function refuseUsedRecord(client, table, recordId) {
     if (result.rowCount) fail('El suplidor tiene saldo pendiente.', 409);
   }
   if (table === 'formulas_precios') {
-    const used = await client.query('SELECT 1 FROM suplidores WHERE formula_id=$1 LIMIT 1', [recordId]);
+    const used = await client.query('SELECT 1 FROM suplidores WHERE formula_id=$1 AND activo LIMIT 1', [recordId]);
     if (used.rowCount) fail('La fórmula está asignada a un suplidor.', 409);
   }
 }
@@ -102,7 +102,11 @@ export async function contactOperation(client, resource, method, recordId, body)
   }
   if (method === 'DELETE') {
     await refuseUsedRecord(client, table, recordId);
-    await client.query(`UPDATE ${table} SET activo=false,version=version+1,actualizado_en=now() WHERE id=$1`, [recordId]);
+    if (table === 'formulas_precios') {
+      await client.query('UPDATE suplidores SET formula_id=NULL WHERE formula_id=$1 AND NOT activo', [recordId]);
+    }
+    const extra = table === 'suplidores' ? ',formula_id=NULL' : '';
+    await client.query(`UPDATE ${table} SET activo=false${extra},version=version+1,actualizado_en=now() WHERE id=$1`, [recordId]);
     return { id: recordId };
   }
   let columns, values;

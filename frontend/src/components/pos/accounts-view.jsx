@@ -412,9 +412,9 @@ function AccountsView({
         operational={operational}
         cashOpen={cashOpen}
         onOpenChange={(o) => !o && setPaying(null)}
-        onConfirm={async (amount, method, note, retryAction) => {
+        onConfirm={async (amount, method, note, retryAction, recordedPreviousBalance) => {
           if (!activePaying) return;
-          const previousBalance = balanceOf(activePaying);
+          const previousBalance = recordedPreviousBalance ?? balanceOf(activePaying);
           const remainingAfter = Math.max(0, Math.round((previousBalance - amount) * 100) / 100);
           const confirmedParty = partyName(activePaying.partyId);
           const receiptData = {

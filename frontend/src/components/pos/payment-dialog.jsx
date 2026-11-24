@@ -23,6 +23,7 @@ function PaymentDialog({ doc, partyName, verb, operational = false, cashOpen = t
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
   const [retryFn, setRetryFn] = useState(null);
+  const [snapshotBalance, setSnapshotBalance] = useState(null);
   const balance = doc ? balanceOf(doc) : 0;
   const docId = doc?.id ?? null;
   useEffect(() => {
@@ -32,6 +33,7 @@ function PaymentDialog({ doc, partyName, verb, operational = false, cashOpen = t
       setNote("");
       setError(null);
       setRetryFn(null);
+      setSnapshotBalance(null);
       setSending(false);
     }
   }, [docId]);
@@ -156,17 +158,21 @@ function PaymentDialog({ doc, partyName, verb, operational = false, cashOpen = t
             disabled={(!retryFn && invalid) || sending}
             onClick={async () => {
               if ((!retryFn && invalid) || sending) return;
+              const initialBalance = snapshotBalance ?? balance;
               setSending(true);
               setError(null);
               try {
-                await onConfirm(value, method, note.trim() || undefined, retryFn);
+                await onConfirm(value, method, note.trim() || undefined, retryFn, initialBalance);
                 setRetryFn(null);
+                setSnapshotBalance(null);
               } catch (cause) {
                 setError(cause?.message || "No se pudo registrar el abono.");
                 if (cause?.uncertain && typeof cause.retry === "function") {
                   setRetryFn(() => cause.retry);
+                  setSnapshotBalance(initialBalance);
                 } else if (cause?.definitive) {
                   setRetryFn(null);
+                  setSnapshotBalance(null);
                 }
               } finally {
                 setSending(false);

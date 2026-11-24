@@ -7,7 +7,7 @@ import { hostingConfig, authorized, validCredentials, sessionCookie, clearSessio
 import { accountSession } from '../supabase-auth.js';
 
 const pageRoutes = new Set([
-  '/', '/index.html', '/ventas', '/inventario', '/compras', '/caja', '/clientes', '/suplidores',
+  '/', '/index.html', '/ventas', '/inventario', '/compras', '/taller', '/caja', '/clientes', '/suplidores',
   '/reportes', '/cuentas-por-cobrar', '/cuentas-por-pagar', '/configuracion', '/ayuda',
 ]);
 const pageAsset = ['index.html', 'text/html'];

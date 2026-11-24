@@ -8,10 +8,12 @@
     margin: 0.5in;
   }
   body:has(.pos-receipt-document) > :not(.pos-receipt-dialog),
-  .pos-receipt-dialog > :not(.pos-receipt-document) {
+  .pos-receipt-dialog > :not(.pos-receipt-document):not(:has(.pos-receipt-document)),
+  .pos-receipt-dialog > :has(.pos-receipt-document) > :not(.pos-receipt-document) {
     display: none !important;
   }
   .pos-receipt-dialog,
+  .pos-receipt-dialog > :has(.pos-receipt-document),
   .pos-receipt-document {
     position: static !important;
     display: block !important;

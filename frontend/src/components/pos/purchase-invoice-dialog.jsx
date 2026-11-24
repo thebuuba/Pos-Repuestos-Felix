@@ -29,6 +29,7 @@ export function PurchaseInvoiceDialog({
   const [reason, setReason] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [retryFn, setRetryFn] = useState(null);
 
   useEffect(() => {
     if (!open) {
@@ -36,6 +37,7 @@ export function PurchaseInvoiceDialog({
       setReason("");
       setError("");
       setSending(false);
+      setRetryFn(null);
     }
   }, [open, purchase?.id]);
 
@@ -51,18 +53,24 @@ export function PurchaseInvoiceDialog({
   async function confirmVoid(e) {
     e.preventDefault();
     if (sending || !onVoid) return;
-    if (!reason.trim()) {
+    if (!retryFn && !reason.trim()) {
       setError("Indica el motivo de la anulación.");
       return;
     }
     setSending(true);
     setError("");
     try {
-      await onVoid(purchase, reason.trim());
+      await onVoid(purchase, reason.trim(), retryFn);
+      setRetryFn(null);
       setVoiding(false);
       setReason("");
     } catch (cause) {
       setError(cause.message || "No se pudo anular la compra.");
+      if (cause?.uncertain && typeof cause.retry === "function") {
+        setRetryFn(() => cause.retry);
+      } else if (cause?.definitive) {
+        setRetryFn(null);
+      }
     } finally {
       setSending(false);
     }
@@ -256,7 +264,7 @@ export function PurchaseInvoiceDialog({
                   <Input
                     id="void-purchase-reason"
                     autoFocus
-                    disabled={sending}
+                    disabled={sending || Boolean(retryFn)}
                     value={reason}
                     onChange={(e) => { setReason(e.target.value); setError(""); }}
                     placeholder="Ej. Costo o cantidad equivocada"
@@ -278,9 +286,9 @@ export function PurchaseInvoiceDialog({
                     type="submit"
                     variant="destructive"
                     className="h-11 rounded-xl"
-                    disabled={sending || !reason.trim()}
+                    disabled={sending || (!retryFn && !reason.trim())}
                   >
-                    {sending ? "Anulando…" : "Confirmar anulación"}
+                    {sending ? "Anulando…" : retryFn ? "Reintentar anulación" : "Confirmar anulación"}
                   </Button>
                 )}
                 <Button
@@ -288,7 +296,7 @@ export function PurchaseInvoiceDialog({
                   variant="outline"
                   className="h-11 rounded-xl bg-card"
                   disabled={sending}
-                  onClick={() => { setVoiding(false); setError(""); }}
+                  onClick={() => { setVoiding(false); setError(""); setRetryFn(null); }}
                 >
                   Volver
                 </Button>

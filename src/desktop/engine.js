@@ -8,6 +8,7 @@ import { stateTag } from '../pos/state-tag.js';
 
 const label = 'Este equipo · almacenamiento local';
 const failure = (message, status = 409) => Object.assign(new Error(message), { status });
+const bareTag = tag => typeof tag === 'string' ? tag.replace(/^W\//, '') : tag;
 const createdRows = (beforeIds, after) => Object.fromEntries(Object.keys(tables).map(table => {
   const ids = beforeIds[table];
   return [table, (after.tables[table] || []).filter(row => !ids.has(String(row.id))).map(row => Number(row.id))];
@@ -247,9 +248,9 @@ export class DesktopEngine {
           // Local writes remain available during the download. Never replace their durable projection.
           if (this.ledger.pending().length) return;
           if (download.notModified) {
-            if (!checkpoint.etag || download.etag !== checkpoint.etag || this.ledger.get('needsRefresh'))
+            if (!checkpoint.etag || bareTag(download.etag) !== bareTag(checkpoint.etag) || this.ledger.get('needsRefresh'))
               throw failure('El servidor no confirmó la versión descargada.', 503);
-          } else if (!this.pool || this.ledger.get('needsRefresh') || download.snapshot.databaseId !== this.ledger.get('databaseId') || download.snapshot.revision !== this.ledger.get('remoteRevision') || (download.etag && download.etag !== this.ledger.get('bootstrapEtag'))) {
+          } else if (!this.pool || this.ledger.get('needsRefresh') || download.snapshot.databaseId !== this.ledger.get('databaseId') || download.snapshot.revision !== this.ledger.get('remoteRevision') || (download.etag && bareTag(download.etag) !== bareTag(this.ledger.get('bootstrapEtag')))) {
             await this.adopt(download);
           } else if (download.etag) this.ledger.set('bootstrapEtag', download.etag);
           this.ledger.set('lastSync', new Date().toISOString());

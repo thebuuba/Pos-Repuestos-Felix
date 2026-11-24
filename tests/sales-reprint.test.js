@@ -81,6 +81,10 @@ test('E2E reimpresión de facturas de venta: Ventas, Panel, Reportes, Cuentas x 
     await writeOperation(pool, 'POST', `/api/ventas/${sale3Id}/anular`, {
       databaseId, version: sale3Ver, motivo: 'Cliente cambió de pieza',
     }, randomUUID(), 'Test', actor);
+    const snapCfg = await readSnapshot(pool, 'Test');
+    await writeOperation(pool, 'PUT', '/api/configuracion', {
+      databaseId, version: snapCfg.state.configuracion.version, formatoImpresion: 'Térmica 58 mm',
+    }, randomUUID(), 'Test', actor);
 
     auth = await testAuthService();
     directory = await mkdtemp(join(tmpdir(), 'felix-reprint-'));
@@ -136,6 +140,7 @@ test('E2E reimpresión de facturas de venta: Ventas, Panel, Reportes, Cuentas x 
 
     const receiptDialog = page.getByRole('dialog');
     await receiptDialog.getByText('Factura de venta', { exact: true }).waitFor();
+    assert.equal(await receiptDialog.getAttribute('data-print-format'), 'Térmica 58 mm', 'La reimpresión debe respetar el formato de impresora configurado');
     const receiptDoc = receiptDialog.locator('.pos-receipt-document');
     assert.equal(await receiptDoc.getByText('— Reimpresión —').count(), 0, 'El recibo no debe mostrar etiqueta de Reimpresión');
     assert.doesNotMatch(await receiptDoc.innerText(), /\bPago\b|\bEfectivo\b|\bRecibido\b|\bCambio\b|Guardado en este equipo|Referencia local/);
@@ -159,12 +164,32 @@ test('E2E reimpresión de facturas de venta: Ventas, Panel, Reportes, Cuentas x 
     await page.getByRole('heading', { name: 'Agregar productos', exact: true }).waitFor();
     assert.equal(await page.locator('.sale-cart tbody tr').count(), 0);
 
+    // A2: editar cantidad con ".5" y cobrar con F9 sin perder foco tras escribir "2"
+    await searchInput.fill('BUJ-REPRINT');
+    await searchInput.press('Enter');
+    const qtyInput = page.locator('.sale-cart-qty-input').first();
+    await qtyInput.waitFor();
+    await qtyInput.fill('.5');
+    await qtyInput.press('Enter');
+    assert.equal(await qtyInput.inputValue(), '0.5', 'Debe normalizar .5 a 0.5');
+    await page.getByLabel('Monto recibido').fill('1000');
+    await qtyInput.focus();
+    await qtyInput.fill('2');
+    await page.keyboard.press('F9');
+    const f9Receipt = page.getByRole('dialog');
+    await f9Receipt.getByText('Venta registrada', { exact: true }).waitFor();
+    assert.match(await f9Receipt.locator('.pos-receipt-document').innerText(), /2\s*[×x]\s*RD\$\s*250|Bujía NGK Reimpresión[\s\S]*2/, 'F9 mientras se edita la cantidad debe facturar 2 unidades');
+    assert.equal(await f9Receipt.getAttribute('data-print-format'), 'Térmica 58 mm');
+    await f9Receipt.getByRole('button', { name: 'Nueva venta', exact: true }).click();
+    await f9Receipt.waitFor({ state: 'hidden' });
+
     // ② Panel (/): reimprimir desde Ventas recientes
     await page.goto(appOrigin + '/');
     await page.getByRole('heading', { name: 'Ventas recientes', exact: true }).waitFor();
     await page.getByRole('button', { name: `Reimprimir ${fNum(sale1Id)}`, exact: true }).click();
     const panelReceipt = page.getByRole('dialog');
     await panelReceipt.getByText('Factura de venta', { exact: true }).waitFor();
+    assert.equal(await panelReceipt.getAttribute('data-print-format'), 'Térmica 58 mm', 'El panel debe respetar el formato de impresora');
     await panelReceipt.getByRole('button', { name: 'Cerrar', exact: true }).click();
     await panelReceipt.waitFor({ state: 'hidden' });
 
@@ -173,6 +198,7 @@ test('E2E reimpresión de facturas de venta: Ventas, Panel, Reportes, Cuentas x 
     await page.getByRole('heading', { name: 'Facturas del período', exact: true }).waitFor();
     await page.getByRole('button', { name: `Reimprimir ${fNum(sale3Id)}`, exact: true }).click();
     const voidReceipt = page.getByRole('dialog');
+    assert.equal(await voidReceipt.getAttribute('data-print-format'), 'Térmica 58 mm', 'Reportes debe respetar el formato de impresora');
     await voidReceipt.getByText('Factura anulada', { exact: true }).waitFor();
     await voidReceipt.getByText('*** FACTURA ANULADA ***', { exact: true }).waitFor();
     assert.match(await voidReceipt.innerText(), /Cliente cambió de pieza/);

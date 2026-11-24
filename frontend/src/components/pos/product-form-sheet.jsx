@@ -89,6 +89,8 @@ function ProductFormSheet({
   const product = draft?.product;
   const categories = draft?.categories ?? [];
   const defaultCategory = categories[0] ?? "";
+  const defaultCategoryRef = useRef(defaultCategory);
+  defaultCategoryRef.current = defaultCategory;
   const categoryChoices = product?.category && !categories.includes(product.category)
     ? [product.category, ...categories]
     : categories;
@@ -106,13 +108,13 @@ function ProductFormSheet({
   const locked = sending || retryPayload !== null;
   useEffect(() => {
     if (open) {
-      setForm(product ? fromProduct(product) : { ...EMPTY, category: defaultCategory });
+      setForm(product ? fromProduct(product) : { ...EMPTY, category: defaultCategoryRef.current });
       setAltDraft("");
       setSubmitted(false);
       setError(null);
       setRetryPayload(null);
     }
-  }, [open, draft, product, defaultCategory]);
+  }, [open, draft, product]);
   const set = (key, value) =>
     setForm((f) => ({
       ...f,

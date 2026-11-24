@@ -227,11 +227,12 @@ fn show_startup_error(detail: &str, log_path: Option<&Path>) {
 fn ask_update(version: &str) -> bool {
     #[cfg(windows)]
     {
-        // MB_YESNO (0x04) | MB_ICONINFORMATION (0x40) | MB_SETFOREGROUND (0x10000)
+        // MB_YESNO (0x04) | MB_ICONINFORMATION (0x40) | MB_DEFBUTTON2 (0x100) | MB_SETFOREGROUND (0x10000)
+        // "No" por defecto evita que un escaneo de código de barras (Enter) acepte la actualización por error.
         let msg = format!(
             "Hay una nueva versión de Repuestos Félix disponible (v{version}).\n\n¿Deseas descargarla e instalarla ahora? Tus datos y ventas pendientes se conservan."
         );
-        return message_box("Actualización disponible — Repuestos Félix", &msg, 0x0001_0044) == 6;
+        return message_box("Actualización disponible — Repuestos Félix", &msg, 0x0001_0144) == 6;
     }
     #[cfg(not(windows))]
     {

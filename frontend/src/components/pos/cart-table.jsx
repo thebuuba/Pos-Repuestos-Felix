@@ -33,7 +33,12 @@ function CartQuantityInput({ value, label, overStock, onCommit }) {
       setDraft(String(value));
       return;
     }
-    const parsed = Number(clean);
+    const normalized = clean.startsWith(".")
+      ? "0" + clean
+      : clean.endsWith(".")
+        ? clean.slice(0, -1)
+        : clean;
+    const parsed = Number(normalized);
     if (!Number.isFinite(parsed) || parsed <= 0) {
       setDraft(String(value));
       return;
@@ -42,7 +47,7 @@ function CartQuantityInput({ value, label, overStock, onCommit }) {
       setDraft(String(value));
       return;
     }
-    const ok = onCommit(clean);
+    const ok = onCommit(normalized);
     if (ok === false) setDraft(String(value));
   };
   return (

@@ -19,7 +19,7 @@ var STATUS_UI = {
   pendiente: "border-foreground/50 text-foreground",
   anulada: "border-primary/50 text-primary line-through",
 };
-function SalesReportTable({ sales, onVoid, onReprint, operational = false }) {
+function SalesReportTable({ sales, allSales, onVoid, onReprint, operational = false }) {
   const [params] = useSearchParams();
   const urlQuery = params.get("buscar") ?? "";
   const [query, setQuery] = useState(urlQuery);
@@ -33,7 +33,8 @@ function SalesReportTable({ sales, onVoid, onReprint, operational = false }) {
   const [voidError, setVoidError] = useState(null);
   const [voidRetry, setVoidRetry] = useState(null);
   const q = query.trim().toLowerCase();
-  const filtered = sales.filter(
+  const source = q && Array.isArray(allSales) ? allSales : sales;
+  const filtered = source.filter(
     (s) =>
       !q ||
       s.number.toLowerCase().includes(q) ||

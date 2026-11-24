@@ -6,7 +6,7 @@ import { matchesPassword, passwordRecord, tokenHash } from './credentials.js';
 import { matchesStateTag, stateTag } from '../pos/state-tag.js';
 import { allowedOperation, normalizeRole, redactSnapshotForRole } from '../pos/roles.js';
 
-const pages = new Set(['/', '/index.html', '/ventas', '/inventario', '/compras', '/caja', '/clientes', '/suplidores', '/reportes', '/cuentas-por-cobrar', '/cuentas-por-pagar', '/configuracion', '/ayuda']);
+const pages = new Set(['/', '/index.html', '/ventas', '/inventario', '/compras', '/taller', '/caja', '/clientes', '/suplidores', '/reportes', '/cuentas-por-cobrar', '/cuentas-por-pagar', '/configuracion', '/ayuda']);
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.webmanifest': 'application/manifest+json' };
 const security = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'no-referrer', 'Permissions-Policy': 'camera=(self), microphone=(), geolocation=()',
@@ -136,7 +136,9 @@ export function desktopServer(engine, remote, assetsDirectory) {
             engine.connection = 'online';
           } catch (cause) {
             // A failed attempt is not a new authenticated generation. Restore the
-            // previous identity and enforce any real 401 received while it waited.
+            // previous identity, cookie and enforce any real 401 received while it waited.
+            remote.cookie = previousCookie;
+            ledger.set('remoteCookie', previousProtectedCookie);
             if (profile && ledger.get('profile')?.generation === attempt.generation) {
               ledger.set('profile', profile);
               if (attempt.revoked) revokeAccess(profile);
@@ -171,6 +173,9 @@ export function desktopServer(engine, remote, assetsDirectory) {
             if (request.method === 'GET') {
               try {
                 const remoteAccount = await remote.request(path);
+                if (remoteAccount?.id && remoteAccount.id !== profile.id) {
+                  throw error('La cuenta del servidor cambió. Vuelve a iniciar sesión.', 401);
+                }
                 if (remoteAccount?.id === profile.id && remoteAccount.role) {
                   const nextRole = normalizeRole(remoteAccount.role);
                   if (profile.role !== nextRole) ledger.set('profile', { ...profile, role: nextRole });

@@ -331,6 +331,7 @@ function ReportsPage() {
       <SalesReportTable
         key={period}
         sales={data.inPeriod}
+        allSales={sales}
         operational={operational}
         onReprint={setReprintSale}
         onVoid={
@@ -353,7 +354,7 @@ function ReportsPage() {
         onOpenChange={(open) => { if (!open) setReprintSale(null); }}
         onNewSale={() => setReprintSale(null)}
         business={settings.business}
-        printFormat={settings.printFormat}
+        printFormat={settings.printer ?? "Térmica 80 mm"}
         footer={settings.ticketFooter}
         isReprint
       />

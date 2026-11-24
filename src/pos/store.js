@@ -610,6 +610,14 @@ async function productOperation(client, method, productId, body, occurredAt) {
     if (!previous || !previous.activo || number(previous.version) !== id(body.version, 'la versión')) fail('El producto cambió. Actualiza los datos antes de editar.', 409);
   }
   if (method === 'DELETE') {
+    const openWorkshop = (await client.query(
+      `SELECT 1 FROM cuentas_taller_items i
+       JOIN cuentas_taller c ON c.id = i.cuenta_id
+       WHERE i.producto_id = $1 AND c.estado = 'abierta' AND i.cantidad > i.cantidad_devuelta
+       LIMIT 1`,
+      [productId],
+    )).rowCount;
+    if (openWorkshop) fail('Este artículo tiene piezas despachadas en una cuenta de taller abierta.', 409);
     await client.query('DELETE FROM productos_codigos WHERE producto_id=$1', [productId]);
     await client.query('UPDATE productos SET activo=false,version=version+1,actualizado_en=now() WHERE id=$1', [productId]);
     return { id: productId };
@@ -863,16 +871,16 @@ async function restore(client, body) {
 async function execute(client, method, path, body, actor, occurredAt, context) {
   if (method === 'POST' && ['/api/caja/abrir','/api/caja/cerrar','/api/caja/movimiento'].includes(path)) return cashOperation(client, path, body, actor, occurredAt);
   const voidMatch = path.match(/^\/api\/ventas\/(\d+)\/anular$/);
-  if (method === 'POST' && voidMatch) return voidSale(client, id(Number(voidMatch[1]), 'la factura'), body, actor, occurredAt);
+  if (method === 'POST' && voidMatch) return voidSale(client, id(Number(voidMatch[1]), 'la factura'), body, actor, occurredAt, context);
   const voidPurchaseMatch = path.match(/^\/api\/compras\/(\d+)\/anular$/);
-  if (method === 'POST' && voidPurchaseMatch) return voidPurchase(client, id(Number(voidPurchaseMatch[1]), 'la compra'), body, actor, occurredAt);
-  if (method === 'POST' && path === '/api/taller') return openWorkshopAccount(client, body, actor, occurredAt);
+  if (method === 'POST' && voidPurchaseMatch) return voidPurchase(client, id(Number(voidPurchaseMatch[1]), 'la compra'), body, actor, occurredAt, context);
+  if (method === 'POST' && path === '/api/taller') return openWorkshopAccount(client, body, actor, occurredAt, context);
   const workshopMatch = path.match(/^\/api\/taller\/(\d+)\/(despachar|devolver|cancelar|facturar)$/);
   if (method === 'POST' && workshopMatch) {
     const accountId = id(Number(workshopMatch[1]), 'la cuenta de taller');
-    if (workshopMatch[2] === 'despachar') return dispatchWorkshopItems(client, accountId, body, actor, occurredAt);
-    if (workshopMatch[2] === 'devolver') return returnWorkshopItem(client, accountId, body, actor, occurredAt);
-    if (workshopMatch[2] === 'cancelar') return cancelWorkshopAccount(client, accountId, body, actor, occurredAt);
+    if (workshopMatch[2] === 'despachar') return dispatchWorkshopItems(client, accountId, body, actor, occurredAt, context);
+    if (workshopMatch[2] === 'devolver') return returnWorkshopItem(client, accountId, body, actor, occurredAt, context);
+    if (workshopMatch[2] === 'cancelar') return cancelWorkshopAccount(client, accountId, body, actor, occurredAt, context);
     return billWorkshopAccount(client, accountId, body, actor, occurredAt, context.allowNcf !== false);
   }
   if (method === 'POST' && path === '/api/cuentas/cobros') return accountPayment(client, 'cobro', body, actor, occurredAt);

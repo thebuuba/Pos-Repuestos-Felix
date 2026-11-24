@@ -74,6 +74,7 @@ function PurchaseEntryForm({
   const [supplierHighlight, setSupplierHighlight] = useState(0);
   const [productMenuOpen, setProductMenuOpen] = useState(false);
   const [productHighlight, setProductHighlight] = useState(0);
+  const [productSelected, setProductSelected] = useState(false);
   const [error, setError] = useState(null);
   const [retryInput, setRetryInput] = useState(null);
   const [sending, setSending] = useState(false);
@@ -151,12 +152,13 @@ function PurchaseEntryForm({
     }));
     setProductMenuOpen(false);
     setProductHighlight(0);
+    setProductSelected(false);
     requestAnimationFrame(() => {
       qtyRef.current?.focus();
       qtyRef.current?.select();
     });
   };
-  const showNewDescription = Boolean(entry.code.trim() && !match && !altCodeOwner && !(productMenuOpen && productResults.length > 0));
+  const showNewDescription = Boolean(entry.code.trim() && !match && !altCodeOwner);
   const evaluate = (line, catalogPrices) => {
     let prices = {}, amounts = {};
     try {
@@ -164,7 +166,10 @@ function PurchaseEntryForm({
       prices = { ...purchasePrices(line.cost, formula, rounding, catalogPrices), ...line.overrides };
       amounts = purchaseLineAmounts(line.cost, line.quantity);
       if (line.overrides) {
-        for (const k of PRICE_KEYS) costUnits(purchaseDecimal(prices[k] ?? ""), `el precio ${k.toUpperCase()}`);
+        for (const k of PRICE_KEYS) {
+          if (prices[k] === undefined || prices[k] === "") throw new Error(`Completa el precio ${k.toUpperCase()}.`);
+          costUnits(purchaseDecimal(prices[k]), `el precio ${k.toUpperCase()}`);
+        }
       }
       return { prices, ...amounts };
     } catch (cause) {
@@ -447,29 +452,34 @@ function PurchaseEntryForm({
                   maxLength={2000} ref={codeRef} aria-label="Código"
                   autoComplete="off"
                   value={entry.code}
-                  onFocus={() => { setProductMenuOpen(true); setProductHighlight(0); }}
+                  onFocus={() => { setProductMenuOpen(true); setProductHighlight(0); setProductSelected(false); }}
                   onBlur={() => setTimeout(() => setProductMenuOpen(false), 150)}
                   onChange={(e) => {
                     onCodeChange(e.target.value);
                     setProductMenuOpen(true);
                     setProductHighlight(0);
+                    setProductSelected(false);
                   }}
                   onKeyDown={(e) => {
                     if (productMenuOpen && productResults.length > 0) {
                       if (e.key === "ArrowDown") {
                         e.preventDefault();
+                        setProductSelected(true);
                         setProductHighlight((h) => Math.min(h + 1, productResults.length - 1));
                       } else if (e.key === "ArrowUp") {
                         e.preventDefault();
+                        setProductSelected(true);
                         setProductHighlight((h) => Math.max(h - 1, 0));
                       } else if (e.key === "Enter") {
                         const exact = findProduct(entry.code);
                         if (exact) {
                           e.preventDefault();
                           pickProduct(exact);
-                        } else if (productResults[productHighlight]) {
+                        } else if (productSelected && productResults[productHighlight]) {
                           e.preventDefault();
                           pickProduct(productResults[productHighlight]);
+                        } else {
+                          setProductMenuOpen(false);
                         }
                       } else if (e.key === "Escape") {
                         setProductMenuOpen(false);

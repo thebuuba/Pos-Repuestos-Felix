@@ -87,13 +87,16 @@ function SuppliersPage() {
   const totalOwed = useMemo(() => suppliers.reduce((s, x) => s + x.balance, 0), [suppliers]);
   const monthTotal = useMemo(() => {
     const month = businessMonthIso();
-    return purchases.filter((p) => p.date.slice(0, 7) === month).reduce((s, p) => s + p.total, 0);
+    return purchases
+      .filter((p) => p.status !== "anulada" && p.date.slice(0, 7) === month)
+      .reduce((s, p) => s + p.total, 0);
   }, [purchases]);
   const formulasById = useMemo(() => new Map(formulas.map((f) => [f.id, f])), [formulas]);
   const purchasesBySupplier = useMemo(() => {
     const map = new Map();
     for (let i = 0; i < purchases.length; i++) {
       const p = purchases[i];
+      if (p.status === "anulada") continue;
       const entry = map.get(p.supplierId);
       if (entry) entry.count++;
       else map.set(p.supplierId, { count: 1, last: p });

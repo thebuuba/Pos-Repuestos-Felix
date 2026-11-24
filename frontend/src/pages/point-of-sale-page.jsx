@@ -395,12 +395,25 @@ export function OperationalPointOfSalePage() {
     : null;
   const nextNcfPreview = activeNcf ? `${activeNcf.prefix}${String(activeNcf.current + 1).padStart(8, "0")}` : null;
   const checkoutRef = useRef(null);
-  checkoutRef.current = () => { if (!ncfWarning) checkout(); };
+  checkoutRef.current = () => {
+    if (failure?.retry) {
+      if (!sending && !runtime.busy && !runtime.recovering) checkout(true);
+      return;
+    }
+    if (!ncfWarning) checkout();
+  };
   useEffect(() => {
     const onKey = (event) => {
       if (event.key === "F9") {
         event.preventDefault();
-        if (!event.repeat) checkoutRef.current();
+        if (event.repeat) return;
+        const active = document.activeElement;
+        if (active instanceof HTMLElement && active.classList.contains("sale-cart-qty-input")) {
+          active.blur();
+          window.setTimeout(() => checkoutRef.current(), 0);
+          return;
+        }
+        checkoutRef.current();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -578,7 +591,7 @@ export function OperationalPointOfSalePage() {
         onOpenChange={(open) => { if (!open) setReprintSale(null); }}
         onNewSale={() => setReprintSale(null)}
         business={settings.business}
-        printFormat={settings.printFormat}
+        printFormat={settings.printer ?? "Térmica 80 mm"}
         footer={settings.ticketFooter}
         isReprint
       />

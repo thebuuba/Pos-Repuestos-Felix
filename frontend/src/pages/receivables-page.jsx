@@ -71,7 +71,7 @@ function ReceivablesPage() {
         operational={Boolean(runtime)}
         cashOpen={Boolean(cashSession?.open)}
         business={settings.business}
-        printFormat={settings.printFormat}
+        printFormat={settings.printer ?? "Térmica 80 mm"}
         ticketFooter={settings.ticketFooter}
         onViewDocument={(doc) => {
           const found = sales.find((s) => s.id === doc.id);
@@ -100,7 +100,7 @@ function ReceivablesPage() {
         onOpenChange={(open) => { if (!open) setReprintSale(null); }}
         onNewSale={() => setReprintSale(null)}
         business={settings.business}
-        printFormat={settings.printFormat}
+        printFormat={settings.printer ?? "Térmica 80 mm"}
         footer={settings.ticketFooter}
         isReprint
       />

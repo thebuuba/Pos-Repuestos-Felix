@@ -293,6 +293,13 @@ test('ver factura de compra en modal, anular compra a crédito (restando inventa
   await dialog.getByText('Amortiguador delantero').waitFor({ state: 'visible' });
   await dialog.getByRole('button', { name: 'Imprimir' }).waitFor({ state: 'visible' });
 
+  // C1: verificar que en modo impresión (@media print) el documento es visible y no sale una hoja en blanco
+  await page.emulateMedia({ media: 'print' });
+  const printBox = await dialog.locator('.pos-receipt-document').boundingBox();
+  assert.ok(printBox && printBox.width > 200 && printBox.height > 100, `Factura de compra debe imprimirse visible, box=${JSON.stringify(printBox)}`);
+  assert.equal(await dialog.getByRole('heading', { name: /Factura de compra FAC-ERR-01/i }).isHidden(), true, 'El encabezado del modal debe ocultarse al imprimir');
+  await page.emulateMedia({ media: 'screen' });
+
   // 2. Anular la compra desde el modal con motivo
   await dialog.getByRole('button', { name: 'Anular compra' }).click();
   await dialog.getByLabel('Motivo de anulación').fill('Cantidad equivocada en factura');

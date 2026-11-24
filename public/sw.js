@@ -7,7 +7,7 @@ const FILES = [
   '/icons/icon-192.png', '/icons/icon-512.png', '/icons/maskable-512.png', '/icons/apple-touch-icon.png',
 ];
 const OPTIONAL = [];
-const PAGES = new Set(['/', '/index.html', '/ventas', '/inventario', '/compras', '/caja', '/clientes', '/suplidores',
+const PAGES = new Set(['/', '/index.html', '/ventas', '/inventario', '/compras', '/taller', '/caja', '/clientes', '/suplidores',
   '/reportes', '/cuentas-por-cobrar', '/cuentas-por-pagar', '/configuracion', '/ayuda']);
 
 self.addEventListener('install', (event) => {

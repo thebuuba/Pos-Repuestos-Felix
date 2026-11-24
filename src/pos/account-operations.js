@@ -18,7 +18,7 @@ export function addDaysIso(isoDate, days) {
   return date.toISOString().slice(0, 10);
 }
 
-export async function voidSale(client, saleId, body, actor, occurredAt = null) {
+export async function voidSale(client, saleId, body, actor, occurredAt = null, context = null) {
   const expectedVersion = id(body.version, 'la versión de la factura');
   const reason = text(body.motivo, 'el motivo de anulación');
   const user = text(actor?.name || actor?.id, 'el usuario');
@@ -44,12 +44,14 @@ export async function voidSale(client, saleId, body, actor, occurredAt = null) {
     }
     await client.query('UPDATE turnos_caja SET version=version+1 WHERE id=$1', [turn.id]);
   } else if (sale.caja_id !== null) {
-    const turn = (await client.query('SELECT cerrado_en FROM turnos_caja WHERE id=$1 FOR SHARE', [sale.caja_id])).rows[0];
+    const turn = (await client.query('SELECT id,cerrado_en FROM turnos_caja WHERE id=$1 FOR UPDATE', [sale.caja_id])).rows[0];
     if (turn?.cerrado_en !== null && turn?.cerrado_en !== undefined) {
       closedTurnAt = turn.cerrado_en;
       if (occurredAt && new Date(occurredAt).getTime() <= new Date(closedTurnAt).getTime()) {
         fail('No se puede registrar una anulación con fecha anterior o igual al cierre de su turno de caja.', 409);
       }
+    } else if (turn) {
+      await client.query('UPDATE turnos_caja SET version=version+1 WHERE id=$1', [turn.id]);
     }
   }
 
@@ -74,16 +76,17 @@ export async function voidSale(client, saleId, body, actor, occurredAt = null) {
     product.stock += qty;
     const stockText = quantityText(product.stock);
     await client.query('UPDATE productos SET stock=$2, version=version+1, actualizado_en=now() WHERE id=$1', [product.id, stockText]);
-    await client.query(
+    const movement = await client.query(
       `INSERT INTO movimientos_inventario(producto_id,cantidad,existencia_posterior,tipo,venta_detalle_id,compra_detalle_id,motivo,creado_en)
-       VALUES($1,$2,$3,'anulacion',NULL,NULL,$4,COALESCE($5::timestamptz,clock_timestamp()))`,
+       VALUES($1,$2,$3,'anulacion',NULL,NULL,$4,COALESCE($5::timestamptz,clock_timestamp())) RETURNING id`,
       [product.id, quantityText(qty), stockText, `Anulación factura #${saleId}: ${reason}`.slice(0, 2000), occurredAt],
     );
+    context?.createdMovements?.push(Number(movement.rows[0].id));
   }
   return { id: saleId, voided: true };
 }
 
-export async function voidPurchase(client, purchaseId, body, actor, occurredAt = null) {
+export async function voidPurchase(client, purchaseId, body, actor, occurredAt = null, context = null) {
   const expectedVersion = id(body.version, 'la versión de la compra');
   const reason = text(body.motivo, 'el motivo de anulación');
   const user = text(actor?.name || actor?.id, 'el usuario');
@@ -128,11 +131,12 @@ export async function voidPurchase(client, purchaseId, body, actor, occurredAt =
     product.stock -= qty;
     const stockText = quantityText(product.stock);
     await client.query('UPDATE productos SET stock=$2, version=version+1, actualizado_en=now() WHERE id=$1', [product.id, stockText]);
-    await client.query(
+    const movement = await client.query(
       `INSERT INTO movimientos_inventario(producto_id,cantidad,existencia_posterior,tipo,venta_detalle_id,compra_detalle_id,motivo,creado_en)
-       VALUES($1,$2,$3,'anulacion_compra',NULL,NULL,$4,COALESCE($5::timestamptz,clock_timestamp()))`,
+       VALUES($1,$2,$3,'anulacion_compra',NULL,NULL,$4,COALESCE($5::timestamptz,clock_timestamp())) RETURNING id`,
       [product.id, quantityText(-qty), stockText, `Anulación compra #${purchaseId}: ${reason}`.slice(0, 2000), occurredAt],
     );
+    context?.createdMovements?.push(Number(movement.rows[0].id));
   }
   return { id: purchaseId, voided: true };
 }

@@ -224,6 +224,10 @@ export function SaleDraftProvider({ children }) {
   }
   function openQuote() {
     if (!items.length || receipt) return;
+    if (discountError) {
+      ue.warning(discountError);
+      return;
+    }
     setReceipt({
       isQuote: true,
       sale: {
@@ -292,6 +296,12 @@ export function SaleDraftProvider({ children }) {
       } catch (error) {
         skipped.push(live.name + " (" + error.message + ")");
       }
+    }
+    if (restored.length === 0) {
+      ue.error("No se pudo retomar la venta en espera", {
+        description: skipped.length ? skipped.join("; ") : "Ningún artículo de esta venta está disponible.",
+      });
+      return false;
     }
     const hadActiveCart = itemsRef.current.length > 0;
     let nextHeld = heldSales.filter((h) => h.id !== holdId);

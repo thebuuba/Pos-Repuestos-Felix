@@ -92,11 +92,11 @@ function TopBar({ onBrandClick } = {}) {
     };
   }, [searchOpen]);
 
-  const searchResults = useMemo(() => {
-    const q = deferredSearchQuery.trim().toLowerCase();
+  const buildSearchResults = (raw) => {
+    const q = raw.trim().toLowerCase();
     if (!q) return [];
     const items = [];
-    for (const p of searchTopProducts(products, deferredSearchQuery, 5)) {
+    for (const p of searchTopProducts(products, raw, 5)) {
       items.push({ kind: "Producto", icon: Box, title: p.name, subtitle: `${p.code} · Stock ${p.stock} · ${formatMoney(p.prices.p1)}`, to: `/inventario?buscar=${encodeURIComponent(p.code)}` });
     }
     let count = 0;
@@ -127,7 +127,11 @@ function TopBar({ onBrandClick } = {}) {
       }
     }
     return items;
-  }, [deferredSearchQuery, products, customers, suppliers, sales, isOwner]);
+  };
+  const searchResults = useMemo(
+    () => buildSearchResults(deferredSearchQuery),
+    [deferredSearchQuery, products, customers, suppliers, sales, isOwner],
+  );
 
   const stockAlerts = useMemo(() => {
     const outNames = [];
@@ -210,11 +214,14 @@ function TopBar({ onBrandClick } = {}) {
             onChange={(e) => { setSearchQuery(e.target.value); setSearchOpen(true); }}
             onFocus={() => setSearchOpen(true)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && searchResults[0]) {
-                e.preventDefault();
-                navigate(searchResults[0].to);
-                setSearchQuery("");
-                setSearchOpen(false);
+              if (e.key === 'Enter') {
+                const immediate = searchQuery === deferredSearchQuery ? searchResults : buildSearchResults(searchQuery);
+                if (immediate[0]) {
+                  e.preventDefault();
+                  navigate(immediate[0].to);
+                  setSearchQuery("");
+                  setSearchOpen(false);
+                }
               }
             }}
             aria-label="Buscar en el sistema"

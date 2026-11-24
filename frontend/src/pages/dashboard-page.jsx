@@ -151,7 +151,7 @@ function DashboardPage({ reference }) {
         onOpenChange={(open) => { if (!open) setReprintSale(null); }}
         onNewSale={() => setReprintSale(null)}
         business={settings.business}
-        printFormat={settings.printFormat}
+        printFormat={settings.printer ?? "Térmica 80 mm"}
         footer={settings.ticketFooter}
         isReprint
       />

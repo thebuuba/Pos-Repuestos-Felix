@@ -55,7 +55,7 @@ export function presentWorkshopAccount(account, items = []) {
   };
 }
 
-async function dispatchLines(client, accountId, label, rawItems, withdrawnBy, user, occurredAt) {
+async function dispatchLines(client, accountId, label, rawItems, withdrawnBy, user, occurredAt, context = null) {
   if (!Array.isArray(rawItems) || !rawItems.length || rawItems.length > 1000) {
     fail('Indica entre 1 y 1000 artículos para despachar.');
   }
@@ -93,21 +93,23 @@ async function dispatchLines(client, accountId, label, rawItems, withdrawnBy, us
       'UPDATE productos SET stock=$2, version=version+1, actualizado_en=now() WHERE id=$1',
       [p.id, stockText],
     );
-    await client.query(
+    const workshopItem = await client.query(
       `INSERT INTO cuentas_taller_items(cuenta_id,producto_id,codigo,nombre,gravado,nivel_precio,precio,cantidad,cantidad_devuelta,despachado_por,retirado_por,creado_en)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,0,$9,$10,COALESCE($11::timestamptz,clock_timestamp()))`,
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,0,$9,$10,COALESCE($11::timestamptz,clock_timestamp())) RETURNING id`,
       [accountId, p.id, p.codigo, p.nombre, Boolean(p.gravado), item.nivelPrecio, frozenPrice, quantityText(item.quantity), user, withdrawnBy, occurredAt ?? null],
     );
+    context?.createdWorkshopItems?.push(Number(workshopItem.rows[0].id));
     const reason = (withdrawnBy ? `${reasonPrefix} · Retiró: ${withdrawnBy}` : reasonPrefix).slice(0, 2000);
-    await client.query(
+    const movement = await client.query(
       `INSERT INTO movimientos_inventario(producto_id,cantidad,existencia_posterior,tipo,venta_detalle_id,compra_detalle_id,motivo,creado_en)
-       VALUES($1,$2,$3,'despacho',NULL,NULL,$4,COALESCE($5::timestamptz,clock_timestamp()))`,
+       VALUES($1,$2,$3,'despacho',NULL,NULL,$4,COALESCE($5::timestamptz,clock_timestamp())) RETURNING id`,
       [p.id, quantityText(-item.quantity), stockText, reason, occurredAt ?? null],
     );
+    context?.createdMovements?.push(Number(movement.rows[0].id));
   }
 }
 
-export async function openWorkshopAccount(client, body, actor, occurredAt = null) {
+export async function openWorkshopAccount(client, body, actor, occurredAt = null, context = null) {
   const customer = (await client.query('SELECT * FROM clientes WHERE id=$1 AND activo FOR SHARE', [id(body.clienteId, 'el cliente')])).rows[0];
   if (!customer) fail('Selecciona un cliente activo.');
   const customName = typeof body.clienteNombre === 'string' && body.clienteNombre.trim()
@@ -131,12 +133,12 @@ export async function openWorkshopAccount(client, body, actor, occurredAt = null
 
   if (Array.isArray(body.items) && body.items.length > 0) {
     const label = [mechanic, vehicle].filter(Boolean).join(' · ') || customName;
-    await dispatchLines(client, accountId, label, body.items, withdrawnBy, user, occurredAt);
+    await dispatchLines(client, accountId, label, body.items, withdrawnBy, user, occurredAt, context);
   }
   return { id: accountId };
 }
 
-export async function dispatchWorkshopItems(client, accountId, body, actor, occurredAt = null) {
+export async function dispatchWorkshopItems(client, accountId, body, actor, occurredAt = null, context = null) {
   const expectedVersion = id(body.version, 'la versión de la cuenta de taller');
   const withdrawnBy = text(body.retiradoPor ?? '', 'quién retira', false);
   const user = text(actor?.name || actor?.id, 'el usuario');
@@ -147,12 +149,12 @@ export async function dispatchWorkshopItems(client, accountId, body, actor, occu
   if (Number(account.version) !== expectedVersion) fail('La cuenta de taller cambió. Actualiza antes de despachar.', 409);
 
   const label = [account.mecanico, account.vehiculo].filter(Boolean).join(' · ') || account.cliente_nombre;
-  await dispatchLines(client, accountId, label, body.items, withdrawnBy, user, occurredAt);
+  await dispatchLines(client, accountId, label, body.items, withdrawnBy, user, occurredAt, context);
   await client.query('UPDATE cuentas_taller SET version=version+1 WHERE id=$1', [accountId]);
   return { id: accountId };
 }
 
-export async function returnWorkshopItem(client, accountId, body, actor, occurredAt = null) {
+export async function returnWorkshopItem(client, accountId, body, actor, occurredAt = null, context = null) {
   const expectedVersion = id(body.version, 'la versión de la cuenta de taller');
   const itemId = id(body.itemId, 'el artículo despachado');
   const qty = quantityUnits(body.cantidad, 'la cantidad a devolver', 0.01);
@@ -189,16 +191,17 @@ export async function returnWorkshopItem(client, accountId, body, actor, occurre
     [product.id, stockText],
   );
   const reason = `Devolución cuenta taller #${accountId}${reasonNote ? `: ${reasonNote}` : ''}`.slice(0, 2000);
-  await client.query(
+  const movement = await client.query(
     `INSERT INTO movimientos_inventario(producto_id,cantidad,existencia_posterior,tipo,venta_detalle_id,compra_detalle_id,motivo,creado_en)
-     VALUES($1,$2,$3,'devolucion_despacho',NULL,NULL,$4,COALESCE($5::timestamptz,clock_timestamp()))`,
+     VALUES($1,$2,$3,'devolucion_despacho',NULL,NULL,$4,COALESCE($5::timestamptz,clock_timestamp())) RETURNING id`,
     [product.id, quantityText(qty), stockText, reason, occurredAt ?? null],
   );
+  context?.createdMovements?.push(Number(movement.rows[0].id));
   await client.query('UPDATE cuentas_taller SET version=version+1 WHERE id=$1', [accountId]);
   return { id: accountId };
 }
 
-export async function cancelWorkshopAccount(client, accountId, body, actor, occurredAt = null) {
+export async function cancelWorkshopAccount(client, accountId, body, actor, occurredAt = null, context = null) {
   const expectedVersion = id(body.version, 'la versión de la cuenta de taller');
   const reasonNote = text(body.motivo ?? '', 'el motivo', false);
   text(actor?.name || actor?.id, 'el usuario');
@@ -234,11 +237,12 @@ export async function cancelWorkshopAccount(client, accountId, body, actor, occu
       const stockText = quantityText(product.stock);
       await client.query('UPDATE cuentas_taller_items SET cantidad_devuelta=cantidad WHERE id=$1', [item.id]);
       await client.query('UPDATE productos SET stock=$2, version=version+1, actualizado_en=now() WHERE id=$1', [product.id, stockText]);
-      await client.query(
+      const movement = await client.query(
         `INSERT INTO movimientos_inventario(producto_id,cantidad,existencia_posterior,tipo,venta_detalle_id,compra_detalle_id,motivo,creado_en)
-         VALUES($1,$2,$3,'devolucion_despacho',NULL,NULL,$4,COALESCE($5::timestamptz,clock_timestamp()))`,
+         VALUES($1,$2,$3,'devolucion_despacho',NULL,NULL,$4,COALESCE($5::timestamptz,clock_timestamp())) RETURNING id`,
         [product.id, quantityText(pending), stockText, reason, occurredAt ?? null],
       );
+      context?.createdMovements?.push(Number(movement.rows[0].id));
     }
   }
 

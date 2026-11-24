@@ -404,7 +404,7 @@ function CustomersPage() {
                     {"Crédito disponible"}
                   </p>
                   <p className="text-lg font-semibold tabular-nums">
-                    {detailCustomer.creditLimit === null ? "Sin límite configurado" : formatMoney(
+                    {detailCustomer.creditLimit === null ? "Sin crédito aprobado" : formatMoney(
                       Math.max(
                         0,
                         detailCustomer.creditLimit - detailCustomer.balance,

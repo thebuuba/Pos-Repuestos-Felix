@@ -42,7 +42,8 @@ export function SalesScanner() {
       // A barcode may BEGIN with Space. Defer a lone human Space on a button
       // briefly; subsequent reader keys cancel it before it can click/cobrar.
       const button = event.target.closest?.('button, [role="button"]');
-      if (event.key === ' ' && button) {
+      const inOverlayOrTab = event.target.closest?.('[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [role="tablist"]');
+      if (event.key === ' ' && button && !current.paused && !inOverlayOrTab) {
         event.preventDefault();
         event.stopPropagation();
         if (!event.repeat && scanner.current.length === 1) spaceAction = button;

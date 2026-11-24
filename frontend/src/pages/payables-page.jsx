@@ -42,7 +42,7 @@ function PayablesPage() {
         operational={Boolean(runtime)}
         cashOpen={Boolean(cashSession?.open)}
         business={settings.business}
-        printFormat={settings.printFormat}
+        printFormat={settings.printer ?? "Térmica 80 mm"}
         ticketFooter={settings.ticketFooter}
         onViewDocument={(doc) => {
           const found = purchases.find((p) => p.id === doc.id);
@@ -72,8 +72,9 @@ function PayablesPage() {
         open={Boolean(selectedPurchase)}
         onOpenChange={(open) => { if (!open) setSelectedPurchaseId(null); }}
         canVoid={Boolean(runtime?.isOwner)}
-        onVoid={async (purchase, reason) => {
-          await voidPurchase({
+        onVoid={async (purchase, reason, retryAction) => {
+          if (retryAction) await retryAction();
+          else await voidPurchase({
             databaseId: purchase.databaseId,
             purchaseId: purchase.id,
             version: purchase.version,

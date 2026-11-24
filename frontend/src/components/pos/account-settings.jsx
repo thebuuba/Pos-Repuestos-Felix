@@ -55,7 +55,7 @@ export function AccountSettings() {
       setError('Elige otra contraseña de al menos 6 caracteres y hasta 72 bytes. No se exige combinar letras, números ni símbolos.'); return;
     }
     const nextUsername = username.trim().toLowerCase();
-    if (!/^[a-z0-9][a-z0-9._-]{1,39}$/.test(nextUsername) || nextUsername.endsWith('.') || nextUsername.includes('..')) {
+    if (account.canChangeUsername && (!/^[a-z0-9][a-z0-9._-]{1,39}$/.test(nextUsername) || nextUsername.endsWith('.') || nextUsername.includes('..'))) {
       setError('Usa entre 2 y 40 letras sin tildes, números, puntos, guiones o guiones bajos para el usuario.'); return;
     }
     const body = { currentPassword,

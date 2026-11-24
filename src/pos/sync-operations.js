@@ -230,7 +230,7 @@ export async function retireSyncStream(pool, body, databaseLabel, actor) {
   } finally { client.release(discard); }
 }
 
-async function operationBackup(client, method, path, result, priorMovement, priorAltCode) {
+async function operationBackup(client, method, path, result, priorMovement, priorAltCode, createdMovements = null) {
   const resource = resourceFor(path), table = tableFor(resource);
   const data = Object.fromEntries(Object.keys(tables).map(name => [name, []]));
   if (method === 'DELETE') return { tables: data };
@@ -243,13 +243,13 @@ async function operationBackup(client, method, path, result, priorMovement, prio
     });
     if (!sale) data.productos = await rows(client, 'productos', true, { sql: 'id=ANY($1::bigint[])', values: [data[detail].map(row => row.producto_id)] });
   } else if (resource === 'ventas/anular') {
-    data.movimientos_inventario = await rows(client, 'movimientos_inventario', true, {
-      sql: 'id>$1 AND tipo=$2', values: [priorMovement, 'anulacion'],
-    });
+    data.movimientos_inventario = createdMovements?.length
+      ? await rows(client, 'movimientos_inventario', true, { sql: 'id=ANY($1::bigint[])', values: [createdMovements] })
+      : [];
   } else if (resource === 'compras/anular') {
-    data.movimientos_inventario = await rows(client, 'movimientos_inventario', true, {
-      sql: 'id>$1 AND tipo=$2', values: [priorMovement, 'anulacion_compra'],
-    });
+    data.movimientos_inventario = createdMovements?.length
+      ? await rows(client, 'movimientos_inventario', true, { sql: 'id=ANY($1::bigint[])', values: [createdMovements] })
+      : [];
   } else if (resource === 'productos') {
     data.movimientos_inventario = await rows(client, 'movimientos_inventario', true, {
       sql: 'producto_id=$1 AND id>$2', values: [result.id, priorMovement],
@@ -265,15 +265,15 @@ async function operationBackup(client, method, path, result, priorMovement, prio
       data.ventas = await rows(client, 'ventas', true, { sql: 'id=$1', values: [result.ventaId] });
       data.venta_detalles = await rows(client, 'venta_detalles', true, { sql: 'venta_id=$1', values: [result.ventaId] });
     } else {
-      data.movimientos_inventario = await rows(client, 'movimientos_inventario', true, {
-        sql: "id>$1 AND tipo IN ('despacho','devolucion_despacho')", values: [priorMovement],
-      });
+      data.movimientos_inventario = createdMovements?.length
+        ? await rows(client, 'movimientos_inventario', true, { sql: 'id=ANY($1::bigint[])', values: [createdMovements] })
+        : [];
     }
   }
   return { tables: data };
 }
 
-function createdRows(method, path, body, result, backup, priorProducts, priorMovement, priorAltCode, hadNcf, priorWorkshopItem = 0) {
+function createdRows(method, path, body, result, backup, priorProducts, priorMovement, priorAltCode, hadNcf, priorWorkshopItem = 0, createdMovements = null, createdWorkshopItems = null) {
   const resource = resourceFor(path), tbl = backup.tables;
   const created = {};
   const add = (table, list) => { if (list.length) created[table] = list.map(row => Number(row.id)); };
@@ -287,23 +287,21 @@ function createdRows(method, path, body, result, backup, priorProducts, priorMov
   if (resource === 'caja/movimiento') add('movimientos_caja', selected('movimientos_caja'));
   if (resource === 'cuentas/cobros' || resource === 'cuentas/pagos') add('abonos_cuentas', selected('abonos_cuentas'));
   if (resource === 'ncf' && !hadNcf) add('secuencias_ncf', selected('secuencias_ncf'));
-  if (resource === 'ventas/anular') {
-    add('movimientos_inventario', tbl.movimientos_inventario.filter(row => Number(row.id) > priorMovement && row.tipo === 'anulacion'));
-  }
-  if (resource === 'compras/anular') {
-    add('movimientos_inventario', tbl.movimientos_inventario.filter(row => Number(row.id) > priorMovement && row.tipo === 'anulacion_compra'));
+  if (resource === 'ventas/anular' || resource === 'compras/anular') {
+    if (createdMovements?.length) created.movimientos_inventario = [...createdMovements];
   }
   if (resource === 'taller') {
     add('cuentas_taller', selected('cuentas_taller'));
     add('cuentas_taller_items', tbl.cuentas_taller_items.filter(row => sameId(row.cuenta_id, result.id)));
-    add('movimientos_inventario', tbl.movimientos_inventario.filter(row => Number(row.id) > priorMovement && row.tipo === 'despacho'));
+    if (createdMovements?.length) created.movimientos_inventario = [...createdMovements];
   }
   if (resource === 'taller/despachar') {
-    add('cuentas_taller_items', tbl.cuentas_taller_items.filter(row => Number(row.id) > priorWorkshopItem && sameId(row.cuenta_id, result.id)));
-    add('movimientos_inventario', tbl.movimientos_inventario.filter(row => Number(row.id) > priorMovement && row.tipo === 'despacho'));
+    if (createdWorkshopItems?.length) created.cuentas_taller_items = [...createdWorkshopItems];
+    else add('cuentas_taller_items', tbl.cuentas_taller_items.filter(row => Number(row.id) > priorWorkshopItem && sameId(row.cuenta_id, result.id)));
+    if (createdMovements?.length) created.movimientos_inventario = [...createdMovements];
   }
   if (resource === 'taller/devolver' || resource === 'taller/cancelar') {
-    add('movimientos_inventario', tbl.movimientos_inventario.filter(row => Number(row.id) > priorMovement && row.tipo === 'devolucion_despacho'));
+    if (createdMovements?.length) created.movimientos_inventario = [...createdMovements];
   }
   if (resource === 'taller/facturar') {
     add('ventas', tbl.ventas.filter(row => sameId(row.id, result.ventaId)));
@@ -331,8 +329,11 @@ export async function writeSyncOperation(pool, envelope, databaseLabel, actor, {
   const retiredKey = streamKey('retired', actorId, deviceId, body.databaseId);
   const cursorKey = streamKey('cursor', actorId, deviceId, body.databaseId);
   let priorProducts = new Set(), priorMovement = 0, priorAltCode = 0, hadNcf = false, priorWorkshopItem = 0;
+  const createdMovements = [];
+  const createdWorkshopItems = [];
   return writeOperation(pool, method, path, executionBody, operationId, databaseLabel, actor, {
     occurredAt, allowNcf: false, requestType: `sync:${actorId}:${method} ${path}`, fingerprintPayload: envelope, versionOnly: receiptOnly,
+    createdMovements, createdWorkshopItems,
     async beforeExecute(client) {
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [`sync:${actorId}:${deviceId}`]);
       const markers = (await client.query('SELECT clave,tipo,resultado FROM pos_privado.solicitudes WHERE clave=ANY($1::uuid[])', [[retiredKey, cursorKey]])).rows;
@@ -351,7 +352,8 @@ export async function writeSyncOperation(pool, envelope, databaseLabel, actor, {
         if (voidMatch) {
           const targetSale = (await client.query('SELECT metodo_pago,caja_id FROM ventas WHERE id=$1', [Number(voidMatch[1])])).rows[0];
           if (targetSale?.metodo_pago === 'efectivo' && targetSale.caja_id !== null) {
-            await verifyCashHead(client, expected.cashHead, occurredAt, { cajaId: Number(targetSale.caja_id) });
+            // Anular una venta en efectivo resta dinero de caja: exige orden estricto (igual que salidas).
+            await verifyCashHead(client, expected.cashHead, occurredAt, null);
           }
         } else {
           await verifyCashHead(client, expected.cashHead, occurredAt, (path === '/api/ventas' || resource === 'taller/facturar') ? body : null);
@@ -364,13 +366,8 @@ export async function writeSyncOperation(pool, envelope, databaseLabel, actor, {
       }
       if (path === '/api/compras') priorProducts = new Set((await client.query('SELECT id FROM productos WHERE codigo=ANY($1::text[])',
         [body.items.map(line => line.codigo)])).rows.map(row => String(row.id)));
-      if (['productos', 'ventas/anular', 'compras/anular', 'taller', 'taller/despachar', 'taller/devolver', 'taller/cancelar'].includes(resource)) {
-        priorMovement = Number((await client.query('SELECT COALESCE(max(id),0) AS id FROM movimientos_inventario')).rows[0].id);
-      }
-      if (resource === 'taller/despachar') {
-        priorWorkshopItem = Number((await client.query('SELECT COALESCE(max(id),0) AS id FROM cuentas_taller_items')).rows[0].id);
-      }
       if (resource === 'productos') {
+        priorMovement = Number((await client.query('SELECT COALESCE(max(id),0) AS id FROM movimientos_inventario')).rows[0].id);
         priorAltCode = Number((await client.query('SELECT COALESCE(max(id),0) AS id FROM productos_codigos')).rows[0].id);
       }
       if (resource === 'ncf') {
@@ -378,11 +375,11 @@ export async function writeSyncOperation(pool, envelope, databaseLabel, actor, {
       }
     },
     async afterExecute(client, result) {
-      const backup = await operationBackup(client, method, path, result, priorMovement, priorAltCode);
+      const backup = await operationBackup(client, method, path, result, priorMovement, priorAltCode, createdMovements);
       const effect = operationEffect(method, path, body, result, backup);
       if (canonical(effect) !== canonical(expected.effect)) fail('Conflicto de sincronización: el resultado difiere del confirmado localmente. Revisa la operación conservada en el equipo.', 409);
       return { actorId, deviceId, sequence, operationId, occurredAt, result, effect,
-        created: createdRows(method, path, body, result, backup, priorProducts, priorMovement, priorAltCode, hadNcf, priorWorkshopItem) };
+        created: createdRows(method, path, body, result, backup, priorProducts, priorMovement, priorAltCode, hadNcf, priorWorkshopItem, createdMovements, createdWorkshopItems) };
     },
     async represent(client, observed, metadata, replayed) {
       const { result: _result, ...current } = observed;

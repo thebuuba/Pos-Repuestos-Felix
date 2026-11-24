@@ -37,7 +37,10 @@ export function cashPresentation(data) {
     summary: turn ? totals(turn, data.ventas.filter(row => row.caja_id === turn.id), movements, payments).summary : emptySummary(),
     movements: movements.map(row => ({ id: Number(row.id), sessionId: Number(row.caja_id), type: row.tipo,
       amount: Number(row.monto), description: row.concepto, date: iso(row.creado_en) })).reverse(),
-    closures: data.turnos_caja.filter(row => row.cerrado_en !== null).map(closure).reverse(),
+    closures: data.turnos_caja
+      .filter(row => row.cerrado_en !== null)
+      .map(closure)
+      .sort((a, b) => (b.closedAt || '').localeCompare(a.closedAt || '') || (b.openedAt || '').localeCompare(a.openedAt || '') || b.id - a.id),
   };
 }
 export async function turnTotals(client, turn, { atClose = false } = {}) {

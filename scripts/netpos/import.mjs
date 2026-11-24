@@ -88,7 +88,13 @@ async function main() {
       '--set=SHOW_CONTEXT=never','--file=load.sql'], { cwd:directory,env,windowsHide:true,stdio:['ignore','ignore','pipe'] });
     createInterface({ input:child.stderr }).on('line', line => {
       const match = /(?:ERROR|FATAL):\s*([0-9A-Z]{5})\s*$/.exec(line);
-      if (match) failure = 'PostgreSQL rechazó la carga (SQLSTATE ' + match[1] + ').';
+      if (match) {
+        const hints = {
+          P0001: ' Revisa que la base destino esté vacía (sin importación ni productos/ventas/compras previas) y con esquema compatible.',
+          '42P07': ' Ya existen tablas en el esquema netpos_historico; límpialo antes de reimportar.',
+        };
+        failure = 'PostgreSQL rechazó la carga (SQLSTATE ' + match[1] + ').' + (hints[match[1]] || '');
+      }
     });
     child.once('error', reject);
     child.once('close', resolve);

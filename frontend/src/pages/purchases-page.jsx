@@ -104,8 +104,9 @@ function PurchasesPage() {
         suppliers={suppliers}
         business={settings.business}
         canVoid={Boolean(runtime?.isOwner && voidPurchase)}
-        onVoidPurchase={voidPurchase ? async (purchase, reason) => {
-          await voidPurchase({
+        onVoidPurchase={voidPurchase ? async (purchase, reason, retryAction) => {
+          if (retryAction) await retryAction();
+          else await voidPurchase({
             databaseId: purchase.databaseId,
             purchaseId: purchase.id,
             version: purchase.version,
