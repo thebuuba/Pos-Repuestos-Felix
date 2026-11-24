@@ -136,11 +136,13 @@ test('E2E reimpresión de facturas de venta: Ventas, Panel, Reportes, Cuentas x 
 
     const receiptDialog = page.getByRole('dialog');
     await receiptDialog.getByText('Factura de venta', { exact: true }).waitFor();
-    await receiptDialog.getByText('— Reimpresión —', { exact: true }).waitFor();
-    assert.match(await receiptDialog.innerText(), /Bujía NGK Reimpresión/);
+    const receiptDoc = receiptDialog.locator('.pos-receipt-document');
+    assert.equal(await receiptDoc.getByText('— Reimpresión —').count(), 0, 'El recibo no debe mostrar etiqueta de Reimpresión');
+    assert.doesNotMatch(await receiptDoc.innerText(), /\bPago\b|\bEfectivo\b|\bRecibido\b|\bCambio\b|Guardado en este equipo|Referencia local/);
+    assert.match(await receiptDoc.innerText(), /Bujía NGK Reimpresión/);
     await page.screenshot({ path: join(evidence, 'ventas-reprint-1440-light.png'), fullPage: true });
 
-    await receiptDialog.getByRole('button', { name: 'Reimprimir', exact: true }).click();
+    await receiptDialog.getByRole('button', { name: 'Imprimir', exact: true }).click();
     assert.equal(await page.evaluate(() => window.__printCalls), 1);
     await receiptDialog.getByRole('button', { name: 'Cerrar', exact: true }).click();
     await receiptDialog.waitFor({ state: 'hidden' });
@@ -209,7 +211,8 @@ test('E2E reimpresión de facturas de venta: Ventas, Panel, Reportes, Cuentas x 
     await cashierPage.goto(appOrigin + '/ventas');
     await cashierPage.getByRole('button', { name: 'Facturas recientes y reimpresión', exact: true }).click();
     await cashierPage.getByRole('dialog').getByRole('button', { name: `Reimprimir ${fNum(sale1Id)}`, exact: true }).click();
-    await cashierPage.getByRole('dialog').getByText('— Reimpresión —', { exact: true }).waitFor();
+    await cashierPage.getByRole('dialog').getByText('Factura de venta', { exact: true }).waitFor();
+    assert.equal(await cashierPage.getByRole('dialog').locator('.pos-receipt-document').getByText('— Reimpresión —').count(), 0);
     await cashierPage.getByRole('dialog').getByRole('button', { name: 'Cerrar', exact: true }).click();
 
     await cashierPage.goto(appOrigin + '/');

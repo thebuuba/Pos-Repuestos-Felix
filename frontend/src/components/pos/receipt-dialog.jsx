@@ -29,6 +29,7 @@ function ReceiptDialog({
   isReprint = false,
 }) {
   const isVoided = Boolean(sale?.voided);
+  const isOperational = Boolean(isReprint || isQuote || sale?.dateOnly || sale?.useExactUnitMoney || sale?.localReference);
   const closeAction = onNewSale ?? (() => onOpenChange?.(false));
   const resolvedTitle = title !== "Venta registrada"
     ? title
@@ -48,7 +49,7 @@ function ReceiptDialog({
       : isReprint
         ? isVoided
           ? `Anulada${sale?.voidReason ? ` · ${sale.voidReason}` : ""}. Copia informativa del registro ${sale?.invoiceNumber ?? ""}.`
-          : `Reimpresión de ${sale?.invoiceNumber ?? "la factura"}.`
+          : `Factura ${sale?.invoiceNumber ?? "de venta"}.`
         : sale?.localReference
           ? "Registro local durable. Consulta las operaciones locales para verificar su confirmación en el servidor."
           : <>La factura {sale?.invoiceNumber} se guardó correctamente.</>;
@@ -82,11 +83,6 @@ function ReceiptDialog({
               {isVoided && (
                 <p className="mt-2 rounded border border-primary/50 bg-accent px-2 py-0.5 text-[11px] font-bold uppercase text-primary">
                   {"*** FACTURA ANULADA ***"}
-                </p>
-              )}
-              {isReprint && !isVoided && (
-                <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  {"— Reimpresión —"}
                 </p>
               )}
             </div>
@@ -137,10 +133,6 @@ function ReceiptDialog({
                 </div>
               )}
               {(sale.dateOnly || isReprint) && !sale.ncf && !isQuote && <p className="text-muted-foreground">Sin emisión de NCF</p>}
-              {sale.localReference && <div className="space-y-1 pt-1">
-                <p className="font-semibold">Guardado en este equipo. Confirmación del servidor por verificar.</p>
-                <p style={{ overflowWrap: 'anywhere' }}>Referencia local: {sale.localReference}</p>
-              </div>}
             </div>
             <div className="my-3 border-t border-dashed border-border" />
             <div className="space-y-2">
@@ -207,11 +199,14 @@ function ReceiptDialog({
                 <span>{"TOTAL"}</span>
                 <span>{formatMoney(sale.totals.total)}</span>
               </div>
-              {sale.paymentLabel && <div className="flex justify-between pt-1">
+              {isQuote && sale.paymentLabel && (
+                <p className="pt-1 text-center text-muted-foreground">{sale.paymentLabel}</p>
+              )}
+              {!isOperational && sale.paymentLabel && <div className="flex justify-between pt-1">
                 <span>{"Pago"}</span>
                 <span>{sale.paymentLabel}</span>
               </div>}
-              {sale.received !== undefined && (
+              {!isOperational && sale.received !== undefined && (
                 <Fragment>
                   <div className="flex justify-between">
                     <span>{"Recibido"}</span>
@@ -236,7 +231,7 @@ function ReceiptDialog({
             onClick={() => window.print()}
           >
             <Printer />
-            {isReprint ? "Reimprimir" : sale?.dateOnly ? "Imprimir" : "Reimprimir"}
+            {isOperational ? "Imprimir" : "Reimprimir"}
           </Button>
           <Button className="h-11 rounded-xl" onClick={closeAction}>
             {isQuote || isReprint ? "Cerrar" : "Nueva venta"}
