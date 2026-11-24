@@ -23,7 +23,7 @@ async function worker(optional = []) {
     },
   };
   const context = {
-    self: { location: { origin }, clients: { claim: async () => {} }, addEventListener: (name, callback) => handlers.set(name, callback) },
+    self: { location: { origin }, clients: { claim: async () => {} }, skipWaitingCalls: 0, skipWaiting() { this.skipWaitingCalls++; }, addEventListener: (name, callback) => handlers.set(name, callback) },
     caches, URL, Response, Request: class extends Request { constructor(url, options) { super(typeof url === 'string' ? new URL(url, origin) : url, options); } },
     fetch: async () => { throw new TypeError('Sin conexión'); },
   };
@@ -128,4 +128,18 @@ test('una petición tardía del worker anterior no recrea su caché retirada', a
   });
   assert.equal((await response).type, 'error');
   assert.equal(stores.size, 0);
+});
+
+test('SKIP_WAITING solo activa la nueva versión bajo petición explícita y /taller sirve el shell sin conexión', async () => {
+  const { handlers, origin, context } = await worker();
+  assert.equal(context.self.skipWaitingCalls, 0, 'install no debe llamar skipWaiting automáticamente');
+  handlers.get('message')({ data: { type: 'SKIP_WAITING' } });
+  assert.equal(context.self.skipWaitingCalls, 1, 'SKIP_WAITING explícito debe activar la versión nueva');
+  let result;
+  handlers.get('fetch')({
+    request: { method: 'GET', mode: 'navigate', url: `${origin}/taller` },
+    respondWith: value => { result = value; },
+  });
+  assert.ok(result, '/taller debe abrir el shell sin conexión');
+  assert.equal(await (await result).text(), 'shell:/pwa-shell.html');
 });

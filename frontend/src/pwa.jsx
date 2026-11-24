@@ -71,7 +71,25 @@ export function PwaProvider({ enabled, children }) {
       await event.userChoice;
     } catch { setError('El navegador no pudo abrir la instalación.'); }
   };
-  return <PwaContext.Provider value={available ? { installed, waiting, error, openHelp: () => setHelp(true) } : null}>
+  const applyUpdate = async () => {
+    if (!('serviceWorker' in navigator)) { location.reload(); return; }
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      const target = reg?.waiting;
+      if (target) {
+        await new Promise((resolve) => {
+          const timer = window.setTimeout(resolve, 2500);
+          navigator.serviceWorker.addEventListener('controllerchange', () => {
+            window.clearTimeout(timer);
+            resolve();
+          }, { once: true });
+          target.postMessage({ type: 'SKIP_WAITING' });
+        });
+      }
+    } catch { /* fallback to reload */ }
+    location.reload();
+  };
+  return <PwaContext.Provider value={available ? { installed, waiting, error, applyUpdate, openHelp: () => setHelp(true) } : null}>
     {children}
     {available && <Dialog open={help} onOpenChange={setHelp}>
       <DialogContent className="pwa-install-dialog" aria-describedby={undefined}>
@@ -88,12 +106,14 @@ export function PwaProvider({ enabled, children }) {
 export function PwaNotice({ runtime }) {
   const pwa = usePwa();
   if (!pwa?.waiting && !pwa?.error) return null;
+  const blocked = Boolean(runtime?.pending || runtime?.busy);
   return <div role="status" className={`${pwa.error ? '' : 'pwa-update-notice '}mb-4 space-y-2 rounded-xl border border-border bg-card p-4 text-sm`}>
     {pwa.waiting && <>
       <p className="font-semibold">Actualización disponible</p>
-      <p>{runtime?.pending || runtime?.busy
+      <p>{blocked
         ? 'Primero resuelve las solicitudes pendientes de confirmación. La aplicación no se recargará automáticamente.'
-        : 'Termina tu trabajo y cierra todas las pestañas y ventanas de Repuestos Félix. La nueva versión se aplicará al abrirla de nuevo.'}</p>
+        : 'Hay una versión nueva lista. Puedes aplicarla ahora o al volver a abrir Repuestos Félix.'}</p>
+      {!blocked && <Button type="button" size="sm" variant="outline" onClick={() => pwa.applyUpdate()}>Actualizar ahora</Button>}
     </>}
     {pwa.error && <p>{pwa.error}</p>}
   </div>;

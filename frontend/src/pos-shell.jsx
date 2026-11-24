@@ -196,13 +196,79 @@ function ModuleLoad() {
   </div>;
 }
 
+function isChunkLoadError(error) {
+  const message = `${error?.name || ''} ${error?.message || ''}`;
+  return /dynamically imported module|importing a module script|chunkloaderror|loading chunk|failed to fetch|load failed/i.test(message);
+}
+
+async function activateUpdateAndReload({ automatic = false } = {}) {
+  const reloadKey = 'felix-module-reload';
+  if (automatic) {
+    try {
+      const last = Number(sessionStorage.getItem(reloadKey) || '0');
+      if (Date.now() - last < 30_000) return false;
+    } catch { /* ignore storage restrictions */ }
+  }
+  let waiting = null;
+  if (!window.__FELIX_DESKTOP__ && 'serviceWorker' in navigator) {
+    try {
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (registration) {
+        await registration.update().catch(() => {});
+        waiting = registration.waiting;
+        if (!waiting && registration.installing) {
+          waiting = await new Promise((resolve) => {
+            const worker = registration.installing;
+            const timer = window.setTimeout(() => resolve(registration.waiting), 4000);
+            worker.addEventListener('statechange', () => {
+              if (worker.state === 'installed') {
+                window.clearTimeout(timer);
+                resolve(registration.waiting || worker);
+              } else if (worker.state === 'redundant') {
+                window.clearTimeout(timer);
+                resolve(null);
+              }
+            });
+          });
+        }
+      }
+    } catch { /* ignore SW errors */ }
+  }
+  if (automatic && !waiting) return false;
+  if (automatic) {
+    try { sessionStorage.setItem(reloadKey, String(Date.now())); } catch { /* ignore */ }
+  }
+  if (waiting) {
+    await new Promise((resolve) => {
+      const timer = window.setTimeout(resolve, 2500);
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        window.clearTimeout(timer);
+        resolve();
+      }, { once: true });
+      waiting.postMessage({ type: 'SKIP_WAITING' });
+    });
+  }
+  location.reload();
+  return true;
+}
+
 class ModuleBoundary extends Component {
-  state = { failed: false };
+  state = { failed: false, updating: false };
   static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(error) {
+    if (!isChunkLoadError(error)) return;
+    this.setState({ updating: true });
+    activateUpdateAndReload({ automatic: true }).then((reloading) => {
+      if (!reloading) this.setState({ updating: false });
+    }).catch(() => this.setState({ updating: false }));
+  }
   render() {
     return this.state.failed ? <div className="space-y-3 rounded-xl border bg-card p-4">
-      <p role="alert">No se pudo abrir este módulo. Revisa la conexión y vuelve a intentarlo.</p>
-      <Button onClick={() => location.reload()}>Reintentar</Button>
+      <p role="alert">{this.state.updating ? 'Actualizando a la versión más reciente…' : 'No se pudo abrir este módulo. Revisa la conexión y vuelve a intentarlo.'}</p>
+      <Button disabled={this.state.updating} onClick={() => {
+        this.setState({ updating: true });
+        activateUpdateAndReload({ automatic: false }).catch(() => location.reload());
+      }}>{this.state.updating ? 'Actualizando…' : 'Reintentar'}</Button>
     </div> : this.props.children;
   }
 }

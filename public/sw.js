@@ -26,6 +26,10 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+    return;
+  }
   if (event.data?.type !== 'WARM_OPTIONAL' || !OPTIONAL.length) return;
   event.waitUntil((async () => {
     if (!(await caches.keys()).includes(CACHE)) return;
