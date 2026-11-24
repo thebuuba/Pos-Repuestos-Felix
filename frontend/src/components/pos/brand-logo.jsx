@@ -6,7 +6,6 @@ function BrandLogo({ className, compact = false }) {
     <div className={cn("flex items-center gap-2.5", className)}>
       <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
         <Wrench className="h-[18px] w-[18px] -rotate-45" strokeWidth={2.4} />
-        <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-card bg-foreground" />
       </div>
       {!compact && (
         <div className="leading-tight">
