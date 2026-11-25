@@ -1,5 +1,6 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
 import { useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { usePosStore } from "../data/pos-context.jsx";
 import { balanceOf } from "../lib/accounts.js";
 import { businessMonthIso } from "../lib/dates.js";
@@ -17,6 +18,8 @@ import { cents, decimalUnits } from "../../../src/pos/operation-fields.js";
 import { needsRestock } from "../components/pos/inventory-table.jsx";
 
 function PurchasesPage() {
+  const [params] = useSearchParams();
+  const initialSupplierId = params.get("suplidor") ?? "";
   const {
     suppliers,
     formulas,
@@ -91,6 +94,7 @@ function PurchasesPage() {
         products={products}
         rounding={settings.rounding}
         runtime={runtime}
+        initialSupplierId={initialSupplierId}
         onSubmit={async (input) => {
           const result = await registerPurchase(input);
           const purchase = runtime ? result.state.compras.find(row => row.id === result.result.id) : result;

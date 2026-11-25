@@ -72,14 +72,19 @@ function PurchaseEntryForm({
   products,
   rounding,
   runtime,
+  initialSupplierId = "",
   onSubmit,
 }) {
-  const [supplierId, setSupplierId] = useState("");
+  const initialMatchedSupplier = initialSupplierId
+    ? suppliers.find((s) => String(s.id) === String(initialSupplierId))
+    : undefined;
+  const [supplierId, setSupplierId] = useState(() => (initialMatchedSupplier ? String(initialMatchedSupplier.id) : ""));
   const [invoice, setInvoice] = useState("");
   const [invoiceDate, setInvoiceDate] = useState(() => businessTodayIso());
   const [condition, setCondition] = useState("credito");
-  const [dueDate, setDueDate] = useState(() => defaultDueDate(30));
+  const [dueDate, setDueDate] = useState(() => defaultDueDate(initialMatchedSupplier?.creditDays ?? 30));
   const [dueDateManual, setDueDateManual] = useState(false);
+  const appliedInitialSupplierRef = useRef(initialMatchedSupplier ? String(initialSupplierId) : "");
   const [entry, setEntry] = useState(EMPTY_ENTRY);
   const [lines, setLines] = useState([]);
   const [tried, setTried] = useState(false);
@@ -143,6 +148,22 @@ function PurchaseEntryForm({
       (s.contact || "").toLowerCase().includes(q),
     );
   }, [suppliers, supplierQuery]);
+  useEffect(() => {
+    if (!initialSupplierId || appliedInitialSupplierRef.current === String(initialSupplierId)) return;
+    const found = suppliers.find((s) => String(s.id) === String(initialSupplierId));
+    if (!found) return;
+    appliedInitialSupplierRef.current = String(initialSupplierId);
+    setSupplierId(String(found.id));
+    setDueDate(defaultDueDate(found.creditDays ?? 30, invoiceDate));
+    setDueDateManual(false);
+    if (runtime && !isTouchMobile()) {
+      requestAnimationFrame(() => {
+        const inv = document.getElementById("purchase-invoice");
+        if (inv && !inv.value.trim()) inv.focus();
+      });
+    }
+  }, [initialSupplierId, suppliers, invoiceDate, runtime]);
+
   useEffect(() => {
     if (!supplierOpen) return;
     requestAnimationFrame(() => supplierSearchRef.current?.focus());
@@ -644,19 +665,10 @@ function PurchaseEntryForm({
                         setProductHighlight((h) => Math.max(h - 1, 0));
                       } else if (e.key === "Enter") {
                         const exact = findProduct(entry.code);
-                        const trimmedLower = entry.code.trim().toLowerCase();
-                        const exactRefMatches = trimmedLower
-                          ? productResults.filter((p) => (p.reference || "").trim().toLowerCase() === trimmedLower)
-                          : [];
-                        if (exact) {
+                        const picked = exact || productResults[productHighlight] || productResults[0];
+                        if (picked) {
                           e.preventDefault();
-                          pickProduct(exact);
-                        } else if (productSelected && productResults[productHighlight]) {
-                          e.preventDefault();
-                          pickProduct(productResults[productHighlight]);
-                        } else if (exactRefMatches.length === 1) {
-                          e.preventDefault();
-                          pickProduct(exactRefMatches[0]);
+                          pickProduct(picked);
                         } else {
                           setProductMenuOpen(false);
                         }
@@ -710,6 +722,22 @@ function PurchaseEntryForm({
                         </li>
                       ))}
                     </ul>
+                    {!match && !altCodeOwner && (
+                      <div className="border-t border-border bg-muted/40 px-3 py-1.5">
+                        <button
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            setProductMenuOpen(false);
+                            requestAnimationFrame(() => nameRef.current?.focus());
+                          }}
+                          className="flex w-full items-center justify-between gap-2 text-left text-xs font-medium text-primary hover:underline"
+                        >
+                          <span className="truncate">{`+ Crear artículo nuevo con código «${entry.code.trim()}»`}</span>
+                          <span className="shrink-0 font-normal text-muted-foreground">{"Esc"}</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

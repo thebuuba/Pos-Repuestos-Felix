@@ -19,13 +19,12 @@ import { Mail } from "lucide-react";
 import { Calculator } from "lucide-react";
 import { formatDate } from "../lib/accounts.js";
 import { Link, useSearchParams } from "react-router-dom";
-import { PartyFormSheet } from "../components/pos/party-form-sheet.jsx";
-import { newId } from "../data/new-id.js";
+import { SupplierFormSheet } from "../components/pos/supplier-form-sheet.jsx";
 import { ConfirmDialog } from "../components/pos/confirm-dialog.jsx";
 import { useEffect, useMemo, useState } from "react";
 import { businessMonthIso } from "../lib/dates.js";
 function SuppliersPage() {
-  const { runtime, suppliers, formulas, purchases, saveSupplier, deleteSupplier } =
+  const { runtime, suppliers, formulas, purchases, settings, saveSupplier, saveFormula, deleteSupplier } =
     usePosStore();
   const [params] = useSearchParams();
   const urlQuery = params.get("buscar") ?? "";
@@ -34,56 +33,17 @@ function SuppliersPage() {
     if (urlQuery) setQuery(urlQuery);
   }, [urlQuery]);
   const [formOpen, setFormOpen] = useState(false);
+  const [startWithFormula, setStartWithFormula] = useState(false);
   const [creationDatabaseId, setCreationDatabaseId] = useState(null);
   const [editing, setEditing] = useState(null);
   const [toDelete, setToDelete] = useState(null);
-  const fields = [
-    {
-      key: "name",
-      label: "Nombre del suplidor",
-      placeholder: "Ej. Masotti",
-      required: true,
-    },
-    {
-      key: "rnc",
-      label: "RNC",
-      placeholder: "000-00000-0",
-      span: 1,
-    },
-    {
-      key: "phone",
-      label: "Teléfono",
-      placeholder: "809-000-0000",
-      span: 1,
-    },
-    {
-      key: "contact",
-      label: "Persona de contacto",
-      placeholder: "Nombre del vendedor",
-      span: 1,
-    },
-    {
-      key: "creditDays",
-      label: "Días de crédito",
-      type: "number",
-      span: 1,
-    },
-    {
-      key: "email",
-      label: "Correo",
-      placeholder: "ventas@suplidor.com",
-    },
-    {
-      key: "formulaId",
-      label: "Fórmula de precios",
-      type: "select",
-      options: [...(runtime ? [{value:"none",label:"Sin fórmula"}] : []), ...formulas.map((f) => ({
-        value: String(f.id),
-        label: `${f.name} (${formulaSummary(f)})`,
-      }))],
-      hint: "Se aplica sola al subir sus facturas de compra.",
-    },
-  ];
+  const formulaUsage = useMemo(
+    () => suppliers.reduce((acc, s) => {
+      if (s.formulaId != null) acc[s.formulaId] = (acc[s.formulaId] ?? 0) + 1;
+      return acc;
+    }, {}),
+    [suppliers],
+  );
   const totalOwed = useMemo(() => suppliers.reduce((s, x) => s + x.balance, 0), [suppliers]);
   const monthTotal = useMemo(() => {
     const month = businessMonthIso();
@@ -118,6 +78,7 @@ function SuppliersPage() {
             className="h-10 rounded-full px-5 shadow-md shadow-primary/20"
             onClick={() => {
               setEditing(null);
+              setStartWithFormula(false);
               setCreationDatabaseId(runtime?.databaseId);
               setFormOpen(true);
             }}
@@ -201,6 +162,7 @@ function SuppliersPage() {
                     className="h-8 w-8 text-muted-foreground"
                     onClick={() => {
                       setEditing(s);
+                      setStartWithFormula(false);
                       setFormOpen(true);
                     }}
                     aria-label="Editar"
@@ -240,20 +202,35 @@ function SuppliersPage() {
                   </p>
                 )}
               </div>
-              <div className="mt-4 flex items-center gap-2 rounded-xl bg-muted px-3 py-2 text-xs">
-                <Calculator className="h-3.5 w-3.5 shrink-0 text-primary" />
-                <span className="truncate">
-                  <span className="font-medium text-foreground">
-                    {formula?.name ?? "Sin fórmula"}
-                  </span>
-                  {formula && (
-                    <span className="text-muted-foreground">
-                      {" · "}
-                      {formulaSummary(formula)}
+              <button
+                type="button"
+                onClick={() => {
+                  setEditing(s);
+                  setStartWithFormula(true);
+                  setCreationDatabaseId(runtime?.databaseId);
+                  setFormOpen(true);
+                }}
+                aria-label={`Editar cálculo de ${s.name}`}
+                className="mt-4 flex w-full items-center justify-between gap-2 rounded-xl bg-muted px-3 py-2 text-left text-xs transition-colors hover:bg-accent"
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <Calculator className="h-3.5 w-3.5 shrink-0 text-primary" />
+                  <span className="truncate">
+                    <span className="font-medium text-foreground">
+                      {formula?.name ?? "Sin fórmula"}
                     </span>
-                  )}
+                    {formula && (
+                      <span className="text-muted-foreground">
+                        {" · "}
+                        {formulaSummary(formula)}
+                      </span>
+                    )}
+                  </span>
                 </span>
-              </div>
+                <span className="shrink-0 font-medium text-primary">
+                  {formula ? "Editar" : "Configurar"}
+                </span>
+              </button>
               <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border pt-4 text-sm">
                 <div>
                   <p className="text-xs text-muted-foreground">
@@ -286,7 +263,7 @@ function SuppliersPage() {
                 variant="outline"
                 className="mt-4 rounded-xl bg-card"
               >
-                <Link to="/compras">
+                <Link to={`/compras?suplidor=${encodeURIComponent(s.id)}`}>
                   <PackagePlus />
                   {"Registrar compra"}
                 </Link>
@@ -296,36 +273,21 @@ function SuppliersPage() {
         })}
       </div>
       )}
-      <PartyFormSheet
+      <SupplierFormSheet
         open={formOpen}
         onOpenChange={setFormOpen}
-        title={editing ? "Editar suplidor" : "Nuevo suplidor"}
-        description="La fórmula elegida calcula Costo y sugiere P/Mayor y Detalle al registrar sus compras."
-        fields={fields}
-        initial={{
-          name: editing?.name ?? "",
-          rnc: editing?.rnc ?? "",
-          phone: editing?.phone ?? "",
-          contact: editing?.contact ?? "",
-          creditDays: String(editing?.creditDays ?? (runtime ? "" : 30)),
-          email: editing?.email ?? "",
-          formulaId: runtime ? String(editing?.formulaId ?? "none") : editing?.formulaId ?? formulas[0]?.id ?? "",
-        }}
-        submitLabel={editing ? "Guardar cambios" : "Crear suplidor"}
-        onSave={async (v) => {
-          await saveSupplier({
-            ...(runtime ? {databaseId: editing?.databaseId ?? creationDatabaseId, version: editing?.version} : {}),
-            id: editing?.id ?? (runtime ? crypto.randomUUID() : newId("s")),
-            name: v.name.trim(),
-            rnc: v.rnc.trim(),
-            phone: v.phone.trim(),
-            contact: v.contact.trim(),
-            email: v.email.trim(),
-            creditDays: v.creditDays.trim() === "" ? null : Number(v.creditDays),
-            formulaId: runtime ? (v.formulaId === "none" ? null : Number(v.formulaId)) : v.formulaId,
-          });
+        editing={editing}
+        creationDatabaseId={creationDatabaseId}
+        startWithFormula={startWithFormula}
+        formulas={formulas}
+        formulaUsage={formulaUsage}
+        rounding={settings.rounding}
+        runtime={runtime}
+        onSaveFormula={saveFormula}
+        onSaveSupplier={async (dto, formulaUpdated) => {
+          await saveSupplier(dto);
           ue.success(editing ? "Suplidor actualizado" : "Suplidor creado", {
-            description: v.name,
+            description: formulaUpdated ? `${dto.name} · cálculo guardado` : dto.name,
           });
           setFormOpen(false);
         }}

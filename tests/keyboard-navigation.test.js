@@ -181,9 +181,18 @@ test('E2E operación completa por teclado: navegación, Ctrl+K, Inventario, Caja
     await page.waitForFunction(() => document.activeElement?.getAttribute('data-sale-search') === 'true');
     assert.equal(await page.locator('.sale-cart tbody tr').count(), 0);
 
-    // 4b. Entrar a Punto de venta por clic en menú -> foco automático en buscador; Enter en buscador vacío salta a Monto recibido; clic afuera + Enter cobra
+    // 4b. En 1366×768 (laptop 13") la barra lateral inicia como riel compacto de iconos (68 px) sin botones externos en TopBar;
+    // se despliega con su botón interno, al navegar vuelve al riel de 68 px, y los iconos del riel navegan directo
+    assert.equal(await page.locator('header').getByRole('button', { name: /menú lateral/i }).count(), 0, 'TopBar no debe tener botones externos del menú lateral');
+    const railBox = await page.locator('aside').boundingBox();
+    assert.equal(Math.round(railBox.width), 68, 'En 1366×768 la barra lateral debe iniciar como riel compacto de 68 px');
+    await page.locator('aside').getByRole('button', { name: 'Expandir menú lateral' }).click();
+    const drawerBox = await page.locator('aside').boundingBox();
+    assert.equal(Math.round(drawerBox.width), 228, 'Al expandir en 1366×768 la barra lateral debe desplegarse a 228 px');
     await page.locator('aside').getByRole('link', { name: 'Panel', exact: true }).click();
     await page.getByRole('heading', { name: 'Panel', exact: true }).waitFor();
+    assert.equal(Math.round((await page.locator('aside').boundingBox()).width), 68, 'Al navegar en 1366×768 la barra lateral desplegada debe contraerse al riel de 68 px');
+    // Clic directo en el icono de Punto de venta del riel compacto sin expandir primero
     await page.locator('aside').getByRole('link', { name: /Punto de venta/ }).click();
     await page.getByRole('heading', { name: 'Agregar productos', exact: true }).waitFor();
     await page.waitForFunction(() => document.activeElement?.getAttribute('data-sale-search') === 'true');
@@ -234,7 +243,9 @@ test('E2E operación completa por teclado: navegación, Ctrl+K, Inventario, Caja
     await page.keyboard.type('KB-001');
     await page.keyboard.press('Enter');
     await page.keyboard.type('4');
-    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter'); // Cantidad -> P/Lista
+    await page.keyboard.press('Enter'); // P/Lista -> Costo
+    await page.keyboard.press('Enter'); // Costo -> agrega línea abajo
     await page.getByRole('cell', { name: /Bujía Teclado NGK/ }).waitFor();
     await page.keyboard.press('F9');
     await page.getByText(/subida al inventario/i).waitFor();
@@ -257,7 +268,21 @@ test('E2E operación completa por teclado: navegación, Ctrl+K, Inventario, Caja
     cashierPage.on('pageerror', err => errors.push(err.message));
     await cashierPage.goto(appOrigin + '/ventas');
     await cashierPage.getByRole('heading', { name: 'Agregar productos', exact: true }).waitFor();
+    assert.equal(Math.round((await cashierPage.locator('aside').boundingBox()).width), 68, 'Cajero en 1366×768 inicia con riel de 68 px');
+    await cashierPage.locator('aside').getByRole('button', { name: 'Expandir menú lateral' }).click();
+    assert.equal(Math.round((await cashierPage.locator('aside').boundingBox()).width), 228);
     await cashierPage.locator('aside').getByRole('link', { name: 'Compras', exact: true }).waitFor({ state: 'hidden' });
+    await cashierPage.keyboard.press('Escape');
+    assert.equal(Math.round((await cashierPage.locator('aside').boundingBox()).width), 68, 'Escape debe contraer la barra lateral desplegada al riel de 68 px');
+    // En pantalla >= 1400 px la barra inicia fija en 208 px y su botón interno permite contraer/expandir
+    await cashierPage.setViewportSize({ width: 1440, height: 900 });
+    await cashierPage.waitForTimeout(100);
+    assert.equal(Math.round((await cashierPage.locator('aside').boundingBox()).width), 208, 'En 1440×900 la barra lateral debe iniciar expandida en 208 px');
+    await cashierPage.locator('aside').getByRole('button', { name: 'Contraer menú lateral' }).click();
+    assert.equal(Math.round((await cashierPage.locator('aside').boundingBox()).width), 68, 'Contraer en 1440×900 debe reducir la barra lateral a 68 px');
+    await cashierPage.locator('aside').getByRole('button', { name: 'Expandir menú lateral' }).click();
+    assert.equal(Math.round((await cashierPage.locator('aside').boundingBox()).width), 208, 'Expandir en 1440×900 debe restaurar 208 px');
+    await cashierPage.setViewportSize({ width: 1366, height: 768 });
     await cashierPage.keyboard.press('Alt+4');
     await cashierPage.keyboard.press('Alt+8');
     await cashierPage.waitForTimeout(150);

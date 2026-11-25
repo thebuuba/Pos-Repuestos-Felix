@@ -126,7 +126,8 @@ test('Puntos 1-5 de Compras: Referencia global, fecha de factura, descripción c
   await dateInput.fill('2026-10-15');
   assert.equal(await main.locator('#purchase-due-date').inputValue(), '2026-10-30');
 
-  // Buscar por Referencia sin guiones ("oem94701a") y verificar descripción completa SIN truncate
+  // Buscar por Referencia sin guiones ("oem94701a"), verificar descripción completa SIN truncate
+  // y confirmar que Enter directo sobre el resultado sombreado lo selecciona y salta a Cantidad
   const codeInput = main.getByLabel('Código', { exact: true });
   await codeInput.fill('oem94701a');
   const firstOption = main.getByRole('option').filter({ hasText: 'CAD-001' });
@@ -138,7 +139,9 @@ test('Puntos 1-5 de Compras: Referencia global, fecha de factura, descripción c
   });
   assert.equal(descMetrics.text, longDesc);
   assert.notEqual(descMetrics.textOverflow, 'ellipsis', 'La descripción en Compras no debe cortarse con ellipsis');
-  await firstOption.click();
+  await codeInput.press('Enter');
+  assert.equal(await codeInput.inputValue(), 'CAD-001', 'Enter debe seleccionar directamente el primer resultado sombreado');
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Cantidad');
 
   // Confirmar referencia cargada, descripción completa y flujo exacto de teclado:
   // Cantidad (Enter) -> P/Lista (100 -> Costo 112, Enter) -> Costo (Enter) -> agrega línea abajo
@@ -331,6 +334,41 @@ test('Puntos 1-5 de Compras: Referencia global, fecha de factura, descripción c
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
     assert.ok(overflow <= 0, `Desbordamiento en Compras a ${width}px: ${overflow}px`);
   }
+
+  // 8. Suplidores: crear y editar cálculo del suplidor directo en la ficha y abrir Compras preseleccionado
+  await page.setViewportSize({ width: 1366, height: 768 });
+  const customSupp = await write('suplidores', { nombre: 'Suplidor Cálculo Directo', rnc: '131777888', diasCredito: 20 });
+  await page.goto(origin + '/suplidores');
+  await main.getByRole('button', { name: 'Editar cálculo de Suplidor Cálculo Directo' }).click();
+  const sheet = page.getByRole('dialog');
+  await sheet.getByLabel('Factor de costo').fill('1.15');
+  await sheet.getByLabel('Recargo P/Mayor %').fill('10');
+  await sheet.getByLabel('Recargo Detalle %').fill('20');
+  await sheet.getByText(/RD\$\s*115\.00/).waitFor();
+  await sheet.getByText(/RD\$\s*126\.50/).waitFor();
+  await sheet.getByText(/RD\$\s*151\.80/).waitFor();
+  await sheet.getByRole('button', { name: 'Guardar cambios' }).click();
+  await sheet.waitFor({ state: 'hidden' });
+
+  const suppCard = main.getByRole('button', { name: 'Editar cálculo de Suplidor Cálculo Directo' }).locator('xpath=..');
+  await suppCard.getByText(/×1\.15/).waitFor();
+  await suppCard.getByRole('link', { name: 'Registrar compra' }).click();
+  await page.waitForURL(new RegExp(`/compras\\?suplidor=${customSupp.result.id}$`));
+  assert.match(await main.getByRole('combobox', { name: 'Suplidor', exact: true }).textContent(), /Suplidor Cálculo Directo/);
+  await main.getByText('Costo (×1.15)').waitFor();
+
+  // Editar el mismo cálculo desde Suplidores actualiza la fórmula existente sin duplicar
+  await page.goto(origin + '/suplidores');
+  await main.getByRole('button', { name: 'Editar cálculo de Suplidor Cálculo Directo' }).click();
+  await sheet.getByLabel('Factor de costo').fill('1.2');
+  await sheet.getByRole('button', { name: 'Guardar cambios' }).click();
+  await sheet.waitFor({ state: 'hidden' });
+  const finalState = (await (await fetch(origin + '/api/state')).json()).state;
+  const linkedFormula = finalState.formulas.find(f => f.nombre === 'Fórmula Suplidor Cálculo Directo');
+  assert.ok(linkedFormula, 'Debe existir la fórmula creada desde Suplidores');
+  assert.equal(linkedFormula.factorCosto, 1.2);
+  assert.equal(finalState.formulas.filter(f => f.nombre === 'Fórmula Suplidor Cálculo Directo').length, 1);
+  assert.equal(finalState.suplidores.find(s => s.id === customSupp.result.id).formulaId, linkedFormula.id);
   assert.deepEqual(errors, []);
 });
 

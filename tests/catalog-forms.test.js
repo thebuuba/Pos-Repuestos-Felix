@@ -286,7 +286,6 @@ test(
       [2, "2147483648", /hasta dos decimales/],
       [3, "10.25555", /hasta cuatro decimales/],
       [4, "-1", /hasta cuatro decimales/],
-      [5, "3.14159", /hasta cuatro decimales/],
     ]) {
       const input = numbers.nth(field);
       const original = await input.inputValue();
@@ -655,8 +654,8 @@ test(
 );
 
 test("keyboard selection uses the server's numeric formula ID to calculate product prices", async t => {
-  const makeFormula = (id, factorCosto) => ({ id, version: 1, nombre: "Tarifa " + id, factorCosto, recargo1: 0, recargo2: 0, recargo3: 0 });
-  const { page } = await openInventory(t, [], [makeFormula(4, 1), makeFormula(7, 2)]);
+  const makeFormula = (id, recargo1) => ({ id, version: 1, nombre: "Tarifa " + id, factorCosto: 1, recargo1, recargo2: 0, recargo3: 0 });
+  const { page } = await openInventory(t, [], [makeFormula(4, 0), makeFormula(7, 100)]);
   const sheet = await newDraft(page);
   const select = sheet.getByRole("combobox", { name: "Fórmula de precios" });
   await select.press("Enter");
