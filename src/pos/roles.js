@@ -19,6 +19,7 @@ export function allowedOperation(role, method, path) {
   if (method === 'GET' && ['/api/state', '/api/account', '/api/sync/bootstrap',
     '/api/desktop/status', '/api/desktop/pending', '/api/desktop/reconciliation',
     '/api/desktop/archive', '/api/desktop/export'].includes(path)) return true;
+  if (method === 'GET' && /^\/api\/productos\/[1-9]\d*\/movimientos$/.test(path)) return true;
   if (method === 'PUT' && path === '/api/account') return true;
   if (method === 'POST' && ['/api/ventas', '/api/caja/abrir', '/api/caja/cerrar',
     '/api/caja/movimiento', '/api/clientes', '/api/cuentas/cobros',

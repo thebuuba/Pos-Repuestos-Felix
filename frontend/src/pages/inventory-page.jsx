@@ -9,6 +9,7 @@ import { StatCard } from "../components/pos/stat-card.jsx";
 import { InventoryTable, needsRestock, stockState } from "../components/pos/inventory-table.jsx";
 import { LowStockList } from "../components/pos/low-stock-list.jsx";
 import { ProductFormSheet } from "../components/pos/product-form-sheet.jsx";
+import { ProductKardexDialog } from "../components/pos/product-kardex-dialog.jsx";
 import { toast as ue } from "sonner";
 import { ConfirmDialog } from "../components/pos/confirm-dialog.jsx";
 import { Fragment, useCallback, useMemo, useRef, useState } from "react";
@@ -17,12 +18,13 @@ import { costUnits, decimalUnits, quantityUnits } from "../../../src/pos/operati
 const wholeMoney = new Intl.NumberFormat("es-DO", { maximumFractionDigits: 0 });
 const roundedValue = millionths => decimalUnits((millionths + 5000n) / 10000n, 2);
 function InventoryPage() {
-  const { products, categories, formulas, settings, saveProduct, deleteProduct, runtime } =
+  const { products, categories, formulas, settings, saveProduct, deleteProduct, fetchProductMovements, runtime } =
     usePosStore();
   const isOwner = !runtime || runtime.isOwner;
   const [sheetOpen, setSheetOpen] = useState(false);
   const [draft, setDraft] = useState(null);
   const [toDelete, setToDelete] = useState(null);
+  const [kardexProduct, setKardexProduct] = useState(null);
   const newProductButtonRef = useRef(null);
   const { totalUnits, stockValue, retailValue, lowStock, lowCount, outCount } = useMemo(() => {
     let stockHundredths = 0n;
@@ -129,6 +131,7 @@ function InventoryPage() {
           categories={categories}
           connected={Boolean(runtime)}
           showCosts={isOwner}
+          onHistory={runtime ? setKardexProduct : undefined}
           onEdit={isOwner ? openProduct : undefined}
           onDelete={isOwner ? setToDelete : undefined}
         />
@@ -150,6 +153,11 @@ function InventoryPage() {
           );
           setSheetOpen(false);
         }}
+      />
+      <ProductKardexDialog
+        product={kardexProduct}
+        onOpenChange={(open) => !open && setKardexProduct(null)}
+        fetchMovements={fetchProductMovements}
       />
       <ConfirmDialog
         open={Boolean(toDelete)}

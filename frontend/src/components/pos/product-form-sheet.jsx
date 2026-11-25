@@ -34,6 +34,8 @@ const EMPTY = {
   cost: "",
   stock: "0",
   minStock: "5",
+  notifyMinStock: true,
+  adjustmentReason: "",
   taxable: true,
   prices: {
     p1: "",
@@ -41,6 +43,12 @@ const EMPTY = {
     p3: "",
   },
 };
+const ADJUSTMENT_SUGGESTIONS = [
+  "Conteo físico",
+  "Merma / daño",
+  "Devolución",
+  "Error de digitación",
+];
 var LEVEL_LABEL2 = {
   p1: "Precio 1 · Detalle",
   p2: "Precio 2 · Por mayor",
@@ -57,6 +65,8 @@ function fromProduct(p) {
     cost: p.costExact ?? String(p.cost),
     stock: String(p.stock),
     minStock: String(p.minStock),
+    notifyMinStock: p.notifyMinStock !== false,
+    adjustmentReason: "",
     taxable: p.taxable,
     prices: p.pricesExact ?? {
       p1: String(p.prices.p1),
@@ -156,6 +166,9 @@ function ProductFormSheet({
   const name = form.name === product?.name ? form.name : form.name.trim();
   const brand = form.brand === product?.brand ? form.brand : form.brand.trim();
   const location = form.location === product?.location ? form.location : form.location.trim().toUpperCase();
+  const stockDelta = product && validQuantity(form.stock)
+    ? Math.round((Number(form.stock) - Number(product.stock)) * 100) / 100
+    : 0;
   const errors = {
     code: !form.code.trim()
       ? "Requerido"
@@ -165,6 +178,7 @@ function ProductFormSheet({
     brand: textError(brand),
     category: textError(form.category),
     location: textError(location),
+    adjustmentReason: textError(form.adjustmentReason || ""),
     cost:
       form.cost === ""
         ? "Indica el costo"
@@ -201,6 +215,7 @@ function ProductFormSheet({
       const p1 = normalizeDecimal(form.prices.p1);
       const p2 = form.prices.p2 === "" ? p1 : normalizeDecimal(form.prices.p2);
       const p3 = form.prices.p3 === "" ? p2 : normalizeDecimal(form.prices.p3);
+      const cleanReason = (form.adjustmentReason || "").trim();
       payload = {
         id: draft.id,
         databaseId: draft.databaseId,
@@ -213,7 +228,9 @@ function ProductFormSheet({
         cost: costDecimal,
         stock: Number(form.stock),
         minStock: Number(form.minStock),
+        notifyMinStock: form.notifyMinStock !== false,
         taxable: form.taxable,
+        ...(stockDelta !== 0 && cleanReason ? { adjustmentReason: cleanReason } : {}),
         prices: { p1: Number(p1), p2: Number(p2), p3: Number(p3) },
         pricesExact: { p1, p2, p3 },
         altCodes: [...(form.altCodes || []), ...(altDraft.trim() ? [altDraft] : [])].filter((c, i, arr) => arr.findIndex(x => x.toLowerCase() === c.toLowerCase()) === i),
@@ -478,6 +495,51 @@ function ProductFormSheet({
               />
             </Field>
           </div>
+          {product && stockDelta !== 0 && (
+            <div className="space-y-2.5 rounded-xl border border-border bg-card p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-foreground">{"Ajuste manual de existencia"}</p>
+                <span
+                  className={cn(
+                    "rounded-full px-2.5 py-0.5 text-xs font-semibold tabular-nums",
+                    stockDelta > 0
+                      ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                      : "bg-accent text-primary",
+                  )}
+                >
+                  {stockDelta > 0 ? `+${stockDelta} uds.` : `−${Math.abs(stockDelta)} uds.`}
+                </span>
+              </div>
+              <Field
+                label="Motivo del ajuste (opcional)"
+                htmlFor={fieldId("adjustmentReason")}
+                error={submitted ? errors.adjustmentReason : undefined}
+              >
+                <Input
+                  id={fieldId("adjustmentReason")}
+                  disabled={locked}
+                  maxLength={2000}
+                  value={form.adjustmentReason}
+                  onChange={(e) => set("adjustmentReason", e.target.value)}
+                  placeholder="Ej. Conteo físico del tramo A-1"
+                  className={inputClass}
+                />
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {ADJUSTMENT_SUGGESTIONS.map((s) => (
+                    <button
+                      type="button"
+                      disabled={locked}
+                      onClick={() => set("adjustmentReason", s)}
+                      className="rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground"
+                      key={s}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+            </div>
+          )}
           <div className="space-y-4">
             <div className="flex flex-wrap items-end gap-2">
               <Field
@@ -572,20 +634,36 @@ function ProductFormSheet({
               })}
             </div>
           </div>
-          <label className="flex items-center justify-between rounded-xl border border-border p-4">
-            <div>
-              <p className="text-sm font-medium">{"Aplica ITBIS"}</p>
-              <p className="text-xs text-muted-foreground">
-                {"Desactiva para artículos exentos."}
-              </p>
-            </div>
-            <Switch
-              aria-label="Aplica ITBIS"
-              disabled={locked}
-              checked={form.taxable}
-              onCheckedChange={(v) => set("taxable", v)}
-            />
-          </label>
+          <div className="space-y-2.5">
+            <label className="flex items-center justify-between rounded-xl border border-border p-4">
+              <div>
+                <p className="text-sm font-medium">{"Aplica ITBIS"}</p>
+                <p className="text-xs text-muted-foreground">
+                  {"Desactiva para artículos exentos."}
+                </p>
+              </div>
+              <Switch
+                aria-label="Aplica ITBIS"
+                disabled={locked}
+                checked={form.taxable}
+                onCheckedChange={(v) => set("taxable", v)}
+              />
+            </label>
+            <label className="flex items-center justify-between rounded-xl border border-border p-4">
+              <div>
+                <p className="text-sm font-medium">{"Alertas de reposición"}</p>
+                <p className="text-xs text-muted-foreground">
+                  {"Avisa cuando la existencia llegue al nivel mínimo."}
+                </p>
+              </div>
+              <Switch
+                aria-label="Alertas de reposición"
+                disabled={locked}
+                checked={form.notifyMinStock !== false}
+                onCheckedChange={(v) => set("notifyMinStock", v)}
+              />
+            </label>
+          </div>
         </div>
         {error && (
           <p role="alert" className="px-6 pb-2 text-sm text-primary">
@@ -601,7 +679,8 @@ function ProductFormSheet({
               if (inFlight.current) return;
               if (product || retryPayload) onOpenChange(false);
               else {
-                setForm({ ...EMPTY, category: defaultCategory });
+                setForm({ ...EMPTY, category: "" });
+                setAltDraft("");
                 setSubmitted(false);
                 setError(null);
               }

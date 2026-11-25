@@ -1,5 +1,5 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
-import { PackageSearch, Pencil, Search, Trash2 } from "lucide-react";
+import { History, PackageSearch, Pencil, Search, Trash2 } from "lucide-react";
 import { Input } from "../ui/input.jsx";
 import { Select } from "../ui/select.jsx";
 import { SelectTrigger } from "../ui/select.jsx";
@@ -47,18 +47,27 @@ var STATE_UI = {
     bg: "bg-accent",
   },
 };
-const InventoryTable = memo(function InventoryTable({ products, categories, connected, showCosts = true, onEdit, onDelete }) {
-  const showActions = Boolean(onEdit || onDelete);
+const InventoryTable = memo(function InventoryTable({ products, categories, connected, showCosts = true, onEdit, onDelete, onHistory }) {
+  const showActions = Boolean(onEdit || onDelete || onHistory);
   const [params, setParams] = useSearchParams();
   const { key } = useLocation();
   const selectedStock = params.get("existencia");
   const urlQuery = params.get("buscar") ?? "";
   const restock = selectedStock === "reposicion";
   const stock = restock || STOCK_FILTERS.some(([value]) => value === selectedStock) ? selectedStock : "all";
-  const [filters, setFilters] = useState({ query: urlQuery, category: "", page: 0, stock, restockKey: key, urlQuery });
+  const [filters, setFilters] = useState({ query: urlQuery, category: "", location: "", page: 0, stock, restockKey: key, urlQuery });
   const { query } = filters;
   const deferredQuery = useDeferredValue(query);
+  const locations = useMemo(() => {
+    const used = new Set();
+    for (const p of products) {
+      const clean = typeof p.location === "string" ? p.location.trim() : "";
+      if (clean) used.add(clean);
+    }
+    return [...used].sort((a, b) => a.localeCompare(b, "es"));
+  }, [products]);
   const category = categories.includes(filters.category) ? filters.category : "";
+  const location = locations.includes(filters.location) ? filters.location : "";
   const rows = useMemo(() => {
     const q = deferredQuery.trim().toLowerCase();
     const qCompact = q ? compactSearchText(q) : "";
@@ -68,21 +77,22 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
       const entry = index[i];
       const p = entry.p;
       if (category && p.category !== category) continue;
+      if (location && (p.location || "").trim() !== location) continue;
       if (restock ? !needsRestock(p) : stock !== "all" && stockState(p) !== stock) continue;
       if (q && !matchesIndexed(entry, q, qCompact)) continue;
       out.push(p);
     }
     return out;
-  }, [products, deferredQuery, category, stock, restock]);
+  }, [products, deferredQuery, category, location, stock, restock]);
   const lastPage = Math.max(0, Math.ceil(rows.length / PAGE_SIZE) - 1);
-  const resetPage = stock !== filters.stock || category !== filters.category;
+  const resetPage = stock !== filters.stock || category !== filters.category || location !== filters.location;
   const page = resetPage ? 0 : Math.min(filters.page, lastPage);
   if (urlQuery !== filters.urlQuery) {
-    setFilters({ query: urlQuery, category: "", page: 0, stock, restockKey: key, urlQuery });
+    setFilters({ query: urlQuery, category: "", location: "", page: 0, stock, restockKey: key, urlQuery });
   } else if (restock && filters.restockKey !== key) {
-    setFilters({ query: "", category: "", page: 0, stock, restockKey: key, urlQuery });
+    setFilters({ query: "", category: "", location: "", page: 0, stock, restockKey: key, urlQuery });
   } else if (resetPage || filters.page !== page) {
-    setFilters({ ...filters, category, page, stock });
+    setFilters({ ...filters, category, location, page, stock });
   }
   const start = page * PAGE_SIZE;
   const end = Math.min(start + PAGE_SIZE, rows.length);
@@ -103,8 +113,8 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
   };
   return (
     <section className="overflow-hidden rounded-2xl border border-border bg-card">
-      <div className="flex flex-col gap-3 p-5 md:flex-row md:items-center">
-        <div className="relative flex-1">
+      <div className="inv-toolbar">
+        <div className="inv-toolbar-search">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             aria-label="Buscar por código, nombre o marca"
@@ -115,43 +125,67 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
             className="h-10 rounded-xl pl-9"
           />
         </div>
-        <Select
-          value={category ? `categoria:${category}` : "all"}
-          onValueChange={(value) => setFilters({
-            ...filters,
-            category: value === "all" ? "" : value.slice("categoria:".length),
-            page: 0,
-          })}
-        >
-          <SelectTrigger aria-label="Filtrar por categoría" className="h-10 rounded-xl md:w-[180px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{"Todas las categorías"}</SelectItem>
-            {categories.map((c) => (
-              <SelectItem value={`categoria:${c}`} key={c}>
-                {c}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <div className="mobile-touch-controls grid grid-cols-4 gap-1 rounded-xl bg-muted p-1">
-          {STOCK_FILTERS.map(([value, label]) => (
-            <button
-              type="button"
-              aria-pressed={stock === value}
-              onClick={() => setStock(value)}
-              className={cn(
-                "h-8 rounded-lg px-3 text-xs font-medium transition-all focus-visible:ring-1 focus-visible:ring-ring",
-                stock === value
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-              key={value}
+        <div className="inv-toolbar-controls">
+          <Select
+            value={category ? `categoria:${category}` : "all"}
+            onValueChange={(value) => setFilters({
+              ...filters,
+              category: value === "all" ? "" : value.slice("categoria:".length),
+              page: 0,
+            })}
+          >
+            <SelectTrigger aria-label="Filtrar por categoría" className="inv-toolbar-select h-10 rounded-xl">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{"Todas las categorías"}</SelectItem>
+              {categories.map((c) => (
+                <SelectItem value={`categoria:${c}`} key={c}>
+                  {c}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {locations.length > 0 && (
+            <Select
+              value={location ? `ubicacion:${location}` : "all"}
+              onValueChange={(value) => setFilters({
+                ...filters,
+                location: value === "all" ? "" : value.slice("ubicacion:".length),
+                page: 0,
+              })}
             >
-              {label}
-            </button>
-          ))}
+              <SelectTrigger aria-label="Filtrar por ubicación" className="inv-toolbar-select h-10 rounded-xl">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{"Todas las ubicaciones"}</SelectItem>
+                {locations.map((loc) => (
+                  <SelectItem value={`ubicacion:${loc}`} key={loc}>
+                    {loc}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <div className="inv-toolbar-stock mobile-touch-controls grid grid-cols-4 gap-1 rounded-xl bg-muted p-1">
+            {STOCK_FILTERS.map(([value, label]) => (
+              <button
+                type="button"
+                aria-pressed={stock === value}
+                onClick={() => setStock(value)}
+                className={cn(
+                  "h-8 rounded-lg px-3 text-xs font-medium whitespace-nowrap transition-all focus-visible:ring-1 focus-visible:ring-ring",
+                  stock === value
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+                key={value}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
       {rows.length === 0 ? (
@@ -254,7 +288,19 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
                     )}
                   </div>
                   {showActions && (
-                    <div className="flex gap-2 pt-0.5">
+                    <div className="flex flex-wrap gap-2 pt-0.5">
+                      {onHistory && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-11 flex-1 rounded-xl text-xs"
+                          onClick={() => onHistory(p)}
+                        >
+                          <History className="h-3.5 w-3.5" />
+                          <span>{"Historial"}</span>
+                        </Button>
+                      )}
                       {onEdit && (
                         <Button
                           type="button"
@@ -313,7 +359,7 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
                   </th>
                 )}
                 {showActions && (
-                  <th className="w-24 px-5 py-2.5 text-right font-medium">
+                  <th className="w-28 px-5 py-2.5 text-right font-medium">
                     {"Acciones"}
                   </th>
                 )}
@@ -405,6 +451,18 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
                     {showActions && (
                       <td className="px-5 py-3">
                         <div className="mobile-touch-controls flex justify-end gap-1">
+                          {onHistory && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground"
+                              onClick={() => onHistory(p)}
+                              aria-label="Historial"
+                              title="Historial de movimientos"
+                            >
+                              <History />
+                            </Button>
+                          )}
                           {onEdit && (
                             <Button
                               variant="ghost"
@@ -412,6 +470,7 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
                               className="h-8 w-8 text-muted-foreground"
                               onClick={() => onEdit(p)}
                               aria-label="Editar"
+                              title="Editar artículo"
                             >
                               <Pencil />
                             </Button>
@@ -423,6 +482,7 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
                               className="h-8 w-8 text-muted-foreground hover:bg-accent hover:text-primary"
                               onClick={() => onDelete(p)}
                               aria-label="Eliminar"
+                              title="Eliminar artículo"
                             >
                               <Trash2 />
                             </Button>

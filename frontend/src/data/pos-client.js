@@ -47,7 +47,7 @@ const string = value => typeof value === 'string';
 const amount = decimal(/^\d{1,12}(?:\.\d{1,2})?$/);
 const productFields = { codigo: string, nombre: string, marca: string, categoria: string, ubicacion: string,
   stockMinimo: decimalQuantity, gravado: bool, notificarMinimo: bool, stock: decimalQuantity,
-  costo: cost, precio1: cost, precio2: cost, precio3: cost,
+  costo: cost, precio1: cost, precio2: cost, precio3: cost, motivoAjuste: text,
   codigosAlternativos: value => Array.isArray(value) && value.length <= 20 && value.every(name) };
 const contactFields = { nombre: name, rnc: text, tel: text, correo: text };
 const customerFields = { ...contactFields, direccion: text, limiteCredito: nullable(amount) };

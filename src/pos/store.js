@@ -5,6 +5,7 @@ import { OperationError, fail, text, productCode, id, money, cents, quantityUnit
 import { contactOperation, settingsOperation } from './contact-operations.js';
 import { backupLayout, exportBackup, rows, tables } from './relational-backup.js';
 import { cashOperation, cashPresentation, lockCash, validateCashRestore } from './cash-operations.js';
+import { isOwner } from './roles.js';
 import { accountPayment, addDaysIso, ncfSequenceOperation, nextNcfIfActive, voidPurchase, voidSale } from './account-operations.js';
 import {
   billWorkshopAccount, cancelWorkshopAccount, dispatchWorkshopItems,
@@ -675,8 +676,74 @@ async function productOperation(client, method, productId, body, occurredAt) {
       }
     }
   }
-  await movement(client, savedId, stock - quantityUnits(previous?.stock ?? 0, 'las existencias'), stock, previous ? 'ajuste' : 'apertura', null, previous ? 'Ajuste desde catálogo' : 'Existencia inicial', occurredAt);
+  const customReason = body.motivoAjuste !== undefined && body.motivoAjuste !== null
+    ? text(body.motivoAjuste, 'el motivo del ajuste', false)
+    : '';
+  const moveReason = customReason || (previous ? 'Ajuste desde catálogo' : 'Existencia inicial');
+  await movement(client, savedId, stock - quantityUnits(previous?.stock ?? 0, 'las existencias'), stock, previous ? 'ajuste' : 'apertura', null, moveReason, occurredAt);
   return { id: savedId };
+}
+
+export async function readProductMovements(pool, productId, { limit = 100, role = 'dueno' } = {}) {
+  const pid = id(productId, 'el artículo');
+  const maxRows = Math.max(1, Math.min(200, Number.isSafeInteger(limit) ? limit : 100));
+  const owner = isOwner(role);
+  const client = await pool.connect();
+  try {
+    const product = (await client.query(
+      `SELECT id, codigo, nombre, marca, ubicacion,
+              stock::double precision AS stock, stock_minimo::double precision AS "stockMinimo"
+       FROM public.productos WHERE id=$1`,
+      [pid],
+    )).rows[0];
+    if (!product) fail('El artículo no existe.', 404);
+    const rows = (await client.query(
+      `SELECT m.id,
+              m.producto_id AS "productoId",
+              m.cantidad::double precision AS cantidad,
+              m.existencia_posterior::double precision AS "existenciaPosterior",
+              m.tipo,
+              m.motivo,
+              m.creado_en AS "creadoEn",
+              vd.venta_id AS "ventaId",
+              CASE WHEN $2 THEN cd.compra_id ELSE NULL END AS "compraId",
+              CASE WHEN $2 THEN c.numero ELSE NULL END AS "compraNumero"
+       FROM public.movimientos_inventario m
+       LEFT JOIN public.venta_detalles vd ON vd.id = m.venta_detalle_id
+       LEFT JOIN public.compra_detalles cd ON cd.id = m.compra_detalle_id
+       LEFT JOIN public.compras c ON c.id = cd.compra_id
+       WHERE m.producto_id = $1
+         AND ($2 OR m.tipo NOT IN ('compra', 'anulacion_compra'))
+       ORDER BY m.id DESC
+       LIMIT $3`,
+      [pid, owner, maxRows],
+    )).rows;
+    return {
+      product: {
+        id: number(product.id),
+        code: product.codigo,
+        name: product.nombre,
+        brand: product.marca,
+        location: product.ubicacion,
+        stock: product.stock,
+        minStock: product.stockMinimo,
+      },
+      movements: rows.map(row => ({
+        id: number(row.id),
+        productId: number(row.productoId),
+        quantity: row.cantidad,
+        stockAfter: row.existenciaPosterior,
+        type: row.tipo,
+        reason: row.motivo || '',
+        date: row.creadoEn instanceof Date ? row.creadoEn.toISOString() : row.creadoEn,
+        saleId: row.ventaId == null ? null : number(row.ventaId),
+        purchaseId: row.compraId == null ? null : number(row.compraId),
+        purchaseNumber: row.compraNumero ?? null,
+      })),
+    };
+  } finally {
+    client.release();
+  }
 }
 async function sale(client, body, occurredAt, allowNcf = true) {
   const turn = await lockCash(client, body.cajaId);

@@ -1304,3 +1304,47 @@ label {
   border-color: hsl(var(--primary) / 0.35);
   background: hsl(var(--accent));
 }
+
+.inv-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+}
+.inv-toolbar-search {
+  position: relative;
+  min-width: 0;
+  width: 100%;
+}
+.inv-toolbar-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.inv-toolbar-select {
+  width: 100%;
+}
+.inv-toolbar-stock {
+  flex-shrink: 0;
+}
+@media (min-width: 768px) {
+  .inv-toolbar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .inv-toolbar-search {
+    flex: 1 1 240px;
+    width: auto;
+  }
+  .inv-toolbar-controls {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    flex: 0 1 auto;
+  }
+  .inv-toolbar-select {
+    width: 196px;
+    flex: 0 0 auto;
+  }
+}

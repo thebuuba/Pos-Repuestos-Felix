@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readSnapshot, writeOperation } from '../pos/store.js';
+import { readProductMovements, readSnapshot, writeOperation } from '../pos/store.js';
 import { readSyncBootstrap, writeSyncOperation, retireSyncStream } from '../pos/sync-operations.js';
 import { stateTag, matchesStateTag, bootstrapTag } from '../pos/state-tag.js';
 import { allowedOperation, redactBootstrapForRole, redactSnapshotForRole, userRole } from '../pos/roles.js';
@@ -179,11 +179,15 @@ async function route(request, { pool, hosting, databaseLabel = 'PostgreSQL', rea
       }
       const isStateRead = request.method === 'GET' && pathname === '/api/state';
       const isSyncBootstrap = request.method === 'GET' && pathname === '/api/sync/bootstrap';
-      if (!isStateRead && !isSyncBootstrap && !['POST', 'PUT', 'DELETE'].includes(request.method)) return json(405, { error: 'Método no permitido.' });
+      const productMovementsMatch = request.method === 'GET' ? /^\/api\/productos\/([1-9]\d*)\/movimientos$/.exec(pathname) : null;
+      if (!isStateRead && !isSyncBootstrap && !productMovementsMatch && !['POST', 'PUT', 'DELETE'].includes(request.method)) return json(405, { error: 'Método no permitido.' });
       const expectedOrigin = hosting.origin || url.origin;
       const origin = request.headers.get('origin');
       if ((origin && origin !== expectedOrigin) || request.headers.get('sec-fetch-site') === 'cross-site') {
         return json(403, { error: 'Origen no permitido.' });
+      }
+      if (productMovementsMatch) {
+        return json(200, await readProductMovements(pool, Number(productMovementsMatch[1]), { role }));
       }
       if (isSyncBootstrap) {
         const condition = request.headers.get('if-none-match');

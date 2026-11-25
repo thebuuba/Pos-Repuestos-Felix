@@ -295,6 +295,15 @@ export function desktopServer(engine, remote, assetsDirectory, desktopHost = nul
           return send(200, redactSnapshotForRole(await engine.snapshot({ compact }), role), { ETag: tag });
         });
       }
+      const productMovementsMatch = request.method === 'GET' ? /^\/api\/productos\/([1-9]\d*)\/movimientos$/.exec(path) : null;
+      if (productMovementsMatch) {
+        if (!engine.pool && syncing) await syncing.catch(() => {});
+        return await engine.serial(async () => {
+          const profile = requireAccess();
+          const role = normalizeRole(profile.role);
+          return send(200, await engine.productMovements(Number(productMovementsMatch[1]), role));
+        });
+      }
       if (path === '/api/backup' && request.method === 'GET') {
         const profile = requireAccess();
         if (!allowedOperation(normalizeRole(profile.role), 'GET', '/api/backup')) throw error('Tu cuenta de cajero no tiene permiso para esta operación.', 403);

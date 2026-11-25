@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { memoryPool } from './memory-pool.js';
 import { migrateDatabase } from '../db/migrations.js';
-import { canonical, readSnapshot, snapshotVersion, writeOperation } from '../pos/store.js';
+import { canonical, readProductMovements, readSnapshot, snapshotVersion, writeOperation } from '../pos/store.js';
 import { tables, rows as exportRows } from '../pos/relational-backup.js';
 import { cashHeadFromBackup, isCashSyncOperation, operationEffect } from '../pos/sync-operations.js';
 import { stateTag } from '../pos/state-tag.js';
@@ -82,6 +82,10 @@ export class DesktopEngine {
   async snapshot(options = {}) {
     if (!this.pool) throw failure('Conecta este equipo e inicia sesión una vez para descargar los datos del negocio.', 503);
     return { ...await readSnapshot(this.pool, label, false, undefined, options), desktop: this.status() };
+  }
+  async productMovements(productId, role = 'dueno') {
+    if (!this.pool) throw failure('Conecta este equipo e inicia sesión una vez para descargar los datos del negocio.', 503);
+    return readProductMovements(this.pool, productId, { role });
   }
   snapshotTag() { return stateTag({ databaseId: this.ledger.get('databaseId'), revision: this.ledger.get('revision'), databaseLabel: label }); }
   async adopt(download) {

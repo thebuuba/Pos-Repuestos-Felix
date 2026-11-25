@@ -130,6 +130,7 @@ function productPayload(p) {
     stockMinimo: p.minStock, gravado: p.taxable, costo: p.cost, stock: p.stock,
     ...(Object.hasOwn(p, 'notifyMinStock') ? { notificarMinimo: p.notifyMinStock } : {}),
     ...(Object.hasOwn(p, 'altCodes') ? { codigosAlternativos: p.altCodes } : {}),
+    ...(p.adjustmentReason ? { motivoAjuste: p.adjustmentReason } : {}),
     precio1: prices.p1, precio2: prices.p2, precio3: prices.p3 };
 }
 function recordOperation(resource, dto, toPayload) {
@@ -193,6 +194,15 @@ function actions(client) {
       databaseId, method: 'POST', path: '/api/compras/' + purchaseId + '/anular', payload: { version, motivo: reason },
     })),
     saveProduct: record('productos', productPayload), deleteProduct: record('productos'),
+    fetchProductMovements: async (productId) => {
+      const response = await fetch('/api/productos/' + encodeURIComponent(String(productId)) + '/movimientos', {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(15000),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || 'No se pudo cargar el historial del artículo.');
+      return body;
+    },
     saveCustomer: record('clientes', c => writeFields(c, customerFields)), deleteCustomer: record('clientes'),
     saveSupplier: record('suplidores', s => writeFields(s, supplierFields)), deleteSupplier: record('suplidores'),
     saveFormula: record('formulas', f => ({ nombre: f.name, factorCosto: f.costFactor,
