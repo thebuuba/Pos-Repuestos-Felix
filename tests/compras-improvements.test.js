@@ -359,10 +359,23 @@ test('Puntos 1-5 de Compras: Referencia global, fecha de factura, descripción c
 
   // Editar el mismo cálculo desde Suplidores actualiza la fórmula existente sin duplicar
   await page.goto(origin + '/suplidores');
-  await main.getByRole('button', { name: 'Editar cálculo de Suplidor Cálculo Directo' }).click();
+  // Cambiar a vista de Lista y confirmar tabla, persistencia al recargar, edición de cálculo y enlace a Compras
+  await main.getByRole('button', { name: 'Lista', exact: true }).click();
+  await main.getByRole('table').waitFor();
+  await page.reload();
+  await main.getByRole('table').waitFor();
+  const listRow = main.getByRole('row').filter({ hasText: 'Suplidor Cálculo Directo' });
+  await listRow.getByText(/×1\.15/).waitFor();
+  await listRow.getByRole('button', { name: 'Editar cálculo de Suplidor Cálculo Directo' }).click();
   await sheet.getByLabel('Factor de costo').fill('1.2');
   await sheet.getByRole('button', { name: 'Guardar cambios' }).click();
   await sheet.waitFor({ state: 'hidden' });
+  await listRow.getByText(/×1\.2/).waitFor();
+  await listRow.getByRole('link', { name: 'Registrar compra con Suplidor Cálculo Directo' }).click();
+  await page.waitForURL(new RegExp(`/compras\\?suplidor=${customSupp.result.id}$`));
+  await page.goto(origin + '/suplidores');
+  await main.getByRole('button', { name: 'Tarjetas', exact: true }).click();
+  assert.equal(await main.getByRole('table').count(), 0);
   const finalState = (await (await fetch(origin + '/api/state')).json()).state;
   const linkedFormula = finalState.formulas.find(f => f.nombre === 'Fórmula Suplidor Cálculo Directo');
   assert.ok(linkedFormula, 'Debe existir la fórmula creada desde Suplidores');

@@ -17,6 +17,7 @@ import {
   isPrimaryMod,
   submitActiveDialog,
 } from "../data/keyboard-shortcuts.js";
+const QUICK_LINK_PATHS = new Set(["/ventas", "/inventario", "/caja"]);
 const quickLinks = ["/ventas", "/inventario", "/caja"].map(path =>
   NAV_GROUPS[0].items.find(item => item.path === path),
 );
@@ -244,13 +245,13 @@ function PosLayout({ children }) {
       </div>
       {menuOpen && <section id="pos-mobile-menu" ref={menuPanel} tabIndex={-1}
         role="dialog" aria-modal="false" aria-labelledby="pos-mobile-menu-title" aria-describedby="pos-mobile-menu-description"
-        className="mobile-more-panel bg-sidebar text-sidebar-foreground">
-        <div className="w-full px-3 pb-6 pt-4 md:pt-6">
-          <div className="min-w-0 px-3">
+        className="mobile-more-panel bg-background text-foreground">
+        <div className="mx-auto w-full max-w-3xl px-4 pb-6 pt-4 md:px-6 md:pt-6">
+          <div className="min-w-0">
             <h2 id="pos-mobile-menu-title" className="text-2xl font-semibold tracking-tight text-foreground md:text-[28px]">Más opciones</h2>
             <p id="pos-mobile-menu-description" className="mt-1 text-sm text-muted-foreground">Todos los módulos de Repuestos Félix.</p>
           </div>
-          <SidebarNav touch aria-label="Todos los módulos" className="mt-6"
+          <SidebarNav touch cards excludePaths={QUICK_LINK_PATHS} aria-label="Todos los módulos" className="mt-5"
             onNavigate={() => { closeMenu(); window.scrollTo(0, 0); }} />
         </div>
       </section>}

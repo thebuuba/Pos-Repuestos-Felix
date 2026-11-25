@@ -74,21 +74,22 @@ test(
         .click();
       await page
         .getByRole("dialog")
-        .getByRole("link", { name: "Inventario", exact: false })
+        .getByRole("link", { name: "Suplidores", exact: true })
         .click();
+      await page
+        .getByRole("heading", { name: "Suplidores", exact: true })
+        .waitFor();
+      await page.getByRole("dialog").waitFor({ state: "hidden" });
+      assert.equal(await page.getByRole("dialog").count(), 0);
+      const bottomNav = page.getByRole("navigation", { name: "Navegación rápida" });
+      await bottomNav.getByRole("link", { name: "Inventario", exact: true }).click();
       await page
         .getByRole("heading", {
           name: "Catálogo de artículos e inventario",
           exact: true,
         })
         .waitFor();
-      await page.getByRole("dialog").waitFor({ state: "hidden" });
-      assert.equal(await page.getByRole("dialog").count(), 0);
-      await page
-        .getByRole("button", { name: "Más", exact: true })
-        .click();
-      await page.getByRole("dialog").locator('a[href="/ventas"]').click();
-      await page.getByRole("dialog").waitFor({ state: "hidden" });
+      await bottomNav.getByRole("link", { name: "Ventas", exact: true }).click();
       await page.evaluate(() => document.fonts.ready);
       assert.equal(
         await page.evaluate(() => document.documentElement.scrollHeight),

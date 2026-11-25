@@ -3,9 +3,10 @@ import { usePosStore } from "../data/pos-context.jsx";
 import { formulaSummary } from "../lib/pricing.js";
 import { PageHeader } from "../components/pos/page-header.jsx";
 import { Button } from "../components/ui/button.jsx";
-import { Plus, Search } from "lucide-react";
+import { LayoutGrid, List, Plus, Search } from "lucide-react";
 import { EmptyState, MiniStat } from "../components/pos/section-card.jsx";
 import { Input } from "../components/ui/input.jsx";
+import { cn } from "../lib/utils.js";
 import { Truck } from "lucide-react";
 import { Receipt } from "lucide-react";
 import { formatMoney } from "../lib/format.js";
@@ -23,12 +24,31 @@ import { SupplierFormSheet } from "../components/pos/supplier-form-sheet.jsx";
 import { ConfirmDialog } from "../components/pos/confirm-dialog.jsx";
 import { useEffect, useMemo, useState } from "react";
 import { businessMonthIso } from "../lib/dates.js";
+const VIEW_STORAGE_KEY = "felix-suppliers-view";
 function SuppliersPage() {
   const { runtime, suppliers, formulas, purchases, settings, saveSupplier, saveFormula, deleteSupplier } =
     usePosStore();
   const [params] = useSearchParams();
   const urlQuery = params.get("buscar") ?? "";
   const [query, setQuery] = useState(urlQuery);
+  const [view, setView] = useState(() => {
+    if (!runtime) return "cards";
+    try {
+      return localStorage.getItem(VIEW_STORAGE_KEY) === "list" ? "list" : "cards";
+    } catch {
+      return "cards";
+    }
+  });
+  const changeView = (next) => {
+    setView(next);
+    if (runtime) {
+      try {
+        localStorage.setItem(VIEW_STORAGE_KEY, next);
+      } catch {
+        /* Keep the current view in memory. */
+      }
+    }
+  };
   useEffect(() => {
     if (urlQuery) setQuery(urlQuery);
   }, [urlQuery]);
@@ -107,16 +127,52 @@ function SuppliersPage() {
           value={formatMoney(monthTotal)}
         />
       </div>
-      <div className="relative max-w-md">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          data-shortcut-search="true"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Buscar por nombre, RNC, contacto o teléfono…"
-          aria-label="Buscar suplidor"
-          className="h-10 rounded-xl bg-card pl-9"
-        />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="relative w-full max-w-md flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            data-shortcut-search="true"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Buscar por nombre, RNC, contacto o teléfono…"
+            aria-label="Buscar suplidor"
+            className="h-10 rounded-xl bg-card pl-9"
+          />
+        </div>
+        <div
+          role="group"
+          aria-label="Vista de suplidores"
+          className="inline-flex h-10 shrink-0 items-center gap-1 rounded-xl border border-border bg-card p-1"
+        >
+          <button
+            type="button"
+            onClick={() => changeView("cards")}
+            aria-pressed={view === "cards"}
+            className={cn(
+              "inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium transition-colors",
+              view === "cards"
+                ? "bg-foreground text-background shadow-sm"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            )}
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+            {"Tarjetas"}
+          </button>
+          <button
+            type="button"
+            onClick={() => changeView("list")}
+            aria-pressed={view === "list"}
+            className={cn(
+              "inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium transition-colors",
+              view === "list"
+                ? "bg-foreground text-background shadow-sm"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            )}
+          >
+            <List className="h-3.5 w-3.5" />
+            {"Lista"}
+          </button>
+        </div>
       </div>
       {filtered.length === 0 ? (
         <div className="rounded-2xl border border-border bg-card">
@@ -130,6 +186,139 @@ function SuppliersPage() {
             }
           />
         </div>
+      ) : view === "list" ? (
+      <section className="overflow-hidden rounded-2xl border border-border bg-card">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[860px] text-sm">
+            <thead>
+              <tr className="border-b border-border bg-muted/50 text-left text-xs text-muted-foreground">
+                <th className="px-5 py-2.5 font-medium">{"Suplidor"}</th>
+                <th className="px-3 py-2.5 font-medium">{"Contacto"}</th>
+                <th className="px-3 py-2.5 font-medium">{"Cálculo"}</th>
+                <th className="px-3 py-2.5 font-medium">{"Crédito"}</th>
+                <th className="px-3 py-2.5 text-right font-medium">{"Le debemos"}</th>
+                <th className="px-5 py-2.5 text-right font-medium">{"Acciones"}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((s) => {
+                const formula = formulasById.get(s.formulaId);
+                const own = purchasesBySupplier.get(s.id);
+                const last = own?.last;
+                const ownCount = own?.count ?? 0;
+                return (
+                  <tr
+                    key={s.id}
+                    className="border-b border-border last:border-0 hover:bg-muted/30"
+                  >
+                    <td className="px-5 py-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-foreground text-background">
+                          <Truck className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold text-foreground">{s.name}</p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            <span className="font-mono">{"RNC "}{s.rnc || "—"}</span>
+                            {" · "}
+                            {last
+                              ? `Última compra ${formatDate(last.date)} (${ownCount})`
+                              : "Sin compras"}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 text-xs text-muted-foreground">
+                      <p className="font-medium text-foreground">{s.contact || "—"}</p>
+                      <p>{s.phone || "—"}</p>
+                      {s.email && <p className="truncate">{s.email}</p>}
+                    </td>
+                    <td className="px-3 py-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditing(s);
+                          setStartWithFormula(true);
+                          setCreationDatabaseId(runtime?.databaseId);
+                          setFormOpen(true);
+                        }}
+                        aria-label={`Editar cálculo de ${s.name}`}
+                        className="inline-flex max-w-xs items-center gap-2 rounded-xl bg-muted px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-accent"
+                      >
+                        <Calculator className="h-3.5 w-3.5 shrink-0 text-primary" />
+                        <span className="min-w-0 truncate">
+                          <span className="font-medium text-foreground">
+                            {formula ? formulaSummary(formula) : "Sin fórmula"}
+                          </span>
+                        </span>
+                        <span className="shrink-0 font-medium text-primary">
+                          {formula ? "Editar" : "Configurar"}
+                        </span>
+                      </button>
+                    </td>
+                    <td className="px-3 py-3 whitespace-nowrap text-xs font-medium">
+                      {s.creditDays === null ? "Sin registrar" : `${s.creditDays} días`}
+                    </td>
+                    <td
+                      className={cn(
+                        "px-3 py-3 text-right font-semibold tabular-nums whitespace-nowrap",
+                        s.balance > 0 && "text-primary",
+                      )}
+                    >
+                      {s.balance === null ? "Pendiente" : formatMoney(s.balance)}
+                    </td>
+                    <td className="px-5 py-3 text-right whitespace-nowrap">
+                      <div className="mobile-touch-controls inline-flex items-center justify-end gap-1">
+                        <Button
+                          asChild={true}
+                          variant="outline"
+                          className="h-8 rounded-lg bg-card px-2.5 text-xs"
+                        >
+                          <Link
+                            to={`/compras?suplidor=${encodeURIComponent(s.id)}`}
+                            aria-label={`Registrar compra con ${s.name}`}
+                          >
+                            <PackagePlus className="h-3.5 w-3.5" />
+                            {"Comprar"}
+                          </Link>
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground"
+                          onClick={() => {
+                            setEditing(s);
+                            setStartWithFormula(false);
+                            setFormOpen(true);
+                          }}
+                          aria-label="Editar"
+                        >
+                          <Pencil />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:bg-accent hover:text-primary"
+                          onClick={() =>
+                            s.balance > 0
+                              ? ue.error("No se puede eliminar", {
+                                  description: "Tiene facturas pendientes de pago.",
+                                })
+                              : setToDelete(s)
+                          }
+                          aria-label="Eliminar"
+                        >
+                          <Trash2 />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
       ) : (
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {filtered.map((s) => {

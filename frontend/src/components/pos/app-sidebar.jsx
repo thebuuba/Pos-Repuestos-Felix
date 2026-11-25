@@ -18,15 +18,17 @@ function isActive(item, pathname) {
 }
 const OWNER_ONLY_PATHS = new Set(["/compras", "/suplidores", "/reportes", "/cuentas-por-pagar"]);
 // Polymet's menu list, shared by the desktop sidebar and the phone «Más» panel.
-function SidebarNav({ onNavigate, className, groupsClassName, touch = false, collapsed = false, ...props }) {
+function SidebarNav({ onNavigate, className, groupsClassName, touch = false, collapsed = false, cards = false, excludePaths, ...props }) {
   const { pathname } = useLocation();
   const { receivables, payables, products, runtime } =
     usePosStore();
   const isOwner = !runtime || runtime.isOwner;
   const groups = useMemo(() => NAV_GROUPS.map((group) => ({
     ...group,
-    items: isOwner ? group.items : group.items.filter((item) => !OWNER_ONLY_PATHS.has(item.path)),
-  })).filter((group) => group.items.length > 0), [isOwner]);
+    items: group.items.filter((item) =>
+      (isOwner || !OWNER_ONLY_PATHS.has(item.path)) && !excludePaths?.has(item.path),
+    ),
+  })).filter((group) => group.items.length > 0), [isOwner, excludePaths]);
   const badges = useMemo(() => {
     let lowStock = 0;
     for (let i = 0; i < products.length; i++) {
@@ -95,6 +97,72 @@ function SidebarNav({ onNavigate, className, groupsClassName, touch = false, col
                           {tooltipText}
                         </TooltipContent>
                       </Tooltip>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </nav>
+    );
+  }
+  if (cards) {
+    return (
+      <nav className={className} {...props}>
+        <div className={cn("space-y-5", groupsClassName)}>
+          {groups.map((group) => (
+            <div key={group.label}>
+              <p className="mb-2.5 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+                {group.label}
+              </p>
+              <ul className="mobile-more-cards-grid">
+                {group.items.map((item) => {
+                  const active = isActive(item, pathname);
+                  const Icon = item.icon;
+                  const badge = badges[item.path];
+                  return (
+                    <li key={item.path} className="min-w-0">
+                      <Link
+                        to={item.path}
+                        onClick={onNavigate}
+                        aria-current={active ? "page" : undefined}
+                        className={cn(
+                          "mobile-more-card group flex h-full flex-col justify-between gap-3 rounded-2xl border p-3.5 transition-colors",
+                          active
+                            ? "mobile-more-card-active bg-sidebar-accent text-sidebar-accent-foreground"
+                            : "border-border bg-card text-foreground hover:bg-muted/60",
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span
+                            className={cn(
+                              "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
+                              active
+                                ? "bg-primary text-primary-foreground shadow-sm"
+                                : "bg-muted text-muted-foreground group-hover:text-foreground",
+                            )}
+                          >
+                            <Icon className="h-5 w-5" />
+                          </span>
+                          {badge > 0 && (
+                            <span
+                              aria-hidden="true"
+                              className={cn(
+                                "flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums",
+                                active
+                                  ? "bg-primary text-primary-foreground"
+                                  : "bg-muted text-foreground",
+                              )}
+                            >
+                              {badge}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-sm font-semibold leading-snug">
+                          {item.label}
+                        </span>
+                      </Link>
                     </li>
                   );
                 })}
