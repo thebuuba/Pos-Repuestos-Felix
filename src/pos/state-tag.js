@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { CURRENT_BACKUP_VERSION, LEGACY_SYNC_BACKUP_VERSION } from './relational-backup.js';
 
 export function stateTag({ databaseId, revision, databaseLabel, role }) {
   const payload = role === 'cajero'
@@ -7,7 +8,11 @@ export function stateTag({ databaseId, revision, databaseLabel, role }) {
   return `"${createHash('sha256').update(JSON.stringify(payload)).digest('hex')}"`;
 }
 
-export function bootstrapTag(version) { return '"sync-2-' + stateTag(version).slice(1); }
+export function bootstrapTag(version) {
+  const resolved = Number.isInteger(version?.backupVersion) ? version.backupVersion : CURRENT_BACKUP_VERSION;
+  const schema = resolved <= LEGACY_SYNC_BACKUP_VERSION ? '' : `v${resolved}-`;
+  return `"sync-2-${schema}` + stateTag(version).slice(1);
+}
 
 export function matchesStateTag(condition, tag) {
   if (condition === '*') return true;

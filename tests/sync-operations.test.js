@@ -6,6 +6,8 @@ import { temporaryPostgres } from './postgres.js';
 import { migrateDatabase } from '../src/db/migrations.js';
 import { readSnapshot, writeOperation } from '../src/pos/store.js';
 import { readSyncBootstrap, writeSyncOperation, cashHeadFromBackup, operationEffect } from '../src/pos/sync-operations.js';
+import { CURRENT_BACKUP_VERSION, backupLayout } from '../src/pos/relational-backup.js';
+import { redactBootstrapForRole } from '../src/pos/roles.js';
 import { createApp } from '../src/server.js';
 import { handleRequest } from '../src/http/app.js';
 import { hostingConfig } from '../src/hosting.js';
@@ -226,4 +228,122 @@ test('both synchronization routes require a session before opening a business da
       { hosting, pool: { connect() { assert.fail('Una sesión ausente no debe consultar datos.'); } } });
     assert.equal(response.status, 401);
   }
+});
+
+test('legacy v1.2.19 desktop clients negotiate v9 backups, keep referencia intact on edits, and auto-upgrade ETag on v1.2.20', async () => {
+  await write(cloud, '/api/productos', {
+    codigo: 'LEG-REF-1',
+    referencia: 'OEM-PRESERVAR-99',
+    nombre: 'Filtro compatible con v1.2.19',
+    costo: '50.0000',
+    stock: '8',
+    precio1: '100.0000',
+    precio2: '90.0000',
+    precio3: '90.0000',
+  });
+
+  // 1. Cliente v1.2.19 (sin cabecera X-Felix-Backup-Version) recibe respaldo v9 sin columna referencia.
+  const legacyRes = await fetch(base + '/api/sync/bootstrap');
+  assert.equal(legacyRes.status, 200);
+  const legacyEtag = legacyRes.headers.get('etag');
+  const legacyBoot = await legacyRes.json();
+  assert.equal(legacyBoot.backup.version, 9);
+  const legacyProduct = legacyBoot.backup.tables.productos.find(p => p.codigo === 'LEG-REF-1');
+  assert.ok(legacyProduct, 'producto debe existir en respaldo v9');
+  assert.equal(Object.hasOwn(legacyProduct, 'referencia'), false, 'v9 no debe incluir columna referencia');
+  assert.doesNotThrow(() => backupLayout(legacyBoot.backup));
+  assert.doesNotThrow(() => backupLayout(redactBootstrapForRole(legacyBoot, 'cajero').backup));
+
+  // ETag de v1.2.19 responde 304 mientras sigue en v9.
+  const legacyNotMod = await fetch(base + '/api/sync/bootstrap', { headers: { 'If-None-Match': legacyEtag } });
+  assert.equal(legacyNotMod.status, 304);
+
+  // 2. Al actualizar a v1.2.20 (X-Felix-Backup-Version: 10), el ETag v9 NO devuelve 304; baja v10 con referencia.
+  const modernRes = await fetch(base + '/api/sync/bootstrap', {
+    headers: { 'X-Felix-Backup-Version': String(CURRENT_BACKUP_VERSION), 'If-None-Match': legacyEtag },
+  });
+  assert.equal(modernRes.status, 200);
+  const modernEtag = modernRes.headers.get('etag');
+  assert.notEqual(modernEtag, legacyEtag);
+  const modernBoot = await modernRes.json();
+  assert.equal(modernBoot.backup.version, CURRENT_BACKUP_VERSION);
+  const modernProduct = modernBoot.backup.tables.productos.find(p => p.codigo === 'LEG-REF-1');
+  assert.equal(modernProduct.referencia, 'OEM-PRESERVAR-99');
+
+  const modernNotMod = await fetch(base + '/api/sync/bootstrap', {
+    headers: { 'X-Felix-Backup-Version': String(CURRENT_BACKUP_VERSION), 'If-None-Match': modernEtag },
+  });
+  assert.equal(modernNotMod.status, 304);
+
+  // 3. Cliente v1.2.19 sube una edición offline de producto (sin campo referencia ni en body ni en expected.effect).
+  const currentState = await read(cloud);
+  const prod = currentState.state.productos.find(p => p.codigo === 'LEG-REF-1');
+  const legacyEditBody = {
+    databaseId: currentState.databaseId,
+    version: prod.version,
+    codigo: prod.codigo,
+    nombre: 'Filtro editado desde v1.2.19',
+    marca: prod.marca,
+    categoria: prod.categoria,
+    ubicacion: prod.ubicacion,
+    gravado: prod.gravado,
+    stock: '12.00',
+    stockMinimo: prod.stockMinimo,
+    notificarMinimo: prod.notificarMinimo,
+    costo: '50.0000',
+    precio1: '105.0000',
+    precio2: '90.0000',
+    precio3: '90.0000',
+    codigosAlternativos: [],
+  };
+  const expectedLegacyEffect = {
+    codigo: 'LEG-REF-1',
+    nombre: 'Filtro editado desde v1.2.19',
+    costo: '50.0000',
+    precio1: '105.0000',
+    precio2: '90.0000',
+    precio3: '90.0000',
+    stock: '12.00',
+    activo: true,
+    marca: prod.marca,
+    categoria: prod.categoria,
+    ubicacion: prod.ubicacion,
+    stock_minimo: '0.00',
+    gravado: true,
+    notificar_minimo: true,
+    altCodes: [],
+  };
+  const legacyOpId = randomUUID();
+  const legacyEnvelope = {
+    deviceId: randomUUID(),
+    sequence: 1,
+    operationId: legacyOpId,
+    method: 'PUT',
+    path: `/api/productos/${prod.id}`,
+    body: legacyEditBody,
+    occurredAt: new Date().toISOString(),
+    expected: { effect: expectedLegacyEffect, cashHead: null },
+  };
+  const opRes = await fetch(base + '/api/sync/operations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': legacyOpId },
+    body: JSON.stringify(legacyEnvelope),
+  });
+  assert.equal(opRes.status, 200, await opRes.clone().text());
+  const opData = await opRes.json();
+  assert.equal(opData.backup.version, 9);
+  assert.equal(opData.receipt.effect.nombre, 'Filtro editado desde v1.2.19');
+
+  // Verificar que PostgreSQL conservó la referencia OEM-PRESERVAR-99 intacta.
+  const afterState = await read(cloud);
+  const updatedProd = afterState.state.productos.find(p => p.codigo === 'LEG-REF-1');
+  assert.equal(updatedProd.nombre, 'Filtro editado desde v1.2.19');
+  assert.equal(updatedProd.stock, 12);
+  assert.equal(updatedProd.referencia, 'OEM-PRESERVAR-99');
+
+  // 4. Si algún día llega un respaldo superior a la versión soportada, responde 426 claro en vez de "Formato inválido".
+  assert.throws(
+    () => backupLayout({ version: CURRENT_BACKUP_VERSION + 1, format: 'repuestos-felix-relacional', tables: {} }),
+    error => error.status === 426 && /Actualiza la aplicación de escritorio/i.test(error.message),
+  );
 });

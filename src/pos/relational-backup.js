@@ -61,6 +61,12 @@ export const tables = {
   ...v9,
   productos: [...v9.productos, 'referencia'],
 };
+export const CURRENT_BACKUP_VERSION = 10;
+export const LEGACY_SYNC_BACKUP_VERSION = 9;
+const versionLayouts = { 2: v2, 3: v3, 4: v4, 5: v5, 6: v6, 7: v7, 8: v8, 9: v9, 10: tables };
+export function layoutForVersion(version) {
+  return versionLayouts[version] ?? null;
+}
 function exactKeys(value, keys) {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
@@ -126,20 +132,29 @@ function validateBackupRow(table, row, columns, version) {
   }
 }
 
-export async function rows(client, table, preciseDates = false, filter) {
-  const columns = tables[table].map(key => (key === 'fecha' || key === 'vencimiento') ? `${key}::text AS ${key}` : preciseDates && key.endsWith('_en')
+export async function rows(client, table, preciseDates = false, filter, columnList = tables[table]) {
+  const columns = columnList.map(key => (key === 'fecha' || key === 'vencimiento') ? `${key}::text AS ${key}` : preciseDates && key.endsWith('_en')
     ? `to_char(${key} AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS ${key}` : key).join(',');
   return (await client.query(`SELECT ${columns} FROM public.${table}${filter ? ' WHERE ' + filter.sql : ''} ORDER BY id`, filter?.values)).rows;
 }
-export async function exportBackup(client) {
+export async function exportBackup(client, version = CURRENT_BACKUP_VERSION) {
+  const targetVersion = Number.isInteger(version) && versionLayouts[version] ? version : CURRENT_BACKUP_VERSION;
+  const targetLayout = versionLayouts[targetVersion];
   const data = {};
-  for (const table of Object.keys(tables)) data[table] = await rows(client, table, true);
-  return { version: 10, format: 'repuestos-felix-relacional', exportedAt: new Date().toISOString(), tables: data };
+  for (const [table, columnList] of Object.entries(targetLayout)) {
+    data[table] = await rows(client, table, true, undefined, columnList);
+  }
+  return { version: targetVersion, format: 'repuestos-felix-relacional', exportedAt: new Date().toISOString(), tables: data };
 }
 
 // INSERT usa los valores predeterminados de SQL para las columnas ausentes.
 export function backupLayout(backup) {
-  const layout = backup.version === 10 ? tables : backup.version === 9 ? v9 : backup.version === 8 ? v8 : backup.version === 7 ? v7 : backup.version === 6 ? v6 : backup.version === 5 ? v5 : backup.version === 4 ? v4 : backup.version === 3 ? v3 : backup.version === 2 ? v2 : null;
+  if (backup && typeof backup === 'object' && !Array.isArray(backup) &&
+      backup.format === 'repuestos-felix-relacional' &&
+      Number.isInteger(backup.version) && backup.version > CURRENT_BACKUP_VERSION) {
+    fail('El servidor utiliza un formato de datos más reciente. Actualiza la aplicación de escritorio para continuar sincronizando.', 426);
+  }
+  const layout = layoutForVersion(backup?.version);
   if (!layout || backup.format !== 'repuestos-felix-relacional' || !exactKeys(backup.tables, Object.keys(layout)))
     fail('Formato de respaldo inválido.');
   for (const [table, columns] of Object.entries(layout)) {

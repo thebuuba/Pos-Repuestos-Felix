@@ -264,7 +264,9 @@ export class DesktopEngine {
     } catch (error) {
       await this.serial(() => {
         try { assertActor(); } catch { return; }
-        this.connection = error.status === 401 ? 'authentication' : [400, 403, 404, 409].includes(error.status) ? 'conflict' : 'offline';
+        this.connection = error.status === 401 ? 'authentication'
+          : error.status === 426 ? 'upgrade'
+          : [400, 403, 404, 409].includes(error.status) ? 'conflict' : 'offline';
         this.lastError = error.status && error.status < 500 ? error.message : 'Sin conexión al servidor. Las operaciones confirmadas quedan guardadas en este equipo.';
       });
     }

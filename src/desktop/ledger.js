@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { tables, backupLayout } from '../pos/relational-backup.js';
+import { CURRENT_BACKUP_VERSION, tables, backupLayout } from '../pos/relational-backup.js';
 
 const booleans = new Set(['activo', 'gravado', 'es_contado', 'notificar_minimo', 'permitir_stock_negativo', 'activa']);
 // Append-only ledger tables whose monotonic ID order defines running balances (no external FK references them).
@@ -122,7 +122,7 @@ export class DesktopLedger {
       data[table] = this.database.prepare(`SELECT * FROM local_${table} ORDER BY CAST(id AS INTEGER)`).all().map(row =>
         Object.fromEntries(columns.map(column => [column, row[column] !== null && booleans.has(column) ? Boolean(row[column]) : row[column]])));
     }
-    return { version: 10, format: 'repuestos-felix-relacional', exportedAt: new Date().toISOString(), tables: data };
+    return { version: CURRENT_BACKUP_VERSION, format: 'repuestos-felix-relacional', exportedAt: new Date().toISOString(), tables: data };
   }
   // Fixed relational columns retain NUMERIC strings; no JSON snapshot is the business authority.
   tableIds() {

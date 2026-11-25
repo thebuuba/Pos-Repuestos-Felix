@@ -1,6 +1,12 @@
 import { createHash } from 'node:crypto';
 import { canonical, maintenanceLock, snapshot, snapshotVersion, writeOperation } from './store.js';
-import { exportBackup, rows, tables } from './relational-backup.js';
+import {
+  CURRENT_BACKUP_VERSION,
+  LEGACY_SYNC_BACKUP_VERSION,
+  exportBackup,
+  layoutForVersion,
+  rows,
+} from './relational-backup.js';
 import { fail, id, text } from './operation-fields.js';
 import { bootstrapTag } from './state-tag.js';
 
@@ -81,12 +87,21 @@ export function cashHeadFromBackup(backup) {
     latestAt: new Date(events.reduce((latest, value) => Math.max(latest, new Date(value).getTime()), 0)).toISOString() };
 }
 
-async function bootstrap(client, databaseLabel, observed) {
-  const current = observed ?? await snapshot(client, databaseLabel);
-  const backup = await exportBackup(client);
-  return { snapshot: current, backup, catalogo: current.state.catalogo, cashHead: cashHeadFromBackup(backup), etag: bootstrapTag(current) };
+export function negotiateBackupVersion(requested) {
+  if (requested === undefined || requested === null) return CURRENT_BACKUP_VERSION;
+  const parsed = Number(requested);
+  if (!Number.isSafeInteger(parsed) || parsed < LEGACY_SYNC_BACKUP_VERSION) return LEGACY_SYNC_BACKUP_VERSION;
+  return Math.min(parsed, CURRENT_BACKUP_VERSION);
 }
-export async function readSyncBootstrap(pool, databaseLabel, isNotModified) {
+
+async function bootstrap(client, databaseLabel, observed, backupVersion = CURRENT_BACKUP_VERSION) {
+  const resolvedVersion = negotiateBackupVersion(backupVersion);
+  const current = observed ?? await snapshot(client, databaseLabel);
+  const backup = await exportBackup(client, resolvedVersion);
+  return { snapshot: current, backup, catalogo: current.state.catalogo, cashHead: cashHeadFromBackup(backup), etag: bootstrapTag({ ...current, backupVersion: resolvedVersion }) };
+}
+export async function readSyncBootstrap(pool, databaseLabel, isNotModified, { backupVersion = CURRENT_BACKUP_VERSION } = {}) {
+  const resolvedVersion = negotiateBackupVersion(backupVersion);
   const client = await pool.connect();
   let discard;
   try {
@@ -96,7 +111,7 @@ export async function readSyncBootstrap(pool, databaseLabel, isNotModified) {
     }
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     await client.query('SELECT pg_advisory_xact_lock_shared($1)', [maintenanceLock]);
-    const response = await bootstrap(client, databaseLabel);
+    const response = await bootstrap(client, databaseLabel, undefined, resolvedVersion);
     await client.query('COMMIT');
     return response;
   } catch (error) {
@@ -189,7 +204,8 @@ function streamKey(kind, actorId, deviceId, databaseId) {
 }
 
 // A retired stream is a durable server-side barrier, not deletion of invoices.
-export async function retireSyncStream(pool, body, databaseLabel, actor) {
+export async function retireSyncStream(pool, body, databaseLabel, actor, { backupVersion = CURRENT_BACKUP_VERSION } = {}) {
+  const resolvedVersion = negotiateBackupVersion(backupVersion);
   if (!body || Object.keys(body).sort().join(',') !== 'databaseId,deviceId,operationIds' ||
       !uuid.test(body.deviceId) || !uuid.test(body.databaseId) || !Array.isArray(body.operationIds) ||
       !body.operationIds.length || body.operationIds.length > 10000 || body.operationIds.some(key => !uuid.test(key)) ||
@@ -221,7 +237,7 @@ export async function retireSyncStream(pool, body, databaseLabel, actor) {
         [key, 'sync:retired', fingerprint, { databaseId: body.databaseId, retirement }]);
     }
     await client.query('SELECT database_id FROM pos_privado.sistema WHERE id=1 FOR SHARE');
-    const download = await bootstrap(client, databaseLabel);
+    const download = await bootstrap(client, databaseLabel, undefined, resolvedVersion);
     await client.query('COMMIT');
     return { ...download, retirement };
   } catch (cause) {
@@ -230,43 +246,45 @@ export async function retireSyncStream(pool, body, databaseLabel, actor) {
   } finally { client.release(discard); }
 }
 
-async function operationBackup(client, method, path, result, priorMovement, priorAltCode, createdMovements = null) {
+async function operationBackup(client, method, path, result, priorMovement, priorAltCode, createdMovements = null, backupVersion = CURRENT_BACKUP_VERSION) {
+  const layout = layoutForVersion(negotiateBackupVersion(backupVersion));
+  const select = (tableName, filter) => rows(client, tableName, true, filter, layout[tableName]);
   const resource = resourceFor(path), table = tableFor(resource);
-  const data = Object.fromEntries(Object.keys(tables).map(name => [name, []]));
+  const data = Object.fromEntries(Object.keys(layout).map(name => [name, []]));
   if (method === 'DELETE') return { tables: data };
-  data[table] = await rows(client, table, true, { sql: 'id=$1', values: [result.id] });
+  data[table] = await select(table, { sql: 'id=$1', values: [result.id] });
   if (resource === 'ventas' || resource === 'compras') {
     const sale = resource === 'ventas', detail = sale ? 'venta_detalles' : 'compra_detalles';
-    data[detail] = await rows(client, detail, true, { sql: (sale ? 'venta_id' : 'compra_id') + '=$1', values: [result.id] });
-    data.movimientos_inventario = await rows(client, 'movimientos_inventario', true, {
+    data[detail] = await select(detail, { sql: (sale ? 'venta_id' : 'compra_id') + '=$1', values: [result.id] });
+    data.movimientos_inventario = await select('movimientos_inventario', {
       sql: (sale ? 'venta_detalle_id' : 'compra_detalle_id') + '=ANY($1::bigint[])', values: [data[detail].map(row => row.id)],
     });
-    if (!sale) data.productos = await rows(client, 'productos', true, { sql: 'id=ANY($1::bigint[])', values: [data[detail].map(row => row.producto_id)] });
+    if (!sale) data.productos = await select('productos', { sql: 'id=ANY($1::bigint[])', values: [data[detail].map(row => row.producto_id)] });
   } else if (resource === 'ventas/anular') {
     data.movimientos_inventario = createdMovements?.length
-      ? await rows(client, 'movimientos_inventario', true, { sql: 'id=ANY($1::bigint[])', values: [createdMovements] })
+      ? await select('movimientos_inventario', { sql: 'id=ANY($1::bigint[])', values: [createdMovements] })
       : [];
   } else if (resource === 'compras/anular') {
     data.movimientos_inventario = createdMovements?.length
-      ? await rows(client, 'movimientos_inventario', true, { sql: 'id=ANY($1::bigint[])', values: [createdMovements] })
+      ? await select('movimientos_inventario', { sql: 'id=ANY($1::bigint[])', values: [createdMovements] })
       : [];
   } else if (resource === 'productos') {
-    data.movimientos_inventario = await rows(client, 'movimientos_inventario', true, {
+    data.movimientos_inventario = await select('movimientos_inventario', {
       sql: 'producto_id=$1 AND id>$2', values: [result.id, priorMovement],
     });
-    data.productos_codigos = await rows(client, 'productos_codigos', true, {
+    data.productos_codigos = await select('productos_codigos', {
       sql: 'producto_id=$1', values: [result.id],
     });
   } else if (resource === 'taller' || resource.startsWith('taller/')) {
-    data.cuentas_taller_items = await rows(client, 'cuentas_taller_items', true, {
+    data.cuentas_taller_items = await select('cuentas_taller_items', {
       sql: 'cuenta_id=$1', values: [result.id],
     });
     if (resource === 'taller/facturar') {
-      data.ventas = await rows(client, 'ventas', true, { sql: 'id=$1', values: [result.ventaId] });
-      data.venta_detalles = await rows(client, 'venta_detalles', true, { sql: 'venta_id=$1', values: [result.ventaId] });
+      data.ventas = await select('ventas', { sql: 'id=$1', values: [result.ventaId] });
+      data.venta_detalles = await select('venta_detalles', { sql: 'venta_id=$1', values: [result.ventaId] });
     } else {
       data.movimientos_inventario = createdMovements?.length
-        ? await rows(client, 'movimientos_inventario', true, { sql: 'id=ANY($1::bigint[])', values: [createdMovements] })
+        ? await select('movimientos_inventario', { sql: 'id=ANY($1::bigint[])', values: [createdMovements] })
         : [];
     }
   }
@@ -321,7 +339,8 @@ function createdRows(method, path, body, result, backup, priorProducts, priorMov
   return created;
 }
 
-export async function writeSyncOperation(pool, envelope, databaseLabel, actor, { receiptOnly = false } = {}) {
+export async function writeSyncOperation(pool, envelope, databaseLabel, actor, { receiptOnly = false, backupVersion = CURRENT_BACKUP_VERSION } = {}) {
+  const resolvedVersion = negotiateBackupVersion(backupVersion);
   validateEnvelope(envelope);
   const actorId = text(actor?.id, 'el usuario autenticado');
   const { deviceId, sequence, operationId, method, path, body, occurredAt, expected } = envelope;
@@ -375,7 +394,7 @@ export async function writeSyncOperation(pool, envelope, databaseLabel, actor, {
       }
     },
     async afterExecute(client, result) {
-      const backup = await operationBackup(client, method, path, result, priorMovement, priorAltCode, createdMovements);
+      const backup = await operationBackup(client, method, path, result, priorMovement, priorAltCode, createdMovements, resolvedVersion);
       const effect = operationEffect(method, path, body, result, backup);
       if (canonical(effect) !== canonical(expected.effect)) fail('Conflicto de sincronización: el resultado difiere del confirmado localmente. Revisa la operación conservada en el equipo.', 409);
       return { actorId, deviceId, sequence, operationId, occurredAt, result, effect,
@@ -387,7 +406,7 @@ export async function writeSyncOperation(pool, envelope, databaseLabel, actor, {
         ON CONFLICT(clave) DO UPDATE SET resultado=excluded.resultado WHERE pos_privado.solicitudes.tipo='sync:cursor'`,
         [cursorKey, cursorKey, { databaseId: body.databaseId, cursor: { sequence, occurredAt, revision: current.revision } }]);
       const { actorId: _actor, occurredAt: _instant, ...receipt } = metadata;
-      return { ...(receiptOnly ? { snapshot: current } : await bootstrap(client, databaseLabel, current)), receipt: { ...receipt, replayed } };
+      return { ...(receiptOnly ? { snapshot: current } : await bootstrap(client, databaseLabel, current, resolvedVersion)), receipt: { ...receipt, replayed } };
     },
   });
 }

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readProductMovements, readSnapshot, writeOperation } from '../pos/store.js';
+import { CURRENT_BACKUP_VERSION, LEGACY_SYNC_BACKUP_VERSION } from '../pos/relational-backup.js';
 import { readSyncBootstrap, writeSyncOperation, retireSyncStream } from '../pos/sync-operations.js';
 import { stateTag, matchesStateTag, bootstrapTag } from '../pos/state-tag.js';
 import { allowedOperation, redactBootstrapForRole, redactSnapshotForRole, userRole } from '../pos/roles.js';
@@ -39,6 +40,16 @@ const securityFor = hosting => hosting?.origin
   ? { ...baseSecurityHeaders, 'Strict-Transport-Security': 'max-age=31536000; includeSubDomains' }
   : baseSecurityHeaders;
 const maxBodyBytes = 10 * 1024 * 1024;
+
+function syncBackupVersion(request) {
+  const raw = request.headers.get('x-felix-backup-version');
+  if (raw === null || raw === '') return LEGACY_SYNC_BACKUP_VERSION;
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) return LEGACY_SYNC_BACKUP_VERSION;
+  const parsed = Number(trimmed);
+  if (!Number.isSafeInteger(parsed) || parsed < LEGACY_SYNC_BACKUP_VERSION) return LEGACY_SYNC_BACKUP_VERSION;
+  return Math.min(parsed, CURRENT_BACKUP_VERSION);
+}
 
 function json(status, data, headers = {}, hosting = null) {
   return new Response(JSON.stringify(data), { status, headers: { ...securityFor(hosting), 'Content-Type': 'application/json; charset=utf-8', ...headers } });
@@ -190,9 +201,15 @@ async function route(request, { pool, hosting, databaseLabel = 'PostgreSQL', rea
         return json(200, await readProductMovements(pool, Number(productMovementsMatch[1]), { role }));
       }
       if (isSyncBootstrap) {
+        const backupVersion = syncBackupVersion(request);
         const condition = request.headers.get('if-none-match');
-        const download = await readSyncBootstrap(pool, databaseLabel, condition ? version => matchesStateTag(condition, bootstrapTag({ ...version, role })) : undefined);
-        const headers = { ETag: bootstrapTag({ ...(download.notModified ?? download.snapshot), role }) };
+        const download = await readSyncBootstrap(
+          pool,
+          databaseLabel,
+          condition ? version => matchesStateTag(condition, bootstrapTag({ ...version, role, backupVersion })) : undefined,
+          { backupVersion },
+        );
+        const headers = { ETag: bootstrapTag({ ...(download.notModified ?? download.snapshot), role, backupVersion }) };
         return download.notModified ? new Response(null, { status: 304, headers: { ...securityHeaders, ...headers } }) : json(200, redactBootstrapForRole(download, role), headers);
       }
       if (isStateRead) {
@@ -211,13 +228,18 @@ async function route(request, { pool, hosting, databaseLabel = 'PostgreSQL', rea
         { id: 'local', name: hosting.username || 'Usuario local', role };
       if (pathname === '/api/sync/retire') {
         if (request.method !== 'POST') return json(405, { error: 'Método no permitido.' });
-        return json(200, redactBootstrapForRole(await retireSyncStream(pool, body, databaseLabel, actor), role));
+        const backupVersion = syncBackupVersion(request);
+        return json(200, redactBootstrapForRole(await retireSyncStream(pool, body, databaseLabel, actor, { backupVersion }), role));
       }
       if (pathname === '/api/sync/operations') {
         if (request.method !== 'POST') return json(405, { error: 'Método no permitido.' });
         if (request.headers.get('idempotency-key') !== body?.operationId) return json(400, { error: 'La clave de envío no coincide con la operación local.' });
         if (!allowedOperation(role, body?.method, body?.path)) return json(403, { error: 'Tu cuenta de cajero no tiene permiso para sincronizar esta operación.' });
-        const result = await writeSyncOperation(pool, body, databaseLabel, actor, { receiptOnly: request.headers.get('prefer') === 'return=receipt' });
+        const backupVersion = syncBackupVersion(request);
+        const result = await writeSyncOperation(pool, body, databaseLabel, actor, {
+          receiptOnly: request.headers.get('prefer') === 'return=receipt',
+          backupVersion,
+        });
         return json(200, redactBootstrapForRole(result, role), { ETag: stateTag({ ...result.snapshot, role }) });
       }
       const rawDelta = request.headers.get('x-felix-delta');

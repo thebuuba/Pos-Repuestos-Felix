@@ -7,7 +7,14 @@ import { formatMoney } from './lib/format.js';
 import { formatBusinessDateTime } from './lib/dates.js';
 
 const dateLabel = value => formatBusinessDateTime(value);
-const connectionLabels = { checking: 'Comprobando…', offline: 'Sin conexión', online: 'Al día', conflict: 'Revisar sincronización', authentication: 'Iniciar sesión' };
+const connectionLabels = {
+  checking: 'Comprobando…',
+  offline: 'Sin conexión',
+  online: 'Al día',
+  conflict: 'Revisar sincronización',
+  upgrade: 'Actualización requerida',
+  authentication: 'Iniciar sesión',
+};
 const validUpdateStates = new Set(['available', 'downloading', 'installing', 'error', 'checking', 'up_to_date', 'check_error']);
 const bannerUpdateStates = new Set(['available', 'downloading', 'installing', 'error']);
 
@@ -213,7 +220,9 @@ function DesktopStatus({ onSync }) {
       setStatus(next); setError('');
       publishSyncSnapshot(next);
       publishUpdate(next.update ?? null);
-      if (previous?.connection === 'offline' && next.connection === 'online' && Date.now() - lastSilentCheck.current > 60_000) {
+      if (((previous?.connection === 'offline' && next.connection === 'online') ||
+          (previous?.connection !== 'upgrade' && next.connection === 'upgrade')) &&
+          Date.now() - lastSilentCheck.current > 60_000) {
         lastSilentCheck.current = Date.now();
         requestDesktopUpdateCheck({ silent: true }).catch(() => {});
       }
@@ -320,8 +329,8 @@ function DesktopStatus({ onSync }) {
     }
   }
 
-  const needsReview = !!(error || status?.conflict || status?.connection === 'conflict' || status?.connection === 'authentication' || (status?.error && status.connection !== 'offline'));
-  const label = syncing ? 'Sincronizando…' : needsReview ? (status?.connection === 'authentication' ? 'Iniciar sesión' : 'Revisar sincronización') :
+  const needsReview = !!(error || status?.conflict || status?.connection === 'conflict' || status?.connection === 'upgrade' || status?.connection === 'authentication' || (status?.error && status.connection !== 'offline'));
+  const label = syncing ? 'Sincronizando…' : needsReview ? (status?.connection === 'authentication' ? 'Iniciar sesión' : status?.connection === 'upgrade' ? 'Actualización requerida' : 'Revisar sincronización') :
     !status ? 'Comprobando…' : !status.initialized ? 'Preparar equipo' : status.connection === 'online' && status.pending ? 'Pendientes' : connectionLabels[status.connection];
   const pendingLabel = status?.pending ? `${status.pending} ${status.pending === 1 ? 'operación pendiente' : 'operaciones pendientes'}` : 'Sin operaciones pendientes';
   const checking = syncing || !status || status.connection === 'checking';
@@ -380,7 +389,7 @@ function DesktopStatus({ onSync }) {
           )}
         </div>
 
-        {(error || (status && (stale || status.connection === 'authentication' || status.connection === 'conflict' || status.conflict || status.error))) && (
+        {(error || (status && (stale || status.connection === 'authentication' || status.connection === 'upgrade' || status.connection === 'conflict' || status.conflict || status.error))) && (
           <div className={cn('sync-notice-box', needsReview ? 'sync-notice-danger' : 'sync-notice-warning')}>
             {error && <p role="alert" className="text-xs font-medium text-destructive">{error}</p>}
             {status && stale && (
@@ -393,7 +402,12 @@ function DesktopStatus({ onSync }) {
                 Vuelve a iniciar sesión con internet para continuar la sincronización.
               </p>
             )}
-            {(status?.connection === 'conflict' || status?.conflict) && (
+            {status?.connection === 'upgrade' && (
+              <p className="text-xs leading-relaxed text-foreground">
+                Hay una versión nueva en el servidor. Pulsa «Buscar actualizaciones» para actualizar la aplicación sin perder datos.
+              </p>
+            )}
+            {Boolean(status?.conflict || (status?.connection === 'conflict' && status?.pending > 0)) && (
               <p className="text-xs leading-relaxed text-foreground">
                 Hay operaciones que requieren revisión. Los datos no se sobrescriben automáticamente.
               </p>
@@ -530,7 +544,7 @@ function DesktopStatus({ onSync }) {
 
       <div className="sync-dialog-foot">
         <div className="flex flex-wrap items-center gap-2">
-          {!review && (status?.conflict || status?.connection === 'conflict' || status?.reconciling) && (
+          {!review && (status?.reconciling || (status?.pending > 0 && (status?.conflict || status?.connection === 'conflict'))) && (
             <Button variant="outline" size="sm" className="h-9 rounded-xl" disabled={syncing || reviewing} onClick={reviewPending}>
               {reviewing ? 'Consultando pendientes…' : status?.reconciling ? 'Reanudar revisión' : 'Revisar pendientes'}
             </Button>
