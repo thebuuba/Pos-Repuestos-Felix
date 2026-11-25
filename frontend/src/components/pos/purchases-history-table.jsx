@@ -73,7 +73,7 @@ function PurchasesHistoryTable({ purchases, suppliers, business, canVoid = false
                         : p.condition === "credito"
                           ? "Crédito"
                           : p.condition === "contado"
-                            ? "Pagada"
+                            ? "Al contado"
                             : "Sin registrar"}
                     </span>
                   </div>
@@ -159,7 +159,7 @@ function PurchasesHistoryTable({ purchases, suppliers, business, canVoid = false
                           : p.condition === "credito"
                             ? "Crédito"
                             : p.condition === "contado"
-                              ? "Pagada"
+                              ? "Al contado"
                               : "Sin registrar"}
                       </span>
                     </td>

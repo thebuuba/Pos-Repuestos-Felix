@@ -105,7 +105,7 @@ test('ambas entradas sirven solo Polymet y conservan códigos literales tras res
     const draft = { databaseId, nombre: 'Control', stock: 1, costo: 1, precio1: 1, precio2: 1, precio3: 1 };
     for (const codigo of ['RF-1', 'rf-1', 'RF-1 ']) await post('/api/productos', { ...draft, codigo });
     const backup = await get('/api/backup');
-    assert.equal(backup.version, 9);
+    assert.equal(backup.version, 10);
     const { revision } = await get('/api/state');
     const key = randomUUID();
     const body = { databaseId, revision, backup };

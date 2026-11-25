@@ -39,10 +39,6 @@ export const PRICE_LEVELS = [
     value: "p2",
     label: "Precio 2 · Por mayor",
   },
-  {
-    value: "p3",
-    label: "Precio 3 · Taller",
-  },
 ];
 export const PAYMENT_METHODS = [
   {

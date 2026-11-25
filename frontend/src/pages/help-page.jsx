@@ -64,8 +64,8 @@ var SHORTCUTS = [
 ];
 var FAQ = [
   {
-    q: "¿Cómo se calculan los precios P1, P2 y P3?",
-    a: "En Compras, el factor de costo y los porcentajes de la fórmula determinan los tres precios. Revisa el costo y los precios antes de confirmar la factura. Las fórmulas se editan en Configuración.",
+    q: "¿Cómo se calculan Costo, P/Mayor y Detalle en Compras?",
+    a: "Cada suplidor puede tener su fórmula en cascada (P/Lista → Costo → P/Mayor → Detalle) en Configuración. En Compras, P/Lista calcula el Costo y muestra sugerencias encima de P/Mayor y Detalle sin sobrescribir tus precios.",
   },
   {
     q: "¿Qué comprobante uso y cómo activo los NCF?",
@@ -100,7 +100,7 @@ function HelpPage({ reference }) {
         ["F1", "Ir a Ventas / enfocar buscador"],
         ["F2", "Enfocar buscador de la pantalla"],
         ["F3", "Editar cantidad en el carrito"],
-        ["F4", "Cambiar nivel de precio (P1–P3)"],
+        ["F4", "Cambiar nivel de precio (Detalle ↔ Por mayor)"],
         ["F6", "Ventas en espera"],
         ["F7", "Cambiar método de pago"],
         ["F8", "Monto recibido (2.ª vez: Exacto)"],

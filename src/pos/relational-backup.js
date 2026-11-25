@@ -52,10 +52,14 @@ const v8 = {
   cuentas_taller: ['id','cliente_id','cliente_nombre','mecanico','vehiculo','nota','estado','venta_id','abierta_por','abierta_en','cerrada_en','version'],
   cuentas_taller_items: ['id','cuenta_id','producto_id','codigo','nombre','gravado','nivel_precio','precio','cantidad','cantidad_devuelta','despachado_por','retirado_por','creado_en'],
 };
-// Parent rows precede children; reverse order is safe for transactional restore.
-export const tables = {
+const v9 = {
   ...v8,
   compras: [...v8.compras, 'estado','anulada_en','anulada_por','motivo_anulacion'],
+};
+// Parent rows precede children; reverse order is safe for transactional restore.
+export const tables = {
+  ...v9,
+  productos: [...v9.productos, 'referencia'],
 };
 function exactKeys(value, keys) {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -130,12 +134,12 @@ export async function rows(client, table, preciseDates = false, filter) {
 export async function exportBackup(client) {
   const data = {};
   for (const table of Object.keys(tables)) data[table] = await rows(client, table, true);
-  return { version: 9, format: 'repuestos-felix-relacional', exportedAt: new Date().toISOString(), tables: data };
+  return { version: 10, format: 'repuestos-felix-relacional', exportedAt: new Date().toISOString(), tables: data };
 }
 
 // INSERT usa los valores predeterminados de SQL para las columnas ausentes.
 export function backupLayout(backup) {
-  const layout = backup.version === 9 ? tables : backup.version === 8 ? v8 : backup.version === 7 ? v7 : backup.version === 6 ? v6 : backup.version === 5 ? v5 : backup.version === 4 ? v4 : backup.version === 3 ? v3 : backup.version === 2 ? v2 : null;
+  const layout = backup.version === 10 ? tables : backup.version === 9 ? v9 : backup.version === 8 ? v8 : backup.version === 7 ? v7 : backup.version === 6 ? v6 : backup.version === 5 ? v5 : backup.version === 4 ? v4 : backup.version === 3 ? v3 : backup.version === 2 ? v2 : null;
   if (!layout || backup.format !== 'repuestos-felix-relacional' || !exactKeys(backup.tables, Object.keys(layout)))
     fail('Formato de respaldo inválido.');
   for (const [table, columns] of Object.entries(layout)) {

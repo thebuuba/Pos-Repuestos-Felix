@@ -110,7 +110,7 @@ function ProductKardexDialog({ product, onOpenChange, fetchMovements }) {
   const movements = data?.movements ?? [];
   const currentStock = data?.product?.stock ?? product?.stock ?? 0;
   const currentMin = data?.product?.minStock ?? product?.minStock ?? 0;
-  const metaParts = [product?.code, product?.brand, product?.location].filter(Boolean);
+  const metaParts = [product?.code, product?.reference && `Ref. ${product.reference}`, product?.brand, product?.location].filter(Boolean);
 
   return (
     <Dialog open={Boolean(product)} onOpenChange={onOpenChange}>

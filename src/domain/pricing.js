@@ -48,6 +48,50 @@ function halfUp(numerator, denominator) {
   return (numerator + denominator / 2n) / denominator;
 }
 
+function trimUnitDecimal(value) {
+  return value.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '');
+}
+
+function roundCentsStep(numerator, denominator, rounding) {
+  if (rounding === 0) return halfUp(numerator, denominator);
+  const stepCents = BigInt(rounding) * 100n;
+  const stepNumerator = denominator * stepCents;
+  return ((numerator + stepNumerator - 1n) / stepNumerator) * stepCents;
+}
+
+export function calculateCascadeFromCost(cost, formula, rounding = 0) {
+  if (!ROUNDING_STEPS.includes(rounding)) throw new RangeError('Revisa el paso de redondeo.');
+  const costUnits = scaledDecimal(cost, 12, 4, 'el costo');
+  if (costUnits > MAX_CENTS * COST_UNITS_PER_CENT) throw new RangeError('El costo excede el límite permitido.');
+  const { margins } = formulaUnits(formula);
+  const mayorCents = roundCentsStep(
+    costUnits * (PERCENT_SCALE + margins.p2),
+    PERCENT_SCALE * COST_UNITS_PER_CENT,
+    rounding,
+  );
+  const detalleCents = roundCentsStep(
+    mayorCents * (PERCENT_SCALE + margins.p1),
+    PERCENT_SCALE,
+    rounding,
+  );
+  const costExact = decimalString(costUnits, 4);
+  return {
+    costExact,
+    cost: trimUnitDecimal(costExact),
+    prices: { p2: money(mayorCents), p1: money(detalleCents) },
+  };
+}
+
+export function calculateCascadeFormula(listPrice, formula, rounding = 0) {
+  if (!ROUNDING_STEPS.includes(rounding)) throw new RangeError('Revisa el paso de redondeo.');
+  const listUnits = scaledDecimal(listPrice, 12, 4, 'el precio de lista');
+  if (listUnits > MAX_CENTS * COST_UNITS_PER_CENT) throw new RangeError('El precio de lista excede el límite permitido.');
+  const { costFactor } = formulaUnits(formula);
+  const computedCostUnits = halfUp(listUnits * costFactor, FACTOR_SCALE);
+  if (computedCostUnits > MAX_CENTS * COST_UNITS_PER_CENT) throw new RangeError('El costo calculado excede el límite permitido.');
+  return calculateCascadeFromCost(decimalString(computedCostUnits, 4), formula, rounding);
+}
+
 export function calculateFormula(cost, formula, rounding) {
   if (!ROUNDING_STEPS.includes(rounding)) throw new RangeError('Revisa el paso de redondeo.');
   const costUnits = scaledDecimal(cost, 12, 4, 'el costo');

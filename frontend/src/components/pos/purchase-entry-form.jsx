@@ -1,5 +1,12 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
-import { purchaseDecimal, purchaseLineAmounts, purchasePrices, purchaseTotals } from "../../data/operational-purchases.js";
+import {
+  purchaseCostFromList,
+  purchaseDecimal,
+  purchaseLineAmounts,
+  purchasePrices,
+  purchaseSuggestedPrices,
+  purchaseTotals,
+} from "../../data/operational-purchases.js";
 import { costUnits, decimalUnits, quantityUnits } from "../../../../src/pos/operation-fields.js";
 import { Field } from "./form-field.jsx";
 import { Select } from "../ui/select.jsx";
@@ -9,7 +16,6 @@ import { SelectValue } from "../ui/select.jsx";
 import { SelectContent } from "../ui/select.jsx";
 import { SelectItem } from "../ui/select.jsx";
 import { Input } from "../ui/input.jsx";
-import { formulaSummary } from "../../lib/pricing.js";
 import { cn } from "../../lib/utils.js";
 import { Button } from "../ui/button.jsx";
 import { Check, ChevronDown, Plus, Search, X } from "lucide-react";
@@ -18,7 +24,7 @@ import { formatMoney, formatNumber, formatUnitMoney } from "../../lib/format.js"
 import { CATEGORIES } from "../../data/catalog-options.js";
 import { EmptyState } from "./section-card.jsx";
 import { PackageOpen } from "lucide-react";
-import { PRICE_KEYS } from "../../lib/pricing.js";
+import { factorFromPercent } from "../../lib/pricing.js";
 import { Trash2 } from "lucide-react";
 import { MoneyDisplay } from "./money-display.jsx";
 import { Upload } from "lucide-react";
@@ -26,12 +32,19 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { businessTodayIso } from "../../lib/dates.js";
 import { searchTopProducts } from "../../data/product-search.js";
 import { hasOpenModal, isPlainAlt, isPrimaryMod, isTouchMobile } from "../../data/keyboard-shortcuts.js";
+const PURCHASE_PRICE_COLUMNS = [
+  { key: "p2", label: "P/Mayor" },
+  { key: "p1", label: "Detalle" },
+];
 var EMPTY_ENTRY = {
   code: "",
+  reference: "",
   name: "",
   category: "Motor",
   quantity: "1",
+  listPrice: "",
   cost: "",
+  costManual: false,
 };
 function catalogFields(product) {
   return {
@@ -43,10 +56,12 @@ function catalogChanged(line, product) {
   return (line.productId ?? null) !== (product?.id ?? null) ||
     (line.productVersion ?? null) !== (product?.version ?? null);
 }
-function defaultDueDate(days) {
+function defaultDueDate(days, baseIso = businessTodayIso()) {
   const parsed = Number(days);
   const n = days !== null && days !== undefined && days !== "" && Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : 30;
-  const d = new Date(businessTodayIso() + "T00:00:00Z");
+  const anchor = /^\d{4}-\d{2}-\d{2}$/.test(baseIso || "") ? baseIso : businessTodayIso();
+  const d = new Date(anchor + "T00:00:00Z");
+  if (!Number.isFinite(d.getTime())) return businessTodayIso();
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 }
@@ -60,14 +75,16 @@ function PurchaseEntryForm({
 }) {
   const [supplierId, setSupplierId] = useState("");
   const [invoice, setInvoice] = useState("");
-  const [formulaId, setFormulaId] = useState(runtime ? "manual" : String(formulas[0]?.id ?? ""));
-  const [condition, setCondition] = useState(runtime ? "contado" : "credito");
+  const [invoiceDate, setInvoiceDate] = useState(() => businessTodayIso());
+  const [condition, setCondition] = useState("credito");
   const [dueDate, setDueDate] = useState(() => defaultDueDate(30));
+  const [dueDateManual, setDueDateManual] = useState(false);
   const [entry, setEntry] = useState(EMPTY_ENTRY);
   const [lines, setLines] = useState([]);
   const [tried, setTried] = useState(false);
   const codeRef = useRef(null);
   const qtyRef = useRef(null);
+  const listPriceRef = useRef(null);
   const costRef = useRef(null);
   const submitRef = useRef(null);
   const supplierBoxRef = useRef(null);
@@ -86,7 +103,9 @@ function PurchaseEntryForm({
   const databaseChanged = databaseId !== runtime?.databaseId;
   const locked = sending || !!retryInput || databaseChanged;
   const supplier = suppliers.find(s => String(s.id) === supplierId);
-  const formula = formulas.find(f => String(f.id) === formulaId);
+  const formula = supplier?.formulaId != null
+    ? formulas.find(f => String(f.id) === String(supplier.formulaId))
+    : undefined;
   const { productsByCode, productsByLowerCode, altCodeMap } = useMemo(() => {
     const byCode = new Map();
     const byLower = new Map();
@@ -133,9 +152,28 @@ function PurchaseEntryForm({
     return () => document.removeEventListener("mousedown", onOutside);
   }, [supplierOpen]);
   const selectSupplier = (s) => {
+    const nextFormula = s?.formulaId != null
+      ? formulas.find(f => String(f.id) === String(s.formulaId))
+      : undefined;
     setSupplierId(String(s.id));
-    setFormulaId(String(s?.formulaId ?? "manual"));
-    setDueDate(defaultDueDate(s?.creditDays ?? 30));
+    setDueDate(defaultDueDate(s?.creditDays ?? 30, invoiceDate));
+    setDueDateManual(false);
+    setEntry((e) => {
+      if (!e.listPrice.trim() || e.costManual) return e;
+      try {
+        return { ...e, cost: purchaseCostFromList(e.listPrice, nextFormula) };
+      } catch {
+        return e;
+      }
+    });
+    setLines((prev) => prev.map((l) => {
+      if (!l.listPrice || !String(l.listPrice).trim() || l.costManual) return l;
+      try {
+        return { ...l, cost: purchaseCostFromList(l.listPrice, nextFormula) };
+      } catch {
+        return l;
+      }
+    }));
     setSupplierOpen(false);
     setSupplierQuery("");
     setSupplierHighlight(0);
@@ -143,6 +181,13 @@ function PurchaseEntryForm({
       const inv = document.getElementById("purchase-invoice");
       if (inv && !invoice.trim()) inv.focus();
       else codeRef.current?.focus();
+    }
+  };
+  const onInvoiceDateChange = (nextDate) => {
+    setInvoiceDate(nextDate);
+    if (!dueDateManual || (nextDate && dueDate && dueDate < nextDate)) {
+      setDueDate(defaultDueDate(supplier?.creditDays ?? 30, nextDate));
+      setDueDateManual(false);
     }
   };
   const productResults = useMemo(() => {
@@ -153,10 +198,13 @@ function PurchaseEntryForm({
     setEntry((e) => ({
       ...e,
       code: product.code,
+      reference: product.reference ?? "",
       ...catalogFields(product),
       name: product.name,
       category: product.category || e.category,
+      listPrice: "",
       cost: product.costExact ?? String(product.cost),
+      costManual: false,
     }));
     setProductMenuOpen(false);
     setProductHighlight(0);
@@ -164,22 +212,29 @@ function PurchaseEntryForm({
     qtyRef.current?.focus();
     qtyRef.current?.select();
   };
-  const showNewDescription = Boolean(entry.code.trim() && !match && !altCodeOwner);
+  const searchingMatches = productMenuOpen && productResults.length > 0;
+  const showNewDescription = Boolean(entry.code.trim() && !match && !altCodeOwner && !searchingMatches);
   const evaluate = (line, catalogPrices) => {
-    let prices = {}, amounts = {};
+    let prices = {}, amounts = {}, suggested = null;
     try {
-      if (formulaId !== "manual" && !formula) throw new Error("Selecciona una fórmula de precios vigente.");
+      if (line.listPrice !== undefined && String(line.listPrice).trim() !== "") {
+        costUnits(purchaseDecimal(line.listPrice), "el precio de lista");
+      }
       prices = { ...purchasePrices(line.cost, formula, rounding, catalogPrices), ...line.overrides };
       amounts = purchaseLineAmounts(line.cost, line.quantity);
+      suggested = purchaseSuggestedPrices(line.cost, formula, rounding);
       if (line.overrides) {
-        for (const k of PRICE_KEYS) {
-          if (prices[k] === undefined || prices[k] === "") throw new Error(`Completa el precio ${k.toUpperCase()}.`);
-          costUnits(purchaseDecimal(prices[k]), `el precio ${k.toUpperCase()}`);
+        for (const { key, label } of PURCHASE_PRICE_COLUMNS) {
+          if (prices[key] === undefined || prices[key] === "") throw new Error(`Completa el precio ${label}.`);
+          costUnits(purchaseDecimal(prices[key]), `el precio ${label}`);
         }
       }
-      return { prices, ...amounts };
+      if (prices.p2 !== undefined && prices.p2 !== "") {
+        prices.p3 = prices.p2;
+      }
+      return { prices, suggested, ...amounts };
     } catch (cause) {
-      return { prices, ...amounts, error: cause.message };
+      return { prices, suggested, ...amounts, error: cause.message };
     }
   };
   const entryResult = entry.cost === "" ? {} : evaluate(entry, match?.pricesExact ?? match?.prices);
@@ -187,7 +242,7 @@ function PurchaseEntryForm({
     ? `Este código es alternativo de «${altCodeOwner.name}» (${altCodeOwner.code}). Usa el código principal.`
     : !runtime && entryResult.prices && Number(entry.cost) === 0
       ? "Indica un costo unitario mayor que cero." : entryResult.error;
-  const entryPrices = !entryError && entryResult.prices;
+  const entrySuggested = !entryError ? entryResult.suggested : null;
   const canAddLine = !locked && !entryChanged && !altCodeOwner && !entryError && entryResult.units && entry.code.trim() && entry.name.trim() && lines.length < 1000;
   const { pricedLines, total, units, error: totalError } = useMemo(() => {
     const projectedStock = new Map();
@@ -207,23 +262,64 @@ function PurchaseEntryForm({
       return { ...line, ...result, existing, stockBefore, stockAfter };
     });
     return { pricedLines: evaluated, ...purchaseTotals(evaluated) };
-  }, [lines, formulaId, formula, rounding, productsByCode, runtime]);
-  const hasInvalidLine = !!totalError || pricedLines.some(line => line.error || line.changed);
+  }, [lines, formula, rounding, productsByCode, runtime]);
+  const invalidInvoiceDate = !/^\d{4}-\d{2}-\d{2}$/.test(invoiceDate);
+  const invalidDueDate = condition === "credito" && Boolean(dueDate && invoiceDate && dueDate < invoiceDate);
+  const hasInvalidLine = !!totalError || invalidInvoiceDate || invalidDueDate || pricedLines.some(line => line.error || line.changed);
   const onCodeChange = (code) => {
     const found = findProduct(code);
     setEntry(e => ({
       ...e, code, ...catalogFields(found),
+      reference: found ? (found.reference ?? "") : match ? "" : e.reference,
       name: found ? found.name : match ? "" : e.name,
       category: found ? found.category : e.category,
+      listPrice: found || match ? "" : e.listPrice,
       cost: found ? (found.costExact ?? String(found.cost)) : match ? "" : e.cost,
+      costManual: false,
     }));
+  };
+  const onEntryListPriceChange = (raw) => {
+    setEntry((e) => {
+      const trimmed = raw.trim();
+      if (!trimmed) {
+        return {
+          ...e,
+          listPrice: raw,
+          costManual: false,
+          cost: match ? (match.costExact ?? String(match.cost)) : "",
+        };
+      }
+      try {
+        const computed = purchaseCostFromList(raw, formula);
+        return { ...e, listPrice: raw, cost: computed, costManual: false };
+      } catch {
+        return { ...e, listPrice: raw, costManual: false };
+      }
+    });
+  };
+  const onLineListPriceChange = (lineKey, raw) => {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      updateLine(lineKey, { listPrice: raw, costManual: false });
+      return;
+    }
+    try {
+      const computed = purchaseCostFromList(raw, formula);
+      updateLine(lineKey, { listPrice: raw, cost: computed, costManual: false });
+    } catch {
+      updateLine(lineKey, { listPrice: raw, costManual: false });
+    }
   };
   const addLine = () => {
     if (!canAddLine) return;
     // Each receipt line keeps its own unit cost and rounded subtotal.
     setLines(prev => [...prev, {
       key: crypto.randomUUID(), ...catalogFields(match), code: runtime ? entry.code : entry.code.trim().toUpperCase(),
-      name: entry.name.trim(), category: entry.category, quantity: purchaseDecimal(entry.quantity), cost: purchaseDecimal(entry.cost),
+      reference: entry.reference.trim(),
+      name: entry.name.trim(), category: entry.category, quantity: purchaseDecimal(entry.quantity),
+      listPrice: entry.listPrice.trim() ? purchaseDecimal(entry.listPrice) : "",
+      cost: purchaseDecimal(entry.cost),
+      costManual: entry.costManual,
       overrides: {},
     }]);
     setEntry(EMPTY_ENTRY);
@@ -245,13 +341,15 @@ function PurchaseEntryForm({
     setTried(true);
     if (!retryInput && (!supplier || (runtime && !invoice.trim()) || !lines.length || hasInvalidLine)) return;
     const input = retryInput ?? {
-      databaseId, supplierId: supplier.id, supplierInvoice: invoice.trim(), formulaId: formula?.id, condition,
+      databaseId, supplierId: supplier.id, supplierInvoice: invoice.trim(), date: invoiceDate, formulaId: formula?.id, condition,
       dueDate: condition === "credito" ? dueDate || null : null,
       lines: pricedLines.map(l => ({
-        productId: l.productId, productVersion: l.productVersion, code: l.code, name: l.name, category: l.category,
+        productId: l.productId, productVersion: l.productVersion, code: l.code, reference: l.reference ?? "", name: l.name, category: l.category,
         quantity: runtime ? l.quantity : Number(l.quantity),
         cost: runtime ? l.cost : Number(l.cost),
-        prices: runtime ? l.prices : Object.fromEntries(PRICE_KEYS.map(k => [k, Number(l.prices[k])])),
+        prices: runtime
+          ? { p1: l.prices.p1, p2: l.prices.p2, p3: l.prices.p2 }
+          : { p1: Number(l.prices.p1), p2: Number(l.prices.p2), p3: Number(l.prices.p2) },
       })),
     };
     setError(null);
@@ -259,8 +357,13 @@ function PurchaseEntryForm({
     setSending(true);
     try {
       await onSubmit(input);
+      const today = businessTodayIso();
       setLines([]);
       setInvoice("");
+      setInvoiceDate(today);
+      setCondition("credito");
+      setDueDate(defaultDueDate(supplier?.creditDays ?? 30, today));
+      setDueDateManual(false);
       setTried(false);
       setRetryInput(null);
     } catch (cause) {
@@ -299,10 +402,14 @@ function PurchaseEntryForm({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [runtime]);
   const restart = () => {
+    const today = businessTodayIso();
     setDatabaseId(runtime.databaseId);
     setSupplierId("");
     setInvoice("");
-    setFormulaId("manual");
+    setInvoiceDate(today);
+    setCondition("credito");
+    setDueDate(defaultDueDate(30, today));
+    setDueDateManual(false);
     setEntry(EMPTY_ENTRY);
     setLines([]);
     setError(null);
@@ -312,10 +419,10 @@ function PurchaseEntryForm({
   return (
     <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
       <fieldset disabled={locked} className="min-w-0 space-y-5 rounded-2xl border border-border bg-card p-5">
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="purchase-header-grid">
           <Field
             label="Suplidor"
-            className="md:col-span-2"
+            className="purchase-field-supplier"
             error={tried && !supplier ? "Selecciona el suplidor" : undefined}
           >
             <div ref={supplierBoxRef} className="relative">
@@ -422,9 +529,15 @@ function PurchaseEntryForm({
               )}
             </div>
           </Field>
-          <Field label="No. factura del suplidor" htmlFor="purchase-invoice" error={tried && runtime && !invoice.trim() ? "Escribe el número de factura" : undefined}>
+          <Field
+            label="No. Fact."
+            htmlFor="purchase-invoice"
+            className="purchase-field-compact"
+            error={tried && runtime && !invoice.trim() ? "Escribe el número" : undefined}
+          >
             <Input
               id="purchase-invoice" maxLength={2000}
+              aria-label="No. factura del suplidor"
               value={invoice}
               onChange={(e) => setInvoice(e.target.value)}
               onKeyDown={(e) => {
@@ -437,54 +550,56 @@ function PurchaseEntryForm({
               className={inputClass}
             />
           </Field>
-          <Field label="Condición">
+          <Field
+            label="Fecha factura"
+            htmlFor="purchase-date"
+            className="purchase-field-date"
+            error={tried && invalidInvoiceDate ? "Indica la fecha" : undefined}
+          >
+            <Input
+              id="purchase-date"
+              type="date"
+              aria-label="Fecha de factura"
+              value={invoiceDate}
+              onChange={(e) => onInvoiceDateChange(e.target.value)}
+              className={inputClass}
+            />
+          </Field>
+          <Field label="Condición" className="purchase-field-compact">
             <Select disabled={locked} value={condition} onValueChange={(v) => setCondition(v)}>
               <SelectTrigger aria-label="Condición" className={inputClass}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="credito">{"A crédito"}</SelectItem>
-                <SelectItem value="contado">{"Pagada (contado)"}</SelectItem>
+                <SelectItem value="contado">{"Al contado"}</SelectItem>
               </SelectContent>
             </Select>
           </Field>
           {condition === "credito" && (
-            <Field label="Vencimiento" htmlFor="purchase-due-date" className="md:col-span-2">
+            <Field
+              label="Vencimiento"
+              htmlFor="purchase-due-date"
+              className="purchase-field-date"
+              error={invalidDueDate ? "No puede ser anterior a la factura" : undefined}
+            >
               <Input
                 id="purchase-due-date"
                 type="date"
+                min={invoiceDate || undefined}
                 value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
+                onChange={(e) => {
+                  setDueDate(e.target.value);
+                  setDueDateManual(true);
+                }}
                 className={inputClass}
               />
             </Field>
           )}
-          <Field
-            label="Fórmula de precios"
-            className={condition === "credito" ? "md:col-span-2" : "md:col-span-4"}
-            hint="Se elige sola según el suplidor. Los precios se recalculan al cambiarla."
-          >
-            <Select disabled={locked} value={formulaId} onValueChange={setFormulaId}>
-              <SelectTrigger aria-label="Fórmula de precios" className={inputClass}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {runtime && <SelectItem value="manual">Precios manuales</SelectItem>}
-                {formulas.map((f) => (
-                  <SelectItem value={String(f.id)} key={f.id}>
-                    {f.name}
-                    {" ("}
-                    {formulaSummary(f)}
-                    {")"}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
         </div>
         <div className="space-y-3 rounded-xl bg-muted/60 p-3">
-          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_104px_132px_auto] md:items-end">
-            <Field label="Buscar pieza o código nuevo">
+          <div className="purchase-entry-top">
+            <Field label="Buscar pieza o código nuevo" className="purchase-entry-search">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -526,12 +641,12 @@ function PurchaseEntryForm({
                       }
                     }
                   }}
-                  placeholder="Código"
+                  placeholder="Código, referencia o nombre…"
                   className={cn(inputClass, "pl-9 font-mono", !runtime && "uppercase")}
                 />
                 {productMenuOpen && entry.code.trim() && productResults.length > 0 && !(match && productResults.length === 1 && productResults[0].id === match.id) && (
-                  <div className="absolute left-0 right-0 top-full z-30 mt-1.5 overflow-hidden rounded-xl border border-border bg-popover shadow-lg">
-                    <ul role="listbox" aria-label="Artículos encontrados" className="max-h-64 overflow-y-auto py-1">
+                  <div className="purchase-product-results overflow-hidden rounded-xl border border-border bg-popover shadow-lg">
+                    <ul role="listbox" aria-label="Artículos encontrados" className="max-h-72 overflow-y-auto divide-y divide-border/60 py-1">
                       {productResults.map((p, idx) => (
                         <li key={p.id}>
                           <button
@@ -542,20 +657,29 @@ function PurchaseEntryForm({
                             onMouseEnter={() => setProductHighlight(idx)}
                             onClick={() => pickProduct(p)}
                             className={cn(
-                              "flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors",
+                              "flex w-full items-start justify-between gap-3 px-3 py-2.5 text-left text-sm transition-colors",
                               idx === productHighlight && "bg-accent",
                             )}
                           >
-                            <span className="w-24 shrink-0 truncate font-mono text-xs text-muted-foreground sm:w-28">
-                              {p.code}
+                            <span className="min-w-0 flex-1 space-y-0.5">
+                              <span className="block whitespace-normal break-words font-medium leading-snug text-foreground">
+                                {p.name}
+                              </span>
+                              <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+                                <span className="font-mono">{p.code}</span>
+                                {p.reference && (
+                                  <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground/85">
+                                    {"Ref. "}
+                                    {p.reference}
+                                  </span>
+                                )}
+                                <span className="tabular-nums">
+                                  {"Stock "}
+                                  {p.stock}
+                                </span>
+                              </span>
                             </span>
-                            <span className="min-w-0 flex-1 truncate font-medium text-foreground">
-                              {p.name}
-                            </span>
-                            <span className="hidden shrink-0 text-xs text-muted-foreground tabular-nums sm:inline">
-                              Stock {p.stock}
-                            </span>
-                            <span className="w-20 shrink-0 text-right text-xs font-semibold text-foreground tabular-nums sm:w-24">
+                            <span className="shrink-0 whitespace-nowrap pt-0.5 text-right text-xs font-semibold text-foreground tabular-nums">
                               {formatUnitMoney(p.costExact ?? p.cost)}
                             </span>
                           </button>
@@ -566,7 +690,28 @@ function PurchaseEntryForm({
                 )}
               </div>
             </Field>
-            <Field label="Cant.">
+            <Field label="Referencia" className="purchase-entry-ref">
+              <Input
+                maxLength={2000}
+                aria-label="Referencia"
+                autoComplete="off"
+                spellCheck={false}
+                value={entry.reference}
+                onChange={(e) => setEntry({ ...entry, reference: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    qtyRef.current?.focus();
+                    qtyRef.current?.select();
+                  }
+                }}
+                placeholder="Cód. compañía"
+                className={cn(inputClass, "font-mono")}
+              />
+            </Field>
+          </div>
+          <div className="purchase-entry-metrics">
+            <Field label="Cantidad" className="purchase-entry-qty">
               <Input
                 ref={qtyRef}
                 type="number"
@@ -582,9 +727,9 @@ function PurchaseEntryForm({
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
-                    if (!String(entry.cost).trim()) {
-                      costRef.current?.focus();
-                      costRef.current?.select();
+                    if (!String(entry.cost).trim() && !String(entry.listPrice).trim()) {
+                      listPriceRef.current?.focus();
+                      listPriceRef.current?.select();
                     } else {
                       addLine();
                     }
@@ -593,7 +738,34 @@ function PurchaseEntryForm({
                 className={cn(inputClass, "tabular-nums")}
               />
             </Field>
-            <Field label="Costo unit.">
+            <Field label="P/Lista" className="purchase-entry-list">
+              <Input
+                ref={listPriceRef}
+                type="number"
+                inputMode="decimal"
+                step="0.0001"
+                min="0"
+                aria-label="Precio de lista"
+                value={entry.listPrice}
+                onChange={(e) => onEntryListPriceChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (canAddLine) addLine();
+                    else {
+                      costRef.current?.focus();
+                      costRef.current?.select();
+                    }
+                  }
+                }}
+                placeholder="0.00"
+                className={cn(inputClass, "tabular-nums")}
+              />
+            </Field>
+            <Field
+              label={formula && Number(formula.costFactor) !== 1 ? `Costo (×${formula.costFactor})` : "Costo"}
+              className="purchase-entry-cost"
+            >
               <Input
                 ref={costRef}
                 type="number"
@@ -604,6 +776,7 @@ function PurchaseEntryForm({
                   setEntry({
                     ...entry,
                     cost: e.target.value,
+                    costManual: true,
                   })
                 }
                 onKeyDown={(e) => e.key === "Enter" && addLine()}
@@ -612,7 +785,7 @@ function PurchaseEntryForm({
               />
             </Field>
             <Button
-              className="h-10 rounded-xl"
+              className="purchase-entry-add h-10 rounded-xl"
               onClick={addLine}
               disabled={!canAddLine}
             >
@@ -666,19 +839,27 @@ function PurchaseEntryForm({
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             {entry.code.trim() &&
               (match ? (
-                <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/10 px-2 py-1 font-medium text-emerald-700 dark:text-emerald-400">
+                <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded-md bg-emerald-500/10 px-2.5 py-1.5 font-medium text-emerald-700 dark:text-emerald-400">
                   <CircleCheck className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate">{match.name}</span>
-                  {" · stock "}
-                  {match.stock}
-                  {" · costo ant. "}
-                  {formatUnitMoney(match.costExact ?? match.cost)}
+                  <span className="whitespace-normal break-words">{match.name}</span>
+                  {match.reference && (
+                    <span className="font-mono text-[11px] opacity-90">
+                      {" · Ref. "}
+                      {match.reference}
+                    </span>
+                  )}
+                  <span className="whitespace-nowrap">
+                    {" · stock "}
+                    {match.stock}
+                    {" · costo ant. "}
+                    {formatUnitMoney(match.costExact ?? match.cost)}
+                  </span>
                 </span>
-              ) : (
+              ) : !searchingMatches ? (
                 <span className="rounded-md bg-accent px-2 py-1 font-medium text-accent-foreground">
                   {"Artículo nuevo · escribe su nombre arriba"}
                 </span>
-              ))}
+              ) : null)}
             {entryError && (
               <span role="alert" className="font-medium text-primary">
                 {entryError}
@@ -690,15 +871,14 @@ function PurchaseEntryForm({
                 Revisar artículo
               </Button>}
             </span>}
-            {entryPrices?.p1 !== undefined && (
+            {entrySuggested && (
               <span>
-                {"Precios sugeridos:"}{" "}
-                <span className="font-medium text-foreground">
-                  {"P1 "}
-                  {formatUnitMoney(entryPrices.p1)}
-                  {" · P2 "}
-                  {formatUnitMoney(entryPrices.p2)}
-                  {" · P3"} {formatUnitMoney(entryPrices.p3)}
+                {"Sugerencia suplidor:"}{" "}
+                <span className="font-medium text-foreground tabular-nums">
+                  {"P/Mayor "}
+                  {formatUnitMoney(entrySuggested.p2)}
+                  {" · Detalle "}
+                  {formatUnitMoney(entrySuggested.p1)}
                 </span>
               </span>
             )}
@@ -709,28 +889,49 @@ function PurchaseEntryForm({
             <EmptyState
               icon={PackageOpen}
               title="Sin artículos en esta compra"
-              description="Escribe el código del artículo; si ya existe se completa solo."
+              description="Escribe el código o referencia del artículo; si ya existe se completa solo."
             />
           </div>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-border">
-            <table className="w-full min-w-[880px] text-sm">
+            <table className="purchase-lines-table text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/50 text-left text-xs text-muted-foreground">
                   <th className="px-3 py-2.5 font-medium">{"Artículo"}</th>
-                  <th className="px-2 py-2.5 text-center font-medium">
-                    {"Cant."}
+                  <th className="px-1.5 py-2.5 text-center font-medium">
+                    {"Cantidad"}
                   </th>
-                  <th className="px-2 py-2.5 text-right font-medium">
-                    {"Costo"}
+                  <th className="px-1.5 py-2.5 text-right font-medium">
+                    {"P/Lista"}
                   </th>
-                  <th className="px-2 py-2.5 text-right font-medium">{"P1"}</th>
-                  <th className="px-2 py-2.5 text-right font-medium">{"P2"}</th>
-                  <th className="px-2 py-2.5 text-right font-medium">{"P3"}</th>
-                  <th className="px-3 py-2.5 text-right font-medium">
+                  <th className="px-1.5 py-2.5 text-right font-medium">
+                    <span>{"Costo"}</span>
+                    {formula && Number(formula.costFactor) !== 1 && (
+                      <span className="block font-mono text-[10px] font-normal opacity-80">
+                        {"×"}{formula.costFactor}
+                      </span>
+                    )}
+                  </th>
+                  <th className="px-1.5 py-2.5 text-right font-medium">
+                    <span>{"P/Mayor"}</span>
+                    {formula && (
+                      <span className="block font-mono text-[10px] font-normal opacity-80">
+                        {factorFromPercent(formula.margins.p2)}
+                      </span>
+                    )}
+                  </th>
+                  <th className="px-1.5 py-2.5 text-right font-medium">
+                    <span>{"Detalle"}</span>
+                    {formula && (
+                      <span className="block font-mono text-[10px] font-normal opacity-80">
+                        {factorFromPercent(formula.margins.p1)}
+                      </span>
+                    )}
+                  </th>
+                  <th className="px-2.5 py-2.5 text-right font-medium">
                     {"Subtotal"}
                   </th>
-                  <th className="w-10 px-2 py-2.5" />
+                  <th className="w-9 px-1.5 py-2.5" />
                 </tr>
               </thead>
               <tbody>
@@ -741,10 +942,19 @@ function PurchaseEntryForm({
                       className="border-b border-border last:border-0"
                       key={l.key}
                     >
-                      <td className="px-3 py-2.5">
-                        <p className="font-medium">{l.name}</p>
+                      <td className="px-3 py-2.5 align-bottom">
+                        <p className="font-medium leading-snug">{l.name}</p>
                         <p className="text-xs text-muted-foreground">
                           <span className="font-mono whitespace-pre-wrap">{l.code}</span>
+                          {l.reference && (
+                            <>
+                              {" · "}
+                              <span className="font-mono">
+                                {"Ref. "}
+                                {l.reference}
+                              </span>
+                            </>
+                          )}
                           {" ·"}{" "}
                           {existing ? (
                             <span>
@@ -761,24 +971,29 @@ function PurchaseEntryForm({
                             </span>
                           )}
                         </p>
+                        {l.error && (
+                          <p role="alert" className="mt-1 text-xs text-primary">
+                            {l.error}
+                          </p>
+                        )}
                         {l.changed && !locked && <div className="mt-2 space-y-1 text-xs">
                           <p role="alert" className="text-primary">{existing
                             ? `Datos actuales: ${existing.name}, costo ${formatUnitMoney(existing.costExact ?? existing.cost)}.`
                             : "El código ya no está disponible. Quita la línea y selecciona el artículo vigente."}</p>
                           {existing && <>
                             <p className="text-muted-foreground">
-                              {PRICE_KEYS.map(k => `${k.toUpperCase()} ${formatUnitMoney(existing.pricesExact?.[k] ?? existing.prices[k])}`).join(" · ")}
+                              {`P/Mayor ${formatUnitMoney(existing.pricesExact?.p2 ?? existing.prices.p2)} · Detalle ${formatUnitMoney(existing.pricesExact?.p1 ?? existing.prices.p1)}`}
                             </p>
                             <p className="text-muted-foreground">Al aceptar se reemplazan la descripción, el costo y los precios de esta línea.</p>
                             <Button variant="outline" size="sm" onClick={() => {
-                              updateLine(l.key, { ...catalogFields(existing), name: existing.name, category: existing.category,
-                                cost: existing.costExact ?? String(existing.cost), overrides: {} });
+                              updateLine(l.key, { ...catalogFields(existing), reference: existing.reference ?? "", name: existing.name, category: existing.category,
+                                listPrice: "", cost: existing.costExact ?? String(existing.cost), costManual: false, overrides: {} });
                               setError(null);
                             }}>Usar datos actuales</Button>
                           </>}
                         </div>}
                       </td>
-                      <td className="px-2 py-2.5">
+                      <td className="px-1.5 py-2.5 align-bottom">
                         <Input
                           type="number"
                           inputMode="decimal"
@@ -789,10 +1004,23 @@ function PurchaseEntryForm({
                               quantity: e.target.value,
                             })
                           }
-                          className="mx-auto h-8 w-20 rounded-lg text-center tabular-nums"
+                          className="purchase-col-qty mx-auto h-8 rounded-lg px-2 text-center tabular-nums"
                         />
                       </td>
-                      <td className="px-2 py-2.5">
+                      <td className="px-1.5 py-2.5 align-bottom">
+                        <Input
+                          type="number"
+                          inputMode="decimal"
+                          step="0.0001"
+                          min="0"
+                          aria-label="P/Lista de la línea"
+                          placeholder="—"
+                          value={l.listPrice ?? ""}
+                          onChange={(e) => onLineListPriceChange(l.key, e.target.value)}
+                          className="purchase-col-money ml-auto h-8 rounded-lg px-2 text-right tabular-nums"
+                        />
+                      </td>
+                      <td className="px-1.5 py-2.5 align-bottom">
                         <Input
                           type="number"
                           step="0.0001" min="0" aria-label="Costo de la línea"
@@ -801,42 +1029,68 @@ function PurchaseEntryForm({
                           onChange={(e) =>
                             updateLine(l.key, {
                               cost: e.target.value,
+                              costManual: true,
                             })
                           }
-                          className="ml-auto h-8 w-24 rounded-lg text-right"
+                          className="purchase-col-money ml-auto h-8 rounded-lg px-2 text-right tabular-nums"
                         />
-                        {l.error && (
-                          <p role="alert" className="mt-1 text-xs text-primary">
-                            {l.error}
-                          </p>
-                        )}
                       </td>
-                      {PRICE_KEYS.map((k) => (
-                        <td className="px-2 py-2.5" key={k}>
-                          <Input
-                            type="number"
-                            step="0.0001" min="0" aria-label={k.toUpperCase()}
-                            value={l.prices[k] ?? ""}
-                            onChange={(e) =>
-                              updateLine(l.key, {
-                                overrides: {
-                                  ...l.overrides,
-                                  [k]: e.target.value,
-                                },
-                              })
-                            }
-                            className={cn(
-                              "ml-auto h-8 w-24 rounded-lg text-right",
-                              l.overrides[k] !== undefined &&
-                                "border-amber-500/60",
-                            )}
-                          />
-                        </td>
-                      ))}
-                      <td className="px-3 py-2.5 text-right font-semibold tabular-nums">
+                      {PURCHASE_PRICE_COLUMNS.map(({ key, label }) => {
+                        const sug = l.suggested?.[key];
+                        return (
+                          <td className="px-1.5 py-2.5 align-bottom" key={key}>
+                            <div className="purchase-price-cell">
+                              {sug !== undefined ? (
+                                <button
+                                  type="button"
+                                  disabled={locked}
+                                  onClick={() =>
+                                    updateLine(l.key, {
+                                      overrides: {
+                                        ...l.overrides,
+                                        [key]: sug,
+                                      },
+                                    })
+                                  }
+                                  title={`Sugerencia ${label}: ${formatUnitMoney(sug)} (clic para copiar)`}
+                                  aria-label={`Sugerencia ${label}: ${sug}`}
+                                  className="purchase-price-suggestion"
+                                >
+                                  {"Sug. "}
+                                  {sug}
+                                </button>
+                              ) : (
+                                <span className="purchase-price-suggestion-spacer" aria-hidden="true" />
+                              )}
+                              <Input
+                                type="number"
+                                step="0.0001"
+                                min="0"
+                                aria-label={label}
+                                placeholder="0.00"
+                                value={l.prices[key] ?? ""}
+                                onChange={(e) =>
+                                  updateLine(l.key, {
+                                    overrides: {
+                                      ...l.overrides,
+                                      [key]: e.target.value,
+                                    },
+                                  })
+                                }
+                                className={cn(
+                                  "purchase-col-price ml-auto h-8 rounded-lg px-2 text-right tabular-nums",
+                                  l.overrides[key] !== undefined &&
+                                    "border-amber-500/60",
+                                )}
+                              />
+                            </div>
+                          </td>
+                        );
+                      })}
+                      <td className="px-2.5 py-2.5 align-bottom text-right font-semibold tabular-nums whitespace-nowrap">
                         {l.subtotal === undefined ? "—" : formatMoney(l.subtotal)}
                       </td>
-                      <td className="px-2 py-2.5">
+                      <td className="px-1.5 py-2.5 align-bottom">
                         <Button
                           variant="ghost"
                           size="icon"
@@ -904,7 +1158,7 @@ function PurchaseEntryForm({
         <p className="text-xs text-muted-foreground">
           {condition === "credito"
             ? "Se creará una cuenta por pagar al suplidor."
-            : "Se registra como compra pagada."}{" "}
+            : "Se registra como compra al contado."}{" "}
           {"Las existencias, costos y precios se actualizan al subir."}
         </p>
         {tried && lines.length === 0 && (

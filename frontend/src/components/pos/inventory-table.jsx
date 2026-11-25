@@ -121,7 +121,7 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
             data-shortcut-search="true"
             value={query}
             onChange={(e) => setFilters({ ...filters, query: e.target.value, page: 0 })}
-            placeholder="Buscar por código, nombre o marca…"
+            placeholder="Buscar por código, referencia, nombre o marca…"
             className="h-10 rounded-xl pl-9"
           />
         </div>
@@ -204,7 +204,7 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
               const ui = STATE_UI[state];
               const margin = p.prices.p1 > 0 ? ((p.prices.p1 - p.cost) / p.prices.p1) * 100 : null;
               const fill = p.minStock > 0 ? Math.max(3, Math.min(100, (p.stock / (p.minStock * 3)) * 100)) : 0;
-              const meta = [p.brand, p.category, p.location].filter(Boolean).join(" · ");
+              const meta = [p.reference && `Ref. ${p.reference}`, p.brand, p.category, p.location].filter(Boolean).join(" · ");
               return (
                 <article
                   key={p.id}
@@ -250,23 +250,17 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
                     </div>
                   </div>
                   <div className="space-y-2 rounded-xl bg-muted/50 p-2.5 text-xs tabular-nums">
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 gap-2">
                       <div className="min-w-0">
-                        <p className="text-[11px] text-muted-foreground">{"P1"}</p>
+                        <p className="text-[11px] text-muted-foreground">{"P1 · Detalle"}</p>
                         <p className="truncate font-semibold text-foreground">
                           {formatUnitMoney(p.pricesExact?.p1 ?? p.prices.p1)}
                         </p>
                       </div>
                       <div className="min-w-0">
-                        <p className="text-[11px] text-muted-foreground">{"P2"}</p>
+                        <p className="text-[11px] text-muted-foreground">{"P2 · P/Mayor"}</p>
                         <p className="truncate font-medium text-foreground">
                           {formatUnitMoney(p.pricesExact?.p2 ?? p.prices.p2)}
-                        </p>
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[11px] text-muted-foreground">{"P3"}</p>
-                        <p className="truncate font-medium text-foreground">
-                          {formatUnitMoney(p.pricesExact?.p3 ?? p.prices.p3)}
                         </p>
                       </div>
                     </div>
@@ -350,9 +344,6 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
                 <th className="px-3 py-2.5 text-right font-medium">
                   {"Precio 2"}
                 </th>
-                <th className="px-3 py-2.5 text-right font-medium">
-                  {"Precio 3"}
-                </th>
                 {showCosts && (
                   <th className="px-3 py-2.5 text-right font-medium">
                     {"Margen"}
@@ -386,8 +377,16 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
                         >
                           {p.code}
                         </span>
-                        {" · "}
-                        {p.brand}
+                        {p.reference && (
+                          <>
+                            {" · "}
+                            <span className="font-mono" style={{ overflowWrap: "anywhere" }}>
+                              {"Ref. "}
+                              {p.reference}
+                            </span>
+                          </>
+                        )}
+                        {p.brand ? ` · ${p.brand}` : ""}
                       </p>
                     </td>
                     <td className="px-3 py-3 text-muted-foreground">
@@ -439,9 +438,6 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
                     </td>
                     <td className="px-3 py-3 text-right tabular-nums">
                       {formatUnitMoney(p.pricesExact?.p2 ?? p.prices.p2)}
-                    </td>
-                    <td className="px-3 py-3 text-right tabular-nums">
-                      {formatUnitMoney(p.pricesExact?.p3 ?? p.prices.p3)}
                     </td>
                     {showCosts && (
                       <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">

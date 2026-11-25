@@ -104,7 +104,7 @@ export const SHORTCUT_SECTIONS = [
       { keys: "↑ ↓ · Enter", label: "Elegir resultado y agregarlo al carrito" },
       { keys: "F3", label: "Editar cantidad del último artículo (↑ ↓ cambia de fila, Enter vuelve al buscador)" },
       { keys: "Ctrl+Retroceso", label: "Quitar la fila activa desde la cantidad del carrito" },
-      { keys: "F4", label: "Cambiar nivel de precio (P1 → P2 → P3)" },
+      { keys: "F4", label: "Cambiar nivel de precio (Detalle ↔ Por mayor)" },
       { keys: "F6", label: "Ventas en espera (pausar o retomar)" },
       { keys: "F7", label: "Cambiar método de pago (Efectivo / Tarjeta / Transfer.)" },
       { keys: "F8", label: "Enfocar Monto recibido (otra vez F8 o Alt+E llena Exacto; Enter cobra)" },

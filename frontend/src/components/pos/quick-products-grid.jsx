@@ -68,8 +68,9 @@ function QuickProductsGrid({
                   {inCart}
                 </span>
               )}
-              <span className="font-mono text-[10px] text-muted-foreground">
+              <span className="max-w-full truncate font-mono text-[10px] text-muted-foreground">
                 {p.code}
+                {p.reference ? ` · Ref. ${p.reference}` : ""}
               </span>
               <span className="mt-0.5 line-clamp-2 min-h-[2.5rem] pr-4 text-[13px] font-medium leading-snug text-foreground">
                 {p.name}

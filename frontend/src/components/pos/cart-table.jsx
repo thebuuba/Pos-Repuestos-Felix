@@ -186,6 +186,12 @@ function CartTable({ operational = false, lines, onQuantityChange, onRemove, onC
                       </p>
                       <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
                         <span className="font-mono">{line.product.code}</span>
+                        {line.product.reference && (
+                          <span className="font-mono text-[11px] text-muted-foreground">
+                            {"Ref. "}
+                            {line.product.reference}
+                          </span>
+                        )}
                         <span className="rounded bg-muted px-1 text-[10px] font-semibold">
                           {LEVEL_LABEL[line.priceLevel]}
                         </span>

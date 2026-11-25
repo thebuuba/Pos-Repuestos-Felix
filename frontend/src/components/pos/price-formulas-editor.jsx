@@ -3,17 +3,19 @@ import { formatMoney } from "../../lib/format.js";
 import { Button } from "../ui/button.jsx";
 import { newId } from "../../data/new-id.js";
 import { Plus } from "lucide-react";
-import { pricesFromFormula } from "../../lib/pricing.js";
+import { cascadeFromListPrice, factorFromPercent } from "../../lib/pricing.js";
 import { Input } from "../ui/input.jsx";
-import { PRICE_KEYS } from "../../lib/pricing.js";
 import { toast as ue } from "sonner";
 import { Trash2 } from "lucide-react";
 import { Calculator } from "lucide-react";
-import { adjustedCost } from "../../lib/pricing.js";
 import { normalizeFormula } from "../../../../src/domain/pricing.js";
 import { ConfirmDialog } from "./confirm-dialog.jsx";
 import { useRef, useState } from "react";
-var SAMPLE_COST = 1000;
+var SAMPLE_LIST = 100;
+const CASCADE_LEVELS = [
+  { key: "p2", label: "P/Mayor (+%)", aria: "P2 ganancia %" },
+  { key: "p1", label: "Detalle (+%)", aria: "P1 ganancia %" },
+];
 function PriceFormulasEditor({ formulas, rounding, usage, onSave, onDelete, runtime }) {
   const [toDelete, setToDelete] = useState(null);
   const [draft, setDraft] = useState(null);
@@ -33,8 +35,8 @@ function PriceFormulasEditor({ formulas, rounding, usage, onSave, onDelete, runt
     if (runtime) {
       setError(null);
       setDraft({ id: crypto.randomUUID(), databaseId: runtime.databaseId, name: "",
-        costFactor: 1, margins: { p1: 0, p2: 0, p3: 0 } });
-    } else onSave({ id: newId("f"), name: "Nueva fórmula", costFactor: 1, margins: { p1: 35, p2: 25, p3: 15 } });
+        costFactor: 1.12, margins: { p1: 15, p2: 13, p3: 0 } });
+    } else onSave({ id: newId("f"), name: "Nueva fórmula", costFactor: 1.12, margins: { p1: 15, p2: 13, p3: 0 } });
   };
   const save = async () => {
     if (inFlight.current || !draft) return;
@@ -42,8 +44,12 @@ function PriceFormulasEditor({ formulas, rounding, usage, onSave, onDelete, runt
     setBusy(true);
     setError(null);
     try {
-      normalizeFormula(draft);
-      await onSave(draft);
+      const normalizedDraft = {
+        ...draft,
+        margins: { ...draft.margins, p3: 0 },
+      };
+      normalizeFormula(normalizedDraft);
+      await onSave(normalizedDraft);
       setDraft(null);
       setUncertain(false);
       ue.success("Fórmula guardada");
@@ -60,14 +66,16 @@ function PriceFormulasEditor({ formulas, rounding, usage, onSave, onDelete, runt
       <div className="flex flex-col gap-3 rounded-xl bg-muted/60 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
         <p className="text-muted-foreground">
           <span className="font-medium text-foreground">
-            {"Cómo funciona:"}
+            {"Cálculo en cascada por suplidor:"}
           </span>
-          {" costo de factura × ajuste ="}{" "}
-          <span className="font-medium text-foreground">{"costo real"}</span>
-          {
-            ". Luego cada precio suma su % de ganancia sobre el costo real y se redondea. Ejemplo con un costo de "
-          }
-          {formatMoney(SAMPLE_COST)}
+          {" P/Lista × ajuste ="}{" "}
+          <span className="font-medium text-foreground">{"Costo"}</span>
+          {" → Costo + % P/Mayor = "}
+          <span className="font-medium text-foreground">{"P/Mayor"}</span>
+          {" → P/Mayor + % Detalle = "}
+          <span className="font-medium text-foreground">{"Detalle"}</span>
+          {". En Compras se muestran como sugerencia sin cambiar precios existentes. Ejemplo con P/Lista de "}
+          {formatMoney(SAMPLE_LIST)}
           {"."}
         </p>
         <Button
@@ -87,9 +95,15 @@ function PriceFormulasEditor({ formulas, rounding, usage, onSave, onDelete, runt
           const locked = busy || uncertain || (draft && !editing);
           let sample, previewError;
           try {
+            const calc = cascadeFromListPrice(
+              String(SAMPLE_LIST),
+              { costFactor: f.costFactor, margins: { ...f.margins, p3: 0 } },
+              rounding,
+            );
             sample = {
-              prices: pricesFromFormula(SAMPLE_COST, f, rounding),
-              cost: adjustedCost(SAMPLE_COST, f),
+              cost: Number(calc.costExact),
+              p2: Number(calc.prices.p2),
+              p1: Number(calc.prices.p1),
             };
           } catch (cause) {
             previewError = cause.message;
@@ -98,7 +112,7 @@ function PriceFormulasEditor({ formulas, rounding, usage, onSave, onDelete, runt
             <div className="rounded-2xl border border-border p-4" key={f.id}>
               <div className="flex flex-wrap items-end gap-3">
                 <div className="min-w-[200px] flex-1 space-y-1.5">
-                  <p className="text-xs text-muted-foreground">{"Nombre"}</p>
+                  <p className="text-xs text-muted-foreground">{"Nombre / Suplidor"}</p>
                   <Input
                     disabled={locked}
                     aria-label="Nombre de la fórmula"
@@ -111,9 +125,9 @@ function PriceFormulasEditor({ formulas, rounding, usage, onSave, onDelete, runt
                     className="h-10 rounded-xl font-medium"
                   />
                 </div>
-                <div className="w-28 space-y-1.5">
+                <div className="w-32 space-y-1.5">
                   <p className="text-xs text-muted-foreground">
-                    {"Ajuste costo ×"}
+                    {"Costo (× P/Lista)"}
                   </p>
                   <Input
                     type="number"
@@ -126,30 +140,34 @@ function PriceFormulasEditor({ formulas, rounding, usage, onSave, onDelete, runt
                         costFactor: runtime ? e.target.value : Number(e.target.value) || 1,
                       })
                     }
-                    className="h-10 rounded-xl"
+                    className="h-10 rounded-xl tabular-nums"
                   />
                 </div>
-                {PRICE_KEYS.map((k) => (
-                  <div className="w-24 space-y-1.5" key={k}>
+                {CASCADE_LEVELS.map(({ key, label, aria }) => (
+                  <div className="w-28 space-y-1.5" key={key}>
                     <p className="text-xs text-muted-foreground">
-                      {k.toUpperCase()}
-                      {" ganancia %"}
+                      {label}
+                      {factorFromPercent(f.margins[key]) && (
+                        <span className="ml-1 font-mono text-[11px] opacity-75">
+                          ({factorFromPercent(f.margins[key])})
+                        </span>
+                      )}
                     </p>
                     <Input
                       type="number"
                       disabled={locked}
                       step="0.0001"
-                      aria-label={`${k.toUpperCase()} ganancia %`}
-                      value={f.margins[k]}
+                      aria-label={aria}
+                      value={f.margins[key]}
                       onChange={(e) =>
                         update(f, {
                           margins: {
                             ...f.margins,
-                            [k]: runtime ? e.target.value : Number(e.target.value) || 0,
+                            [key]: runtime ? e.target.value : Number(e.target.value) || 0,
                           },
                         })
                       }
-                      className="h-10 rounded-xl"
+                      className="h-10 rounded-xl tabular-nums"
                     />
                   </div>
                 ))}
@@ -175,27 +193,21 @@ function PriceFormulasEditor({ formulas, rounding, usage, onSave, onDelete, runt
                   <>
                     <span className="inline-flex items-center gap-1.5">
                       <Calculator className="h-3.5 w-3.5 text-primary" />
-                      {"Costo real "}
+                      {"Costo "}
                       <span className="font-medium text-foreground">
                         {formatMoney(sample.cost)}
                       </span>
                     </span>
                     <span>
-                      {"P1 "}
+                      {"Sug. P/Mayor "}
                       <span className="font-medium text-foreground">
-                        {formatMoney(sample.prices.p1)}
+                        {formatMoney(sample.p2)}
                       </span>
                     </span>
                     <span>
-                      {"P2 "}
+                      {"Sug. Detalle "}
                       <span className="font-medium text-foreground">
-                        {formatMoney(sample.prices.p2)}
-                      </span>
-                    </span>
-                    <span>
-                      {"P3 "}
-                      <span className="font-medium text-foreground">
-                        {formatMoney(sample.prices.p3)}
+                        {formatMoney(sample.p1)}
                       </span>
                     </span>
                   </>

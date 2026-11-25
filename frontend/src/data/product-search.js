@@ -27,11 +27,14 @@ export function indexedProducts(products) {
       }
       const codeLower = p.code.toLowerCase();
       const nameLower = p.name.toLowerCase();
+      const refLower = p.reference ? p.reference.toLowerCase() : '';
       index[i] = {
         p,
         code: p.code,
         codeLower,
         codeCompact: codeLower.replace(SEPARATOR_RE, ''),
+        refLower,
+        refCompact: refLower ? refLower.replace(SEPARATOR_RE, '') : '',
         nameLower,
         nameCompact: nameLower.replace(SEPARATOR_RE, ''),
         brandLower: p.brand ? p.brand.toLowerCase() : '',
@@ -45,7 +48,12 @@ export function indexedProducts(products) {
 }
 
 export function matchesIndexed(entry, q, qCompact = compactSearchText(q)) {
-  if (entry.codeLower.includes(q) || entry.nameLower.includes(q) || (entry.brandLower && entry.brandLower.includes(q))) {
+  if (
+    entry.codeLower.includes(q) ||
+    (entry.refLower && entry.refLower.includes(q)) ||
+    entry.nameLower.includes(q) ||
+    (entry.brandLower && entry.brandLower.includes(q))
+  ) {
     return true;
   }
   const alts = entry.altLowers;
@@ -55,7 +63,11 @@ export function matchesIndexed(entry, q, qCompact = compactSearchText(q)) {
     }
   }
   if (qCompact) {
-    if (entry.codeCompact.includes(qCompact) || entry.nameCompact.includes(qCompact)) {
+    if (
+      entry.codeCompact.includes(qCompact) ||
+      (entry.refCompact && entry.refCompact.includes(qCompact)) ||
+      entry.nameCompact.includes(qCompact)
+    ) {
       return true;
     }
     const altC = entry.altCompacts;
@@ -87,14 +99,23 @@ export function searchTopProducts(products, rawQuery, limit = 6) {
     }
     if (
       entry.codeLower === q ||
+      (entry.refLower && entry.refLower === q) ||
       (entry.altLowers && entry.altLowers.includes(q)) ||
-      (qCompact && (entry.codeCompact === qCompact || (entry.altCompacts && entry.altCompacts.includes(qCompact))))
+      (qCompact && (
+        entry.codeCompact === qCompact ||
+        (entry.refCompact && entry.refCompact === qCompact) ||
+        (entry.altCompacts && entry.altCompacts.includes(qCompact))
+      ))
     ) {
       if (exact.length + exactCi.length < limit) exactCi.push(p);
       continue;
     }
     if (exact.length + exactCi.length >= limit) continue;
-    if (entry.codeLower.startsWith(q) || (qCompact && entry.codeCompact.startsWith(qCompact))) {
+    if (
+      entry.codeLower.startsWith(q) ||
+      (entry.refLower && entry.refLower.startsWith(q)) ||
+      (qCompact && (entry.codeCompact.startsWith(qCompact) || (entry.refCompact && entry.refCompact.startsWith(qCompact))))
+    ) {
       if (prefix.length < limit) prefix.push(p);
       continue;
     }

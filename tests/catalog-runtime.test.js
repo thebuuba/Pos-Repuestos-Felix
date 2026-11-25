@@ -86,7 +86,6 @@ test('rendered Polymet inventory stores all attributes and survives navigation a
   await sheet.getByRole('textbox', { name: 'Categoría', exact: true }).fill('Encendido sintético');
   await sheet.getByLabel('Ubicación', { exact: true }).fill('c-07');
   await sheet.getByLabel('Precio 2 · Por mayor', { exact: true }).fill('0');
-  await sheet.getByLabel('Precio 3 · Taller', { exact: true }).fill('110.50');
   await sheet.getByRole('switch', { name: 'Aplica ITBIS', exact: true }).uncheck();
   await sheet.getByRole('button', { name: 'Guardar artículo', exact: true }).click();
   await sheet.waitFor({ state: 'hidden' });
@@ -103,7 +102,7 @@ test('rendered Polymet inventory stores all attributes and survives navigation a
   assert.equal(product.costo, 95.5);
   assert.equal(product.precio1, 118.99);
   assert.equal(product.precio2, 0, 'explicit zero is not a request to copy another price');
-  assert.equal(product.precio3, 110.5);
+  assert.equal(product.precio3, 0, 'precio3 stays synced with precio2');
   await page.reload();
   const row = page.getByRole('row').filter({ hasText: 'UI-CATALOGO' });
   await row.waitFor();
@@ -139,7 +138,6 @@ test('rendered product form saves case-sensitive codes and reopens the exact cos
   await sheet.getByLabel('Costo base RD$', { exact: true }).waitFor();
   assert.equal(await sheet.getByLabel('Costo base RD$', { exact: true }).inputValue(), '999999999999.9898');
   assert.equal(await sheet.getByLabel('Precio 2 · Por mayor', { exact: true }).inputValue(), '10.0030');
-  assert.equal(await sheet.getByLabel('Precio 3 · Taller', { exact: true }).inputValue(), '999999999999.9898');
   await sheet.getByLabel('Nombre', { exact: true }).fill('Código editado');
   await sheet.getByRole('button', { name: 'Guardar cambios', exact: true }).click();
   await sheet.waitFor({ state: 'hidden', timeout: 5000 });
@@ -147,7 +145,6 @@ test('rendered product form saves case-sensitive codes and reopens the exact cos
   await page.getByRole('row').filter({ hasText: 'Código editado' }).getByRole('button', { name: 'Editar', exact: true }).click();
   assert.equal(await sheet.getByLabel('Costo base RD$', { exact: true }).inputValue(), '999999999999.9898');
   assert.equal(await sheet.getByLabel('Precio 2 · Por mayor', { exact: true }).inputValue(), '10.0030');
-  assert.equal(await sheet.getByLabel('Precio 3 · Taller', { exact: true }).inputValue(), '999999999999.9898');
   assert.equal((await confirmedProduct('UI-PRECISION')).notificarMinimo, false);
   await sheet.getByRole('button', { name: 'Cancelar', exact: true }).click();
 });
@@ -181,7 +178,7 @@ test('creating with blank optional attributes and zero amounts renders an empty 
   await sheet.waitFor({ state: 'hidden', timeout: 5_000 });
   await page.reload();
   const row = page.getByRole('row').filter({ hasText: 'UI-CEROS' });
-  assert.equal(await row.getByRole('cell').nth(8).innerText(), '—');
+  assert.equal(await row.getByRole('cell').nth(7).innerText(), '—');
   assert.equal(await row.locator('div.h-full.rounded-full').evaluate(el => el.style.width), '0%');
   const lowStockItem = page.getByRole('listitem').filter({ hasText: 'Sin mínimo ni precios' });
   assert.equal(await lowStockItem.locator('div.h-full.rounded-full').evaluate(el => el.style.width), '0%');

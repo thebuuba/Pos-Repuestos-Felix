@@ -9,7 +9,7 @@ function productFromSnapshot(p, databaseId) {
   let cached = adaptedProductCache.get(p);
   if (cached && cached.databaseId === databaseId) return cached;
   cached = {
-    id: p.id, version: p.version, databaseId, code: p.codigo, altCodes: p.codigosAlternativos ?? [],
+    id: p.id, version: p.version, databaseId, code: p.codigo, reference: p.referencia ?? '', altCodes: p.codigosAlternativos ?? [],
     name: p.nombre, brand: p.marca, category: p.categoria, location: p.ubicacion, minStock: p.stockMinimo,
     taxable: p.gravado, notifyMinStock: p.notificarMinimo ?? true,
     cost: p.costo, costExact: p.costoExacto ?? p.costo.toFixed(4), stock: p.stock,
@@ -128,6 +128,7 @@ function productPayload(p) {
   const prices = p.pricesExact ?? p.prices;
   return { codigo: p.code, nombre: p.name, marca: p.brand, categoria: p.category, ubicacion: p.location,
     stockMinimo: p.minStock, gravado: p.taxable, costo: p.cost, stock: p.stock,
+    ...(Object.hasOwn(p, 'reference') ? { referencia: p.reference ?? '' } : {}),
     ...(Object.hasOwn(p, 'notifyMinStock') ? { notificarMinimo: p.notifyMinStock } : {}),
     ...(Object.hasOwn(p, 'altCodes') ? { codigosAlternativos: p.altCodes } : {}),
     ...(p.adjustmentReason ? { motivoAjuste: p.adjustmentReason } : {}),

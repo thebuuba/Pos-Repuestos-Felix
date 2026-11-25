@@ -235,8 +235,8 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, onE
       >
         <SelectTrigger aria-label="Nivel de precio" className="h-11 rounded-xl bg-card">
           <SelectValue>{operational ? <>
-            <span className="sale-desktop-only">{PRICE_LEVELS.find(level => level.value === priceLevel)?.label}</span>
-            <span className="sale-mobile-only">{{ p1: 'P1 · Detalle', p2: 'P2 · Mayor', p3: 'P3 · Taller' }[priceLevel]}</span>
+            <span className="sale-desktop-only">{PRICE_LEVELS.find(level => level.value === priceLevel)?.label ?? PRICE_LEVELS[0].label}</span>
+            <span className="sale-mobile-only">{{ p1: 'P1 · Detalle', p2: 'P2 · Mayor' }[priceLevel] ?? 'P1 · Detalle'}</span>
           </> : undefined}</SelectValue>
         </SelectTrigger>
         <SelectContent>
@@ -303,7 +303,7 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, onE
                   }}
                   onFocus={() => setOpen(true)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Escanea o escribe… ej. BUJ-C7HSA"
+                  placeholder="Escanea o escribe código, referencia o nombre…"
                   className={cn("h-11 rounded-xl bg-card pl-9", query && "pr-9")}
                 />
                 {query && (
@@ -378,8 +378,16 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, onE
                       <span className="w-28 shrink-0 truncate font-mono text-xs text-muted-foreground">
                         {p.code}
                       </span>
-                      <span className="min-w-0 flex-1 truncate font-medium text-foreground">
-                        {p.name}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium text-foreground">
+                          {p.name}
+                        </span>
+                        {p.reference && (
+                          <span className="block truncate font-mono text-[11px] text-muted-foreground">
+                            {"Ref. "}
+                            {p.reference}
+                          </span>
+                        )}
                       </span>
                       <span
                         className={cn(
@@ -439,7 +447,7 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, onE
             onFocus={() => setOpen(true)}
             onBlur={() => setOpen(false)}
             onKeyDown={handleKeyDown}
-            placeholder="Escanea o escribe… ej. BUJ-C7HSA"
+            placeholder="Escanea o escribe código, referencia o nombre…"
             className="h-11 rounded-xl bg-card pl-9"
           />
         </div>
@@ -471,8 +479,16 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, onE
                       <span className="w-28 shrink-0 truncate font-mono text-xs text-muted-foreground">
                         {p.code}
                       </span>
-                      <span className="min-w-0 flex-1 truncate font-medium">
-                        {p.name}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium">
+                          {p.name}
+                        </span>
+                        {p.reference && (
+                          <span className="block truncate font-mono text-[11px] text-muted-foreground">
+                            {"Ref. "}
+                            {p.reference}
+                          </span>
+                        )}
                       </span>
                       <span
                         className={cn(

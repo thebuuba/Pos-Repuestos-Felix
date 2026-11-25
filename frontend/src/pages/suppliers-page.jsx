@@ -300,7 +300,7 @@ function SuppliersPage() {
         open={formOpen}
         onOpenChange={setFormOpen}
         title={editing ? "Editar suplidor" : "Nuevo suplidor"}
-        description="La fórmula elegida calcula P1, P2 y P3 al registrar sus compras."
+        description="La fórmula elegida calcula Costo y sugiere P/Mayor y Detalle al registrar sus compras."
         fields={fields}
         initial={{
           name: editing?.name ?? "",

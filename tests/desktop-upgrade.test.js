@@ -40,6 +40,7 @@ function stripToV6Effect(effect, path) {
     for (const key of ['condicion', 'vencimiento']) delete copy[key];
   } else if (path.startsWith('/api/productos')) {
     delete copy.altCodes;
+    delete copy.referencia;
   } else if (path === '/api/configuracion') {
     delete copy.meta_diaria;
   }

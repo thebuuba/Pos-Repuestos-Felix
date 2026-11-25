@@ -255,7 +255,7 @@ function SettingsPage() {
         <TabsContent value="precios" className="mt-0">
           <SectionCard
             title="Fórmulas de precios"
-            description={runtime ? "Guarda cada fórmula para aplicar sus porcentajes en las compras del suplidor." : "Se guardan al escribir. Cada suplidor usa una para calcular P1, P2 y P3."}
+            description={runtime ? "Guarda la fórmula en cascada de cada suplidor para calcular Costo y sugerir P/Mayor y Detalle en Compras." : "Se guardan al escribir. Cada suplidor usa su fórmula en cascada para Costo, P/Mayor y Detalle."}
             icon={Calculator}
           >
             <PriceFormulasEditor
@@ -645,7 +645,7 @@ function SettingsPage() {
               </Field>
               <Field label="Precio por defecto en ventas" htmlFor="billing-level">
                 <Select
-                  value={billing.defaultPriceLevel ?? ""}
+                  value={billing.defaultPriceLevel === "p3" ? "p1" : (billing.defaultPriceLevel ?? "")}
                   onValueChange={(v) =>
                     setBilling({
                       ...billing,

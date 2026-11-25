@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { adjustedCost, pricesFromFormula } from '../frontend/src/lib/pricing.js';
-import { normalizeFormula, calculateFormula } from '../src/domain/pricing.js';
+import { normalizeFormula, calculateFormula, calculateCascadeFormula, calculateCascadeFromCost } from '../src/domain/pricing.js';
 
 const f = {costFactor:'1.18',margins:{p1:'35',p2:'25',p3:'15'}};
 const margins = {p1:0,p2:0,p3:0};
@@ -63,4 +63,29 @@ test('the Polymet adapter preserves numeric values and its defaults', () => {
   });
   assert.equal(adjustedCost(1000), 1000);
   assert.deepEqual(pricesFromFormula(1000, undefined, 5), { p1: 1350, p2: 1250, p3: 1150 });
+});
+
+test('cascading supplier formula matches exact owner example (P/Lista -> Costo -> P/Mayor -> Detalle)', () => {
+  const ownerFormula = { costFactor: '1.12', margins: { p2: '13', p1: '15', p3: '0' } };
+  assert.deepEqual(calculateCascadeFormula('100', ownerFormula, 0), {
+    costExact: '112.0000',
+    cost: '112',
+    prices: { p2: '126.56', p1: '145.54' },
+  });
+  assert.deepEqual(calculateCascadeFromCost('112', ownerFormula, 0), {
+    costExact: '112.0000',
+    cost: '112',
+    prices: { p2: '126.56', p1: '145.54' },
+  });
+  const discountFormula = { costFactor: '0.80', margins: { p2: '25', p1: '20', p3: '0' } };
+  assert.deepEqual(calculateCascadeFormula('100', discountFormula, 0), {
+    costExact: '80.0000',
+    cost: '80',
+    prices: { p2: '100.00', p1: '120.00' },
+  });
+  assert.deepEqual(calculateCascadeFormula('100', ownerFormula, 5), {
+    costExact: '112.0000',
+    cost: '112',
+    prices: { p2: '130.00', p1: '150.00' },
+  });
 });

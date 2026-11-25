@@ -132,10 +132,10 @@ export async function snapshot(client, databaseLabel, { compact = false } = {}) 
         CASE WHEN p.gravado THEN 1 ELSE 0 END,
         p.stock::double precision, p.stock_minimo::double precision,
         CASE WHEN p.notificar_minimo THEN 1 ELSE 0 END,
-        p.costo::text, p.precio1::text, p.precio2::text, p.precio3::text, ac.codigos
+        p.costo::text, p.precio1::text, p.precio2::text, p.precio3::text, ac.codigos, p.referencia
       )`
     : `json_build_object(
-        'id', p.id, 'version', p.version, 'codigo', p.codigo,
+        'id', p.id, 'version', p.version, 'codigo', p.codigo, 'referencia', p.referencia,
         'codigosAlternativos', COALESCE(ac.codigos, '[]'::json),
         'nombre', p.nombre, 'marca', p.marca, 'categoria', p.categoria, 'ubicacion', p.ubicacion,
         'gravado', p.gravado, 'activo', p.activo,
@@ -321,7 +321,7 @@ async function fetchProductsSlice(client, ids) {
   if (!ids.length) return [];
   return (await client.query(`
     SELECT COALESCE(json_agg(json_build_object(
-      'id', p.id, 'version', p.version, 'codigo', p.codigo,
+      'id', p.id, 'version', p.version, 'codigo', p.codigo, 'referencia', p.referencia,
       'codigosAlternativos', COALESCE((SELECT json_agg(pc.codigo ORDER BY pc.id) FROM public.productos_codigos pc WHERE pc.producto_id=p.id), '[]'::json),
       'nombre', p.nombre, 'marca', p.marca, 'categoria', p.categoria, 'ubicacion', p.ubicacion,
       'gravado', p.gravado, 'activo', p.activo,
@@ -654,11 +654,11 @@ async function productOperation(client, method, productId, body, occurredAt) {
   const notify = attribute('notificarMinimo', 'notificar_minimo', true);
   if (typeof taxable !== 'boolean') fail('La gravabilidad debe ser booleana.');
   if (typeof notify !== 'boolean') fail('La notificación de mínimo debe ser booleana.');
-  metadata.push(taxable, attributeText('ubicacion', 'la ubicación'), notify);
+  metadata.push(taxable, attributeText('ubicacion', 'la ubicación'), notify, attributeText('referencia', 'la referencia'));
   // Code locks precede row locks, matching purchases and protecting new codes.
   const result = productId
-    ? await client.query(`UPDATE productos SET codigo=$2,nombre=$3,costo=$4,precio1=$5,precio2=$6,precio3=$7,stock=$8,marca=$9,categoria=$10,stock_minimo=$11,gravado=$12,ubicacion=$13,notificar_minimo=$14,version=version+1,actualizado_en=now() WHERE id=$1 RETURNING id`, [productId, code, name, ...amounts, quantityText(stock), ...metadata])
-    : await client.query(`INSERT INTO productos(codigo,nombre,costo,precio1,precio2,precio3,stock,marca,categoria,stock_minimo,gravado,ubicacion,notificar_minimo) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`, [code, name, ...amounts, quantityText(stock), ...metadata]);
+    ? await client.query(`UPDATE productos SET codigo=$2,nombre=$3,costo=$4,precio1=$5,precio2=$6,precio3=$7,stock=$8,marca=$9,categoria=$10,stock_minimo=$11,gravado=$12,ubicacion=$13,notificar_minimo=$14,referencia=$15,version=version+1,actualizado_en=now() WHERE id=$1 RETURNING id`, [productId, code, name, ...amounts, quantityText(stock), ...metadata])
+    : await client.query(`INSERT INTO productos(codigo,nombre,costo,precio1,precio2,precio3,stock,marca,categoria,stock_minimo,gravado,ubicacion,notificar_minimo,referencia) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`, [code, name, ...amounts, quantityText(stock), ...metadata]);
   const savedId = number(result.rows[0].id);
   if (altCodes !== undefined) {
     const existing = (await client.query('SELECT id,codigo FROM productos_codigos WHERE producto_id=$1 ORDER BY id', [savedId])).rows;
@@ -691,7 +691,7 @@ export async function readProductMovements(pool, productId, { limit = 100, role 
   const client = await pool.connect();
   try {
     const product = (await client.query(
-      `SELECT id, codigo, nombre, marca, ubicacion,
+      `SELECT id, codigo, referencia, nombre, marca, ubicacion,
               stock::double precision AS stock, stock_minimo::double precision AS "stockMinimo"
        FROM public.productos WHERE id=$1`,
       [pid],
@@ -722,6 +722,7 @@ export async function readProductMovements(pool, productId, { limit = 100, role 
       product: {
         id: number(product.id),
         code: product.codigo,
+        reference: product.referencia || '',
         name: product.nombre,
         brand: product.marca,
         location: product.ubicacion,
@@ -825,18 +826,22 @@ async function purchase(client, body, occurredAt) {
   const invoice = text(body.numero, 'la factura del suplidor');
   const condition = body.condicion ?? 'Contado';
   if (!['Contado', 'Credito'].includes(condition)) fail('Condición de compra inválida.');
+  const requestedDate = validOptionalDate(body.fecha, 'la fecha de factura');
   const requestedDue = validOptionalDate(body.vencimiento, 'la fecha de vencimiento');
   if (condition === 'Contado' && requestedDue !== null) fail('Solo las compras a crédito admiten fecha de vencimiento.');
   if (!Array.isArray(body.items) || !body.items.length || body.items.length > 1000) fail('La compra debe tener entre 1 y 1000 líneas.');
   const lines = body.items.map(item => {
     const quantity = quantityUnits(item.cantidad, 'la cantidad', 0.01);
     const cost = costUnits(item.costo, 'el costo');
+    const hasReference = Object.hasOwn(item, 'referencia') && item.referencia !== undefined && item.referencia !== null;
+    const reference = hasReference ? text(item.referencia, 'la referencia', false) : '';
     let expected;
     if (Object.hasOwn(item, 'productoId') || Object.hasOwn(item, 'versionProducto')) {
       expected = item.productoId === null && item.versionProducto === null ? null :
         { id: id(item.productoId, 'el artículo'), version: id(item.versionProducto, 'la versión del artículo') };
     }
     return { code: productCode(item.codigo), name: text(item.nombre, 'la descripción'),
+      hasReference, reference,
       expected, quantity, amounts: prices(item, cost), total: lineCents(cost, quantity, 10000n) };
   });
   const codes = [...new Set(lines.map(line => line.code))].sort();
@@ -859,7 +864,7 @@ async function purchase(client, body, occurredAt) {
     const stock = (stocks.get(line.code) ?? 0n) + line.quantity;
     stocks.set(line.code, quantityUnits(quantityText(stock), 'las existencias'));
   }
-  const purchaseDate = (await client.query("SELECT (COALESCE($1::timestamptz,clock_timestamp()) AT TIME ZONE 'America/Santo_Domingo')::date::text AS d", [occurredAt ?? null])).rows[0].d;
+  const purchaseDate = requestedDate ?? (await client.query("SELECT (COALESCE($1::timestamptz,clock_timestamp()) AT TIME ZONE 'America/Santo_Domingo')::date::text AS d", [occurredAt ?? null])).rows[0].d;
   const dueDate = condition === 'Credito' ? (requestedDue ?? addDaysIso(purchaseDate, supplier.dias_credito ?? 30)) : null;
   if (dueDate && dueDate < purchaseDate) fail('La fecha de vencimiento no puede ser anterior a la fecha de compra.');
   const total = lines.reduce((sum, line) => sum + line.total, 0n);
@@ -867,10 +872,12 @@ async function purchase(client, body, occurredAt) {
     VALUES($1,$2,$3,$4::date,$5,$6,$7,COALESCE($8::timestamptz,clock_timestamp())) RETURNING id`,
     [supplier.id, supplier.nombre, invoice, purchaseDate, money(total), condition, dueDate, occurredAt ?? null])).rows[0];
   for (const line of lines) {
-    const product = (await client.query(`INSERT INTO productos(codigo,nombre,costo,precio1,precio2,precio3,stock)
-      VALUES($1,$2,$3,$4,$5,$6,$7)
+    const product = (await client.query(`INSERT INTO productos(codigo,nombre,costo,precio1,precio2,precio3,stock,referencia)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8)
       ON CONFLICT (codigo) DO UPDATE SET nombre=EXCLUDED.nombre,costo=EXCLUDED.costo,precio1=EXCLUDED.precio1,precio2=EXCLUDED.precio2,precio3=EXCLUDED.precio3,
-      stock=productos.stock+EXCLUDED.stock,activo=true,version=productos.version+1,actualizado_en=now() RETURNING id,stock`, [line.code, line.name, ...line.amounts, quantityText(line.quantity)])).rows[0];
+      stock=productos.stock+EXCLUDED.stock,
+      referencia=CASE WHEN $9::boolean THEN EXCLUDED.referencia ELSE productos.referencia END,
+      activo=true,version=productos.version+1,actualizado_en=now() RETURNING id,stock`, [line.code, line.name, ...line.amounts, quantityText(line.quantity), line.reference, line.hasReference])).rows[0];
     const detail = (await client.query(`INSERT INTO compra_detalles(compra_id,producto_id,codigo,nombre,cantidad,costo,precio1,precio2,precio3,total)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`, [header.id, product.id, line.code, line.name, quantityText(line.quantity), ...line.amounts, money(line.total)])).rows[0];
     await movement(client, product.id, line.quantity, quantityUnits(product.stock, 'las existencias'), 'compra', detail.id, '', occurredAt);

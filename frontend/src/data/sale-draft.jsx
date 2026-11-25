@@ -60,7 +60,7 @@ function restoreDraftState(saved, products, customers, cashCustomer, defaultPric
     discountMode: saved.discountMode === 'amount' ? 'amount' : 'percent',
     discountValue: typeof saved.discountValue === 'string' ? saved.discountValue : '',
     received: typeof saved.received === 'string' ? saved.received : '',
-    priceLevel: ['p1', 'p2', 'p3'].includes(saved.priceLevel) ? saved.priceLevel : (defaultPriceLevel ?? 'p1'),
+    priceLevel: ['p1', 'p2'].includes(saved.priceLevel) ? saved.priceLevel : (defaultPriceLevel === 'p2' ? 'p2' : 'p1'),
     activeHoldLabel: typeof saved.activeHoldLabel === 'string' ? saved.activeHoldLabel : '',
   };
 }
@@ -99,7 +99,7 @@ export function SaleDraftProvider({ children }) {
   };
   const [received, setReceived] = useState(() => initialDraft.current?.received ?? "");
   const [priceLevel, setPriceLevel] = useState(
-    () => initialDraft.current?.priceLevel ?? settings.defaultPriceLevel ?? "p1",
+    () => initialDraft.current?.priceLevel ?? (settings.defaultPriceLevel === "p2" ? "p2" : "p1"),
   );
   const [items, updateItems] = useState(() => initialDraft.current?.items ?? []);
   const itemsRef = useRef(items);

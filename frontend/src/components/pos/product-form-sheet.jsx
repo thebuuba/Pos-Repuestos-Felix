@@ -1,5 +1,5 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
-import { pricesFromFormula } from "../../lib/pricing.js";
+import { ACTIVE_PRICE_KEYS, cascadeFromCost, formulaSummary, marginPct } from "../../lib/pricing.js";
 import { Sheet } from "../ui/sheet.jsx";
 import { SheetContent } from "../ui/sheet.jsx";
 import { SheetHeader } from "../ui/sheet.jsx";
@@ -14,11 +14,8 @@ import { SelectTrigger } from "../ui/select.jsx";
 import { SelectValue } from "../ui/select.jsx";
 import { SelectContent } from "../ui/select.jsx";
 import { SelectItem } from "../ui/select.jsx";
-import { formulaSummary } from "../../lib/pricing.js";
 import { Button } from "../ui/button.jsx";
 import { Sparkles } from "lucide-react";
-import { PRICE_KEYS } from "../../lib/pricing.js";
-import { marginPct } from "../../lib/pricing.js";
 import { formatMoney } from "../../lib/format.js";
 import { Switch } from "../ui/switch.jsx";
 import { SheetFooter } from "../ui/sheet.jsx";
@@ -26,6 +23,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { costUnits, OperationError } from "../../../../src/pos/operation-fields.js";
 const EMPTY = {
   code: "",
+  reference: "",
   altCodes: [],
   name: "",
   brand: "",
@@ -52,11 +50,11 @@ const ADJUSTMENT_SUGGESTIONS = [
 var LEVEL_LABEL2 = {
   p1: "Precio 1 · Detalle",
   p2: "Precio 2 · Por mayor",
-  p3: "Precio 3 · Taller",
 };
 function fromProduct(p) {
   return {
     code: p.code,
+    reference: p.reference ?? "",
     altCodes: [...(p.altCodes || [])],
     name: p.name,
     brand: p.brand,
@@ -138,7 +136,8 @@ function ProductFormSheet({
     if (!validCost) suggestionError = unitError;
     else if (cost > 0) {
       try {
-        suggested = pricesFromFormula(costDecimal, formula, rounding);
+        const calc = cascadeFromCost(costDecimal, formula, rounding);
+        suggested = { p1: Number(calc.prices.p1), p2: Number(calc.prices.p2) };
       } catch (cause) {
         suggestionError = cause.message;
       }
@@ -149,7 +148,7 @@ function ProductFormSheet({
     set("prices", {
       p1: String(suggested.p1),
       p2: String(suggested.p2),
-      p3: String(suggested.p3),
+      p3: String(suggested.p2),
     });
   };
   const existingCodesSet = useMemo(() => {
@@ -164,6 +163,7 @@ function ProductFormSheet({
   const textError = (value) =>
     value.length > 2000 ? "Usa hasta 2000 caracteres" : undefined;
   const name = form.name === product?.name ? form.name : form.name.trim();
+  const reference = form.reference === (product?.reference ?? "") ? form.reference : form.reference.trim();
   const brand = form.brand === product?.brand ? form.brand : form.brand.trim();
   const location = form.location === product?.location ? form.location : form.location.trim().toUpperCase();
   const stockDelta = product && validQuantity(form.stock)
@@ -174,6 +174,7 @@ function ProductFormSheet({
       ? "Requerido"
       : (textError(form.code) ??
         (codeTaken ? "Ese código ya existe" : undefined)),
+    reference: textError(reference),
     name: !form.name.trim() ? "Requerido" : textError(name),
     brand: textError(brand),
     category: textError(form.category),
@@ -194,7 +195,6 @@ function ProductFormSheet({
           ? unitError
           : undefined,
     p2: form.prices.p2 && !validUnit(form.prices.p2) ? unitError : undefined,
-    p3: form.prices.p3 && !validUnit(form.prices.p3) ? unitError : undefined,
   };
   const valid = !Object.values(errors).some(Boolean);
   const handleSubmit = async () => {
@@ -214,13 +214,14 @@ function ProductFormSheet({
       if (!valid) return;
       const p1 = normalizeDecimal(form.prices.p1);
       const p2 = form.prices.p2 === "" ? p1 : normalizeDecimal(form.prices.p2);
-      const p3 = form.prices.p3 === "" ? p2 : normalizeDecimal(form.prices.p3);
+      const p3 = p2;
       const cleanReason = (form.adjustmentReason || "").trim();
       payload = {
         id: draft.id,
         databaseId: draft.databaseId,
         ...(draft.version === undefined ? {} : { version: draft.version }),
         code: form.code,
+        reference,
         name,
         brand,
         category: form.category === product?.category ? form.category : form.category.trim(),
@@ -320,6 +321,26 @@ function ProductFormSheet({
                 onChange={(e) => set("name", e.target.value)}
                 placeholder="Ej. Bujía NGK C7HSA"
                 className={inputClass}
+              />
+            </Field>
+            <Field
+              label="Referencia"
+              htmlFor={fieldId("reference")}
+              className="col-span-2"
+              hint="Código de pieza de cada compañía o fabricante."
+              error={submitted ? errors.reference : undefined}
+            >
+              <Input
+                id={fieldId("reference")}
+                disabled={locked}
+                aria-invalid={submitted && !!errors.reference}
+                value={form.reference}
+                onChange={(e) => set("reference", e.target.value)}
+                placeholder="Ej. 94701-00242 / código de pieza"
+                className={cn(inputClass, "font-mono")}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
               />
             </Field>
             <Field
@@ -586,8 +607,8 @@ function ProductFormSheet({
                 {suggestionError}
               </p>
             )}
-            <div className="grid grid-cols-3 gap-3">
-              {PRICE_KEYS.map((k) => {
+            <div className="grid grid-cols-2 gap-3">
+              {ACTIVE_PRICE_KEYS.map((k) => {
                 const price = validUnit(form.prices[k])
                   ? Number(form.prices[k])
                   : 0;

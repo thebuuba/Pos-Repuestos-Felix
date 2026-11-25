@@ -59,7 +59,7 @@ test('la compra conserva códigos literales, precios exactos, totales por línea
   const main = page.getByRole('main');
   await main.getByRole('combobox', { name: 'Suplidor', exact: true }).click();
   await page.getByRole('option', { name: 'Suplidor de prueba' }).click();
-  assert.match(await main.getByLabel('Fórmula de precios').textContent(), /Recargo registrado/);
+  assert.equal(await main.getByLabel('Fórmula de precios').count(), 0);
   await main.getByLabel('No. factura del suplidor').fill('REC-004');
   for (let i = 0; i < 2; i++) {
     await main.getByLabel('Código', { exact: true }).fill('b-x ');
@@ -67,7 +67,7 @@ test('la compra conserva códigos literales, precios exactos, totales por línea
     await main.getByLabel('Cantidad', { exact: true }).fill('1.25');
     await main.getByRole('button', { name: 'Agregar', exact: true }).click();
   }
-  await main.getByLabel('P1', { exact: true }).last().fill('999999999998.9876');
+  await main.getByLabel('Detalle', { exact: true }).last().fill('999999999998.9876');
   const packets = [];
   await page.route('**/api/compras', async route => {
     packets.push([route.request().headers()['idempotency-key'], route.request().postData()]);
@@ -79,7 +79,7 @@ test('la compra conserva códigos literales, precios exactos, totales por línea
   const retry = main.getByRole('button', { name: 'Reintentar compra' });
   await retry.waitFor();
   assert.equal(await main.getByLabel('No. factura del suplidor').inputValue(), 'REC-004');
-  assert.equal(await main.getByLabel('P1', { exact: true }).last().isDisabled(), true);
+  assert.equal(await main.getByLabel('Detalle', { exact: true }).last().isDisabled(), true);
   await retry.click();
   const history = main.getByRole('row').filter({ hasText: 'REC-004' });
   await history.getByText('RD$ 0.02', { exact: true }).waitFor();
@@ -113,7 +113,7 @@ test('una compra sin fórmula exige los tres precios y mantiene el borrador al r
   const main = page.getByRole('main');
   await main.getByRole('combobox', { name: 'Suplidor', exact: true }).click();
   await page.getByRole('option', { name: 'Suplidor sin fórmula' }).click();
-  assert.match(await main.getByLabel('Fórmula de precios').textContent(), /Precios manuales/);
+  assert.equal(await main.getByLabel('Fórmula de precios').count(), 0);
   await main.getByLabel('No. factura del suplidor').fill('MAN-1');
   await main.getByLabel('Código', { exact: true }).fill('nuevo-manual');
   await main.getByLabel('Nombre', { exact: true }).fill('Primera entrada');
@@ -121,8 +121,9 @@ test('una compra sin fórmula exige los tres precios y mantiene el borrador al r
   await main.getByRole('button', { name: 'Agregar', exact: true }).click();
   const submit = main.getByRole('button', { name: 'Subir factura al inventario' });
   assert.equal(await submit.isDisabled(), true);
-  assert.equal(await main.getByLabel('P1', { exact: true }).inputValue(), '');
-  for (const price of ['P1', 'P2', 'P3']) await main.getByLabel(price, { exact: true }).fill('10.0088');
+  assert.equal(await main.getByLabel('P/Mayor', { exact: true }).inputValue(), '');
+  assert.equal(await main.getByLabel('Detalle', { exact: true }).inputValue(), '');
+  for (const price of ['P/Mayor', 'Detalle']) await main.getByLabel(price, { exact: true }).fill('10.0088');
   const original = { suplidorId: supplier.result.id, numero: 'MAN-1', items: [
     { codigo: 'original', nombre: 'Original', cantidad: '1', costo: '2', precio1: '3', precio2: '3', precio3: '3' },
   ] };
@@ -164,7 +165,7 @@ test('dos sesiones que crean o editan un código obligan a revisar la compra ant
   await main.getByLabel('Nombre', { exact: true }).fill('Nombre propuesto');
   await main.getByLabel('Costo unitario').fill('0.125');
   await add.click();
-  for (const k of ['P1','P2','P3']) await main.getByLabel(k, { exact: true }).last().fill('2');
+  for (const k of ['P/Mayor', 'Detalle']) await main.getByLabel(k, { exact: true }).last().fill('2');
 
   const packets = [];
   await page.route('**/api/compras', async route => {
@@ -189,7 +190,7 @@ test('dos sesiones que crean o editan un código obligan a revisar la compra ant
   await review.nth(1).waitFor();
   assert.equal(await submit.isDisabled(), true);
   assert.equal(await invoice.inputValue(), 'CONCURRENTE');
-  assert.equal(await main.getByLabel('P1', { exact: true }).first().inputValue(), '2.0000');
+  assert.equal(await main.getByLabel('Detalle', { exact: true }).first().inputValue(), '2.0000');
   assert.deepEqual(packets[0].items.map(l => [l.productoId, l.versionProducto]), [[oldProduct.id, oldProduct.version], [null, null]]);
   const beforeReview = (await (await fetch(origin + '/api/state')).json()).state;
   assert.equal(beforeReview.compras.some(c => c.suplidorId === supplier.result.id), false);
@@ -197,8 +198,8 @@ test('dos sesiones que crean o editan un código obligan a revisar la compra ant
   await review.first().click();
   assert.equal(await submit.isDisabled(), true);
   await review.first().click();
-  assert.equal(await main.getByLabel('P1', { exact: true }).first().inputValue(), '4.0001');
-  assert.equal(await main.getByLabel('P1', { exact: true }).last().inputValue(), '12.3456');
+  assert.equal(await main.getByLabel('Detalle', { exact: true }).first().inputValue(), '4.0001');
+  assert.equal(await main.getByLabel('Detalle', { exact: true }).last().inputValue(), '12.3456');
   await submit.click();
   await main.getByRole('row').filter({ hasText: 'CONCURRENTE' }).getByText('RD$ 5.80', { exact: true }).waitFor();
   const saved = (await (await fetch(origin + '/api/state')).json()).state;

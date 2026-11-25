@@ -293,7 +293,7 @@ test('API transaccional v7: códigos alternativos, descuentos, anulaciones, abon
 
   // 8. Respaldo relacional v9 y restauración completa en base desechable
   const exported = await readSnapshot(pool, 'Prueba', true);
-  assert.equal(exported.version, 9);
+  assert.equal(exported.version, 10);
   assert.equal(exported.tables.productos_codigos.length, 2);
   assert.equal(exported.tables.abonos_cuentas.length, 2);
   assert.equal(exported.tables.secuencias_ncf.length, 1);
@@ -545,7 +545,6 @@ test('E2E navegador: Ctrl K, notificaciones, códigos alternativos, espera, coti
     await sheet.getByLabel('Costo base RD$').fill('300');
     await sheet.getByLabel(/Precio 1/).fill('500');
     await sheet.getByLabel(/Precio 2/).fill('450');
-    await sheet.getByLabel(/Precio 3/).fill('400');
     await sheet.getByLabel('Códigos de barras alternativos').fill('7469988776655');
     await sheet.getByRole('button', { name: 'Agregar', exact: true }).click();
     await sheet.getByText('7469988776655').waitFor();

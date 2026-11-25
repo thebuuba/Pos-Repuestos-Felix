@@ -51,7 +51,7 @@ async function prepare(boot, path, payload, { method = 'POST', deviceId = random
 
 test('bootstrap is a coherent relational checkpoint with the latest closed cash head', async () => {
   const boot = await readSyncBootstrap(cloud, 'Prueba');
-  assert.equal(boot.backup.version, 9);
+  assert.equal(boot.backup.version, 10);
   assert.deepEqual(boot.catalogo, boot.snapshot.state.catalogo);
   assert.deepEqual(boot.cashHead, cashHeadFromBackup(boot.backup));
   assert.deepEqual(boot.cashHead, { id: null, version: null, open: false, latestAt: null });

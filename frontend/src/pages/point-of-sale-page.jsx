@@ -79,7 +79,7 @@ function PointOfSalePage() {
   const [customerId, setCustomerId] = useState(DEFAULT_CUSTOMER);
   const [comprobante, setComprobante] = useState("B02");
   const [condition, setCondition] = useState("contado");
-  const [priceLevel, setPriceLevel] = useState(settings.defaultPriceLevel);
+  const [priceLevel, setPriceLevel] = useState(settings.defaultPriceLevel === "p2" ? "p2" : "p1");
   const [items, setItems] = useState([]);
   const [discountPct, setDiscountPct] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState("efectivo");
@@ -466,8 +466,8 @@ export function OperationalPointOfSalePage() {
     }
   };
   useEffect(() => {
-    const LEVEL_ORDER = ["p1", "p2", "p3"];
-    const LEVEL_NAMES = { p1: "Precio 1 · Detalle", p2: "Precio 2 · Mayor", p3: "Precio 3 · Taller" };
+    const LEVEL_ORDER = ["p1", "p2"];
+    const LEVEL_NAMES = { p1: "Precio 1 · Detalle", p2: "Precio 2 · Por mayor" };
     const METHOD_ORDER = ["efectivo", "tarjeta", "transferencia"];
     const METHOD_NAMES = { efectivo: "Efectivo", tarjeta: "Tarjeta", transferencia: "Transferencia" };
     const COMP_ORDER = ["B02", "B01", "B14"];

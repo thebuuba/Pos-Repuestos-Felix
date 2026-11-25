@@ -109,7 +109,7 @@ export function PurchaseInvoiceDialog({
                     : "border-emerald-600/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
               )}
             >
-              {isVoided ? "Anulada" : purchase.condition === "credito" ? "A crédito" : "Pagada"}
+              {isVoided ? "Anulada" : purchase.condition === "credito" ? "A crédito" : "Al contado"}
             </span>
           </div>
         </DialogHeader>
@@ -152,7 +152,7 @@ export function PurchaseInvoiceDialog({
               <div>
                 <p className="text-muted-foreground">Condición</p>
                 <p className="font-medium text-foreground">
-                  {purchase.condition === "credito" ? "A crédito (Cuentas x pagar)" : "Pagada (contado)"}
+                  {purchase.condition === "credito" ? "A crédito (Cuentas x pagar)" : "Al contado"}
                 </p>
               </div>
             </div>
@@ -178,7 +178,7 @@ export function PurchaseInvoiceDialog({
                     <th className="px-3 py-2 font-medium">Artículo</th>
                     <th className="px-2.5 py-2 text-center font-medium">Cant.</th>
                     <th className="px-2.5 py-2 text-right font-medium">Costo unit.</th>
-                    <th className="px-2.5 py-2 text-right font-medium">P1 / P2 / P3</th>
+                    <th className="px-2.5 py-2 text-right font-medium">P/Mayor / Detalle</th>
                     <th className="px-3 py-2 text-right font-medium">Subtotal</th>
                   </tr>
                 </thead>
@@ -196,9 +196,8 @@ export function PurchaseInvoiceDialog({
                         {formatUnitMoney(line.costExact ?? line.cost)}
                       </td>
                       <td className="px-2.5 py-2.5 text-right text-[11px] text-muted-foreground tabular-nums">
-                        {formatUnitMoney(line.pricesExact?.p1 ?? line.prices.p1)} /{" "}
                         {formatUnitMoney(line.pricesExact?.p2 ?? line.prices.p2)} /{" "}
-                        {formatUnitMoney(line.pricesExact?.p3 ?? line.prices.p3)}
+                        {formatUnitMoney(line.pricesExact?.p1 ?? line.prices.p1)}
                       </td>
                       <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-foreground">
                         {formatMoney(line.subtotal)}

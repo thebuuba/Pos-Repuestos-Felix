@@ -21,7 +21,7 @@ const columnDefaults = {
     rnc: '', tel: '', correo: '', contacto: '', version: '1',
   },
   productos: {
-    marca: '', categoria: '', ubicacion: '',
+    marca: '', categoria: '', ubicacion: '', referencia: '',
     stock_minimo: '0.00', gravado: 1, notificar_minimo: 1, version: '1',
   },
   ventas: {
@@ -47,7 +47,7 @@ const legacyEffectDefaults = (method, path) => {
     return { condicion: 'Contado', vencimiento: null, estado: 'activa', anulada_en: null, anulada_por: null, motivo_anulacion: null };
   }
   if ((method === 'POST' && path === '/api/productos') || (method === 'PUT' && /^\/api\/productos\/\d+$/.test(path))) {
-    return { altCodes: [] };
+    return { altCodes: [], referencia: '' };
   }
   if (method === 'PUT' && path === '/api/configuracion') {
     return { meta_diaria: null };
@@ -122,7 +122,7 @@ export class DesktopLedger {
       data[table] = this.database.prepare(`SELECT * FROM local_${table} ORDER BY CAST(id AS INTEGER)`).all().map(row =>
         Object.fromEntries(columns.map(column => [column, row[column] !== null && booleans.has(column) ? Boolean(row[column]) : row[column]])));
     }
-    return { version: 9, format: 'repuestos-felix-relacional', exportedAt: new Date().toISOString(), tables: data };
+    return { version: 10, format: 'repuestos-felix-relacional', exportedAt: new Date().toISOString(), tables: data };
   }
   // Fixed relational columns retain NUMERIC strings; no JSON snapshot is the business authority.
   tableIds() {

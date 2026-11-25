@@ -1,4 +1,4 @@
-import { calculateFormula } from '../../../src/domain/pricing.js';
+import { calculateCascadeFormula, calculateCascadeFromCost } from '../../../src/domain/pricing.js';
 import { costUnits, decimalUnits, money, quantityUnits } from '../../../src/pos/operation-fields.js';
 
 export const purchaseDecimal = value => String(value).replace(/^\./, '0.').replace(/^0+(?=\d)/, '');
@@ -10,14 +10,26 @@ export function purchaseLineAmounts(cost, quantity) {
   return { units, cents, subtotal: money(cents) };
 }
 
-export function purchasePrices(cost, formula, rounding, existingPrices) {
-  const decimal = purchaseDecimal(cost);
-  if (formula) {
-    const { prices } = calculateFormula(decimal, formula, rounding);
-    return Object.fromEntries(Object.entries(prices).map(([key, value]) => [key, String(Number(value))]));
+export function purchaseCostFromList(listPrice, formula) {
+  const decimal = purchaseDecimal(listPrice);
+  if (!decimal) return '';
+  if (!formula) {
+    costUnits(decimal, 'el precio de lista');
+    return decimal;
   }
+  return calculateCascadeFormula(decimal, formula, 0).cost;
+}
+
+export function purchaseSuggestedPrices(cost, formula, rounding = 0) {
+  if (!formula || cost === '' || cost === null || cost === undefined) return null;
+  const decimal = purchaseDecimal(cost);
+  return calculateCascadeFromCost(decimal, formula, rounding).prices;
+}
+
+export function purchasePrices(cost, _formula, _rounding, existingPrices) {
+  const decimal = purchaseDecimal(cost);
   costUnits(decimal, 'el costo');
-  return existingPrices ?? {};
+  return existingPrices ? { p1: existingPrices.p1, p2: existingPrices.p2 } : {};
 }
 
 export function purchaseOperation(input) {
@@ -25,13 +37,21 @@ export function purchaseOperation(input) {
     databaseId: input.databaseId, method: 'POST', path: '/api/compras',
     payload: {
       suplidorId: input.supplierId, numero: input.supplierInvoice,
+      ...(input.date ? { fecha: input.date } : {}),
       ...(input.condition ? { condicion: input.condition === 'credito' ? 'Credito' : 'Contado' } : {}),
       ...(input.condition === 'credito' && input.dueDate ? { vencimiento: input.dueDate } : {}),
-      items: input.lines.map(line => ({
-        productoId: line.productId ?? null, versionProducto: line.productVersion ?? null,
-        codigo: line.code, nombre: line.name, cantidad: purchaseDecimal(line.quantity), costo: purchaseDecimal(line.cost),
-        precio1: purchaseDecimal(line.prices.p1), precio2: purchaseDecimal(line.prices.p2), precio3: purchaseDecimal(line.prices.p3),
-      })),
+      items: input.lines.map(line => {
+        const p1 = purchaseDecimal(line.prices.p1);
+        const p2 = purchaseDecimal(line.prices.p2);
+        const p3 = line.prices.p3 !== undefined && line.prices.p3 !== '' ? purchaseDecimal(line.prices.p3) : p2;
+        return {
+          productoId: line.productId ?? null, versionProducto: line.productVersion ?? null,
+          codigo: line.code,
+          ...(line.reference !== undefined ? { referencia: line.reference } : {}),
+          nombre: line.name, cantidad: purchaseDecimal(line.quantity), costo: purchaseDecimal(line.cost),
+          precio1: p1, precio2: p2, precio3: p3,
+        };
+      }),
     },
   };
 }

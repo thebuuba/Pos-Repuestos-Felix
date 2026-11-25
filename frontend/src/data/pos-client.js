@@ -45,7 +45,7 @@ const rate = decimal(/^\d{1,3}(?:\.\d{1,4})?$/);
 const percentage = value => rate(value) && Number(value) <= 100;
 const string = value => typeof value === 'string';
 const amount = decimal(/^\d{1,12}(?:\.\d{1,2})?$/);
-const productFields = { codigo: string, nombre: string, marca: string, categoria: string, ubicacion: string,
+const productFields = { codigo: string, referencia: text, nombre: string, marca: string, categoria: string, ubicacion: string,
   stockMinimo: decimalQuantity, gravado: bool, notificarMinimo: bool, stock: decimalQuantity,
   costo: cost, precio1: cost, precio2: cost, precio3: cost, motivoAjuste: text,
   codigosAlternativos: value => Array.isArray(value) && value.length <= 20 && value.every(name) };
@@ -198,11 +198,11 @@ function checkPayload(method, resource, payload) {
       descuentoPorcentaje: value => amount(value) && Number(value) <= 100,
       descuentoMonto: amount,
       vencimiento: nullable(documentDate) }
-      : { suplidorId: id, numero: name, condicion: oneOf('Contado','Credito'), vencimiento: nullable(documentDate) };
-    const optionalHeader = sale ? ['cajaId','metodoPago','descuentoPorcentaje','descuentoMonto','vencimiento'] : ['condicion','vencimiento'];
+      : { suplidorId: id, numero: name, fecha: nullable(documentDate), condicion: oneOf('Contado','Credito'), vencimiento: nullable(documentDate) };
+    const optionalHeader = sale ? ['cajaId','metodoPago','descuentoPorcentaje','descuentoMonto','vencimiento'] : ['fecha','condicion','vencimiento'];
     const fields = sale ? { productoId: id, cantidad: v => decimalQuantity(v) && Number(v) > 0,
       nivelPrecio: oneOf('precio1','precio2','precio3'), versionProducto: id } :
-      { codigo: name, nombre: name, cantidad: v => decimalQuantity(v) && Number(v) > 0, costo: cost, precio1: cost, precio2: cost, precio3: cost,
+      { codigo: name, referencia: text, nombre: name, cantidad: v => decimalQuantity(v) && Number(v) > 0, costo: cost, precio1: cost, precio2: cost, precio3: cost,
         productoId: nullable(id), versionProducto: nullable(id) };
     const required = sale ? ['productoId','cantidad','nivelPrecio'] : ['codigo','nombre','cantidad','costo','precio1','precio2','precio3'];
     if (!Array.isArray(payload.items) || !payload.items.length || payload.items.length > 1000 ||
@@ -249,6 +249,7 @@ function validPrices(row, keys) {
 
 function validProduct(p) {
   return p && id(p.id) && id(p.version) && name(p.codigo) && name(p.nombre) &&
+    (!Object.hasOwn(p, 'referencia') || text(p.referencia)) &&
     ['marca', 'categoria', 'ubicacion'].every(key => text(p[key])) &&
     quantity(p.stock) && quantity(p.stockMinimo) &&
     (!Object.hasOwn(p, 'stock_minimo') || p.stock_minimo === p.stockMinimo) &&
@@ -331,12 +332,13 @@ function expandCompactSnapshot(raw) {
     const [
       pid, version, codigo, nombre, marca, categoria, ubicacion,
       gravado, stock, stockMinimo, notificarMinimo,
-      costoExacto, p1, p2, p3, altCodes,
+      costoExacto, p1, p2, p3, altCodes, referencia,
     ] = row;
     return {
       id: pid,
       version,
       codigo,
+      referencia: referencia || '',
       codigosAlternativos: altCodes || [],
       nombre,
       marca: marca || '',
@@ -592,6 +594,7 @@ function checkConfirmation(snapshot, packet, resource, expected, payload) {
       ? row.clienteId !== payload.clienteId || row.condicion !== payload.condicion || row.tipoComprobante !== payload.tipoComprobante
       : row.suplidorId !== payload.suplidorId || row.numero !== payload.numero.trim())) throw new Error(unconfirmed);
     if (sale && payload.cajaId !== undefined && (row.cajaId !== payload.cajaId || row.metodoPago !== payload.metodoPago)) throw new Error(unconfirmed);
+    if (!sale && payload.fecha && row.fechaISO !== payload.fecha) throw new Error(unconfirmed);
     for (const [index, item] of payload.items.entries()) {
       const saved = row.items[index];
       if (quantityUnits(saved.cant) !== quantityUnits(item.cantidad) || (sale

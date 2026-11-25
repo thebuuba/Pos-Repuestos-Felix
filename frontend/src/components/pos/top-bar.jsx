@@ -101,7 +101,8 @@ function TopBar({ onBrandClick } = {}) {
     if (!q) return [];
     const items = [];
     for (const p of searchTopProducts(products, raw, 5)) {
-      items.push({ kind: "Producto", icon: Box, title: p.name, subtitle: `${p.code} · Stock ${p.stock} · ${formatMoney(p.prices.p1)}`, to: `/inventario?buscar=${encodeURIComponent(p.code)}` });
+      const sub = [p.code, p.reference && `Ref. ${p.reference}`, `Stock ${p.stock}`, formatMoney(p.prices.p1)].filter(Boolean).join(" · ");
+      items.push({ kind: "Producto", icon: Box, title: p.name, subtitle: sub, to: `/inventario?buscar=${encodeURIComponent(p.code)}` });
     }
     let count = 0;
     for (const c of customers) {

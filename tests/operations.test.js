@@ -145,7 +145,7 @@ test('a SQL failure on the second purchase detail rolls back the header, product
 test('backup restores complete relational data, rotates identity and preserves failed restore atomically', async () => {
   const original = await get();
   const backup = await (await fetch(base + '/api/backup')).json();
-  assert.equal(backup.version, 9);
+  assert.equal(backup.version, 10);
   assert.ok(backup.tables.productos.some(p => !p.activo));
   const invalid = structuredClone(backup); invalid.tables.venta_detalles[0].producto_id = 999999;
   assert.equal((await write('restore', { backup: invalid, revision: original.revision })).status, 400);
