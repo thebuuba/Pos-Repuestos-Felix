@@ -140,12 +140,50 @@ test('Puntos 1-5 de Compras: Referencia global, fecha de factura, descripción c
   assert.notEqual(descMetrics.textOverflow, 'ellipsis', 'La descripción en Compras no debe cortarse con ellipsis');
   await firstOption.click();
 
-  // Confirmar referencia cargada, descripción completa y cálculo automático P/Lista -> Costo (100 -> 112)
+  // Confirmar referencia cargada, descripción completa y flujo exacto de teclado:
+  // Cantidad (Enter) -> P/Lista (100 -> Costo 112, Enter) -> Costo (Enter) -> agrega línea abajo
   assert.equal(await main.getByLabel('Referencia', { exact: true }).inputValue(), 'OEM-94701-A');
   await main.getByText(longDesc, { exact: true }).waitFor();
-  await main.getByLabel('Precio de lista', { exact: true }).fill('100');
+  const qtyInput = main.getByLabel('Cantidad', { exact: true });
+  await qtyInput.fill('5');
+  await qtyInput.press('Enter');
+  assert.equal(await main.locator('table.purchase-lines-table tbody tr').count(), 0, 'Enter en Cantidad no debe bajar la línea de una vez');
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Precio de lista');
+  await page.keyboard.type('100');
   assert.equal(await main.getByLabel('Costo unitario').inputValue(), '112');
-  await main.getByRole('button', { name: 'Agregar', exact: true }).click();
+  await page.keyboard.press('Enter');
+  assert.equal(await main.locator('table.purchase-lines-table tbody tr').count(), 0, 'Enter en P/Lista debe pasar a Costo');
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Costo unitario');
+  await page.keyboard.press('Enter');
+  assert.equal(await main.locator('table.purchase-lines-table tbody tr').count(), 1);
+  assert.equal(await main.getByLabel('Cantidad de la línea').first().inputValue(), '5');
+  // Volver a cantidad 1 para la comprobación del total final
+  await main.getByLabel('Cantidad de la línea').first().fill('1');
+
+  // Verificar a 1366×768 (laptop Dell) que Artículo NO se pone vertical y todos los inputs están alineados al mismo nivel
+  await page.setViewportSize({ width: 1366, height: 768 });
+  const layoutCheck = await page.evaluate(() => {
+    const table = document.querySelector('table.purchase-lines-table');
+    const articleCell = table?.querySelector('tbody td.purchase-col-article');
+    const costEl = table?.querySelector('input[aria-label="Costo de la línea"]');
+    const p2El = table?.querySelector('input[aria-label="P/Mayor"]');
+    const p1El = table?.querySelector('input[aria-label="Detalle"]');
+    const qtyEl = table?.querySelector('input[aria-label="Cantidad de la línea"]');
+    return {
+      overflow: document.documentElement.scrollWidth - window.innerWidth,
+      articleWidth: articleCell?.getBoundingClientRect().width ?? 0,
+      qtyY: qtyEl?.getBoundingClientRect().y ?? 0,
+      costY: costEl?.getBoundingClientRect().y ?? 0,
+      p2Y: p2El?.getBoundingClientRect().y ?? 0,
+      p1Y: p1El?.getBoundingClientRect().y ?? 0,
+    };
+  });
+  assert.ok(layoutCheck.overflow <= 0, `Overflow a 1366px: ${layoutCheck.overflow}`);
+  assert.ok(layoutCheck.articleWidth >= 230, `Artículo debe ser ancho y horizontal a 1366px, width=${layoutCheck.articleWidth}`);
+  assert.ok(Math.abs(layoutCheck.costY - layoutCheck.p2Y) <= 2, `Desnivel Costo/P/Mayor: ${JSON.stringify(layoutCheck)}`);
+  assert.ok(Math.abs(layoutCheck.costY - layoutCheck.p1Y) <= 2, `Desnivel Costo/Detalle: ${JSON.stringify(layoutCheck)}`);
+  assert.ok(Math.abs(layoutCheck.qtyY - layoutCheck.costY) <= 2, `Desnivel Cantidad/Costo: ${JSON.stringify(layoutCheck)}`);
+  await page.setViewportSize({ width: 1440, height: 960 });
 
   // Verificar orden exacto de columnas: [Artículo, Cantidad, P/Lista, Costo, P/Mayor, Detalle, Subtotal, ""]
   const headers = await main.locator('table.purchase-lines-table thead th').allTextContents();
@@ -157,19 +195,19 @@ test('Puntos 1-5 de Compras: Referencia global, fecha de factura, descripción c
   assert.match(headers[5], /Detalle/);
   assert.match(headers[6], /Subtotal/);
 
-  // Verificar sugerencias encima de P/Mayor (126.56) y Detalle (145.54) SIN sobrescribir precios existentes (800 / 900)
+  // Verificar sugerencias encima de P/Mayor (126.56) y Detalle (145.54) SIN sobrescribir precios existentes (800.00 / 900.00)
   await main.getByRole('button', { name: 'Sugerencia P/Mayor: 126.56' }).waitFor();
   await main.getByRole('button', { name: 'Sugerencia Detalle: 145.54' }).waitFor();
-  assert.equal(await main.getByLabel('P/Mayor', { exact: true }).first().inputValue(), '800.0000');
-  assert.equal(await main.getByLabel('Detalle', { exact: true }).first().inputValue(), '900.0000');
+  assert.equal(await main.getByLabel('P/Mayor', { exact: true }).first().inputValue(), '800.00');
+  assert.equal(await main.getByLabel('Detalle', { exact: true }).first().inputValue(), '900.00');
 
   // Cambiar P/Lista en la tabla (100 -> 200) recalcula Costo (224) y sugerencias (253.12 / 291.09) sin tocar P/Mayor ni Detalle
   await main.getByLabel('P/Lista de la línea').first().fill('200');
   assert.equal(await main.getByLabel('Costo de la línea').first().inputValue(), '224');
   await main.getByRole('button', { name: 'Sugerencia P/Mayor: 253.12' }).waitFor();
   await main.getByRole('button', { name: 'Sugerencia Detalle: 291.09' }).waitFor();
-  assert.equal(await main.getByLabel('P/Mayor', { exact: true }).first().inputValue(), '800.0000');
-  assert.equal(await main.getByLabel('Detalle', { exact: true }).first().inputValue(), '900.0000');
+  assert.equal(await main.getByLabel('P/Mayor', { exact: true }).first().inputValue(), '800.00');
+  assert.equal(await main.getByLabel('Detalle', { exact: true }).first().inputValue(), '900.00');
   await main.getByLabel('P/Lista de la línea').first().fill('100');
   assert.equal(await main.getByLabel('Costo de la línea').first().inputValue(), '112');
 
@@ -285,8 +323,8 @@ test('Puntos 1-5 de Compras: Referencia global, fecha de factura, descripción c
   databaseId = afterRestore.databaseId;
   assert.equal(afterRestore.state.productos.find(p => p.codigo === 'CAD-001').referencia, '');
 
-  // 7. Cero desbordamiento horizontal en móvil 390px, tablet 768px y escritorio 1024/1280/1440px en Compras
-  for (const width of [390, 768, 1024, 1280, 1440]) {
+  // 7. Cero desbordamiento horizontal en móvil 390px, tablet 768px y escritorio 1024/1280/1366/1440px en Compras
+  for (const width of [390, 768, 1024, 1280, 1366, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto(origin + '/compras');
     await main.getByRole('combobox', { name: 'Suplidor', exact: true }).waitFor();
@@ -294,4 +332,53 @@ test('Puntos 1-5 de Compras: Referencia global, fecha de factura, descripción c
     assert.ok(overflow <= 0, `Desbordamiento en Compras a ${width}px: ${overflow}px`);
   }
   assert.deepEqual(errors, []);
+});
+
+test('migración 20261125160000 rellena public.productos.referencia desde pos_privado.netpos_catalogo sin pisar ediciones manuales', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const tempDb = await temporaryPostgres();
+  const admin = new pg.Pool({ connectionString: tempDb.connectionString });
+  try {
+    await migrateDatabase(admin);
+    const sys = (await admin.query('SELECT database_id, revision FROM pos_privado.sistema WHERE id=1')).rows[0];
+    const pEmpty = (await admin.query(
+      "INSERT INTO public.productos(codigo,nombre,costo,precio1,precio2,precio3,stock,referencia) VALUES('NP-1','Goma 2.75-18','100','200','180','180','10','') RETURNING id",
+    )).rows[0].id;
+    const pManual = (await admin.query(
+      "INSERT INTO public.productos(codigo,nombre,costo,precio1,precio2,precio3,stock,referencia) VALUES('NP-2','Mica stop','50','100','90','90','5','REF-MANUAL') RETURNING id",
+    )).rows[0].id;
+    const huella = 'a'.repeat(64);
+    await admin.query(
+      "INSERT INTO pos_privado.netpos_importaciones(huella,database_id,categorias,marcas,ubicaciones,unidades) VALUES($1,$2,'{}','{}','{}','{}')",
+      [huella, sys.database_id],
+    );
+    await admin.query(
+      `INSERT INTO pos_privado.netpos_catalogo(huella,fila,codigo_original,codigo,evidencia,sugerencia,original,producto_id)
+       VALUES ($1,1,'NP-1','NP-1','texto-exacto','', $2::jsonb, $3),
+              ($1,2,'NP-2','NP-2','texto-exacto','', $4::jsonb, $5)`,
+      [
+        huella,
+        JSON.stringify({ REFERENCIA: { valor: '  T08-OEM-99  ', tipo: 's', estilo: 0 } }),
+        pEmpty,
+        JSON.stringify({ REFERENCIA: { valor: 'VIEJA-NETPOS', tipo: 's', estilo: 0 } }),
+        pManual,
+      ],
+    );
+    const sql = await readFile(new URL('../supabase/migrations/20261125160000_rellenar_referencia_netpos.sql', import.meta.url), 'utf8');
+    await admin.query(sql);
+    const rows = (await admin.query('SELECT codigo, referencia FROM public.productos WHERE codigo IN (\'NP-1\', \'NP-2\') ORDER BY codigo')).rows;
+    assert.deepEqual(rows, [
+      { codigo: 'NP-1', referencia: 'T08-OEM-99' },
+      { codigo: 'NP-2', referencia: 'REF-MANUAL' },
+    ]);
+    const revAfter = Number((await admin.query('SELECT revision FROM pos_privado.sistema WHERE id=1')).rows[0].revision);
+    assert.equal(revAfter, Number(sys.revision) + 1);
+    // Re-ejecutar es 100% idempotente y no vuelve a subir revisión
+    await admin.query(sql);
+    const revAfterSecond = Number((await admin.query('SELECT revision FROM pos_privado.sistema WHERE id=1')).rows[0].revision);
+    assert.equal(revAfterSecond, revAfter);
+  } finally {
+    await admin.end();
+    await tempDb.stop();
+  }
 });

@@ -1,5 +1,6 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
 import {
+  cleanPurchaseDecimal,
   purchaseCostFromList,
   purchaseDecimal,
   purchaseLineAmounts,
@@ -86,6 +87,8 @@ function PurchaseEntryForm({
   const qtyRef = useRef(null);
   const listPriceRef = useRef(null);
   const costRef = useRef(null);
+  const nameRef = useRef(null);
+  const tableRef = useRef(null);
   const submitRef = useRef(null);
   const supplierBoxRef = useRef(null);
   const supplierSearchRef = useRef(null);
@@ -203,7 +206,7 @@ function PurchaseEntryForm({
       name: product.name,
       category: product.category || e.category,
       listPrice: "",
-      cost: product.costExact ?? String(product.cost),
+      cost: cleanPurchaseDecimal(product.costExact ?? String(product.cost)),
       costManual: false,
     }));
     setProductMenuOpen(false);
@@ -211,6 +214,20 @@ function PurchaseEntryForm({
     setProductSelected(false);
     qtyRef.current?.focus();
     qtyRef.current?.select();
+  };
+  const focusRowCell = (lineKey, field) => {
+    if (!field) {
+      codeRef.current?.focus();
+      codeRef.current?.select();
+      return;
+    }
+    const target = tableRef.current?.querySelector(
+      `input[data-row-key="${lineKey}"][data-row-field="${field}"]`,
+    );
+    if (target) {
+      target.focus();
+      target.select();
+    }
   };
   const searchingMatches = productMenuOpen && productResults.length > 0;
   const showNewDescription = Boolean(entry.code.trim() && !match && !altCodeOwner && !searchingMatches);
@@ -274,7 +291,7 @@ function PurchaseEntryForm({
       name: found ? found.name : match ? "" : e.name,
       category: found ? found.category : e.category,
       listPrice: found || match ? "" : e.listPrice,
-      cost: found ? (found.costExact ?? String(found.cost)) : match ? "" : e.cost,
+      cost: found ? cleanPurchaseDecimal(found.costExact ?? String(found.cost)) : match ? "" : e.cost,
       costManual: false,
     }));
   };
@@ -286,7 +303,7 @@ function PurchaseEntryForm({
           ...e,
           listPrice: raw,
           costManual: false,
-          cost: match ? (match.costExact ?? String(match.cost)) : "",
+          cost: match ? cleanPurchaseDecimal(match.costExact ?? String(match.cost)) : "",
         };
       }
       try {
@@ -417,7 +434,7 @@ function PurchaseEntryForm({
     setTried(false);
   };
   return (
-    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+    <div className="purchase-workspace-grid">
       <fieldset disabled={locked} className="min-w-0 space-y-5 rounded-2xl border border-border bg-card p-5">
         <div className="purchase-header-grid">
           <Field
@@ -627,12 +644,19 @@ function PurchaseEntryForm({
                         setProductHighlight((h) => Math.max(h - 1, 0));
                       } else if (e.key === "Enter") {
                         const exact = findProduct(entry.code);
+                        const trimmedLower = entry.code.trim().toLowerCase();
+                        const exactRefMatches = trimmedLower
+                          ? productResults.filter((p) => (p.reference || "").trim().toLowerCase() === trimmedLower)
+                          : [];
                         if (exact) {
                           e.preventDefault();
                           pickProduct(exact);
                         } else if (productSelected && productResults[productHighlight]) {
                           e.preventDefault();
                           pickProduct(productResults[productHighlight]);
+                        } else if (exactRefMatches.length === 1) {
+                          e.preventDefault();
+                          pickProduct(exactRefMatches[0]);
                         } else {
                           setProductMenuOpen(false);
                         }
@@ -727,12 +751,8 @@ function PurchaseEntryForm({
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
-                    if (!String(entry.cost).trim() && !String(entry.listPrice).trim()) {
-                      listPriceRef.current?.focus();
-                      listPriceRef.current?.select();
-                    } else {
-                      addLine();
-                    }
+                    listPriceRef.current?.focus();
+                    listPriceRef.current?.select();
                   }
                 }}
                 className={cn(inputClass, "tabular-nums")}
@@ -751,11 +771,8 @@ function PurchaseEntryForm({
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
-                    if (canAddLine) addLine();
-                    else {
-                      costRef.current?.focus();
-                      costRef.current?.select();
-                    }
+                    costRef.current?.focus();
+                    costRef.current?.select();
                   }
                 }}
                 placeholder="0.00"
@@ -779,7 +796,17 @@ function PurchaseEntryForm({
                     costManual: true,
                   })
                 }
-                onKeyDown={(e) => e.key === "Enter" && addLine()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (!entry.name.trim() && showNewDescription) {
+                      nameRef.current?.focus();
+                      nameRef.current?.select();
+                    } else {
+                      addLine();
+                    }
+                  }
+                }}
                 placeholder="0.00"
                 className={cn(inputClass, "tabular-nums")}
               />
@@ -797,6 +824,7 @@ function PurchaseEntryForm({
             <div className="grid gap-3 border-t border-border/60 pt-2.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
               <Field label="Nombre del artículo nuevo">
                 <Input
+                  ref={nameRef}
                   maxLength={2000} aria-label="Nombre" value={entry.name}
                   autoComplete="off"
                   onChange={(e) =>
@@ -871,7 +899,7 @@ function PurchaseEntryForm({
                 Revisar artículo
               </Button>}
             </span>}
-            {entrySuggested && (
+            {entrySuggested ? (
               <span>
                 {"Sugerencia suplidor:"}{" "}
                 <span className="font-medium text-foreground tabular-nums">
@@ -881,7 +909,11 @@ function PurchaseEntryForm({
                   {formatUnitMoney(entrySuggested.p1)}
                 </span>
               </span>
-            )}
+            ) : supplier && !formula ? (
+              <span>
+                {"Este suplidor aún no tiene fórmula asignada; las sugerencias de P/Mayor y Detalle se activarán al configurarla."}
+              </span>
+            ) : null}
           </div>
         </div>
         {lines.length === 0 ? (
@@ -894,10 +926,10 @@ function PurchaseEntryForm({
           </div>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-border">
-            <table className="purchase-lines-table text-sm">
+            <table ref={tableRef} className="purchase-lines-table text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/50 text-left text-xs text-muted-foreground">
-                  <th className="px-3 py-2.5 font-medium">{"Artículo"}</th>
+                  <th className="purchase-col-article px-3 py-2.5 font-medium">{"Artículo"}</th>
                   <th className="px-1.5 py-2.5 text-center font-medium">
                     {"Cantidad"}
                   </th>
@@ -942,7 +974,7 @@ function PurchaseEntryForm({
                       className="border-b border-border last:border-0"
                       key={l.key}
                     >
-                      <td className="px-3 py-2.5 align-bottom">
+                      <td className="purchase-col-article px-3 py-2.5">
                         <p className="font-medium leading-snug">{l.name}</p>
                         <p className="text-xs text-muted-foreground">
                           <span className="font-mono whitespace-pre-wrap">{l.code}</span>
@@ -987,43 +1019,61 @@ function PurchaseEntryForm({
                             <p className="text-muted-foreground">Al aceptar se reemplazan la descripción, el costo y los precios de esta línea.</p>
                             <Button variant="outline" size="sm" onClick={() => {
                               updateLine(l.key, { ...catalogFields(existing), reference: existing.reference ?? "", name: existing.name, category: existing.category,
-                                listPrice: "", cost: existing.costExact ?? String(existing.cost), costManual: false, overrides: {} });
+                                listPrice: "", cost: cleanPurchaseDecimal(existing.costExact ?? String(existing.cost)), costManual: false, overrides: {} });
                               setError(null);
                             }}>Usar datos actuales</Button>
                           </>}
                         </div>}
                       </td>
-                      <td className="px-1.5 py-2.5 align-bottom">
+                      <td className="px-1.5 py-2.5">
                         <Input
                           type="number"
                           inputMode="decimal"
                           min="1" step="1" aria-label="Cantidad de la línea"
+                          data-row-key={l.key}
+                          data-row-field="qty"
                           value={l.quantity}
                           onChange={(e) =>
                             updateLine(l.key, {
                               quantity: e.target.value,
                             })
                           }
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              focusRowCell(l.key, "list");
+                            }
+                          }}
                           className="purchase-col-qty mx-auto h-8 rounded-lg px-2 text-center tabular-nums"
                         />
                       </td>
-                      <td className="px-1.5 py-2.5 align-bottom">
+                      <td className="px-1.5 py-2.5">
                         <Input
                           type="number"
                           inputMode="decimal"
                           step="0.0001"
                           min="0"
                           aria-label="P/Lista de la línea"
+                          data-row-key={l.key}
+                          data-row-field="list"
                           placeholder="—"
                           value={l.listPrice ?? ""}
                           onChange={(e) => onLineListPriceChange(l.key, e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              focusRowCell(l.key, "cost");
+                            }
+                          }}
                           className="purchase-col-money ml-auto h-8 rounded-lg px-2 text-right tabular-nums"
                         />
                       </td>
-                      <td className="px-1.5 py-2.5 align-bottom">
+                      <td className="px-1.5 py-2.5">
                         <Input
                           type="number"
                           step="0.0001" min="0" aria-label="Costo de la línea"
+                          data-row-key={l.key}
+                          data-row-field="cost"
                           value={l.cost}
                           aria-invalid={Boolean(l.error)}
                           onChange={(e) =>
@@ -1032,13 +1082,20 @@ function PurchaseEntryForm({
                               costManual: true,
                             })
                           }
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              focusRowCell(l.key, "p2");
+                            }
+                          }}
                           className="purchase-col-money ml-auto h-8 rounded-lg px-2 text-right tabular-nums"
                         />
                       </td>
                       {PURCHASE_PRICE_COLUMNS.map(({ key, label }) => {
                         const sug = l.suggested?.[key];
+                        const nextField = key === "p2" ? "p1" : null;
                         return (
-                          <td className="px-1.5 py-2.5 align-bottom" key={key}>
+                          <td className="px-1.5 py-2.5" key={key}>
                             <div className="purchase-price-cell">
                               {sug !== undefined ? (
                                 <button
@@ -1060,13 +1117,21 @@ function PurchaseEntryForm({
                                   {sug}
                                 </button>
                               ) : (
-                                <span className="purchase-price-suggestion-spacer" aria-hidden="true" />
+                                <span
+                                  aria-label={`Sugerencia ${label}: sin fórmula`}
+                                  title={formula ? "Indica P/Lista o Costo para calcular la sugerencia" : "Asigna una fórmula a este suplidor en Configuración → Fórmulas"}
+                                  className="purchase-price-suggestion purchase-price-suggestion-empty"
+                                >
+                                  {"Sug. —"}
+                                </span>
                               )}
                               <Input
                                 type="number"
                                 step="0.0001"
                                 min="0"
                                 aria-label={label}
+                                data-row-key={l.key}
+                                data-row-field={key}
                                 placeholder="0.00"
                                 value={l.prices[key] ?? ""}
                                 onChange={(e) =>
@@ -1077,6 +1142,12 @@ function PurchaseEntryForm({
                                     },
                                   })
                                 }
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    focusRowCell(l.key, nextField);
+                                  }
+                                }}
                                 className={cn(
                                   "purchase-col-price ml-auto h-8 rounded-lg px-2 text-right tabular-nums",
                                   l.overrides[key] !== undefined &&
@@ -1087,10 +1158,12 @@ function PurchaseEntryForm({
                           </td>
                         );
                       })}
-                      <td className="px-2.5 py-2.5 align-bottom text-right font-semibold tabular-nums whitespace-nowrap">
-                        {l.subtotal === undefined ? "—" : formatMoney(l.subtotal)}
+                      <td className="px-2.5 py-2.5">
+                        <div className="purchase-subtotal-cell font-semibold tabular-nums">
+                          {l.subtotal === undefined ? "—" : formatMoney(l.subtotal)}
+                        </div>
                       </td>
-                      <td className="px-1.5 py-2.5 align-bottom">
+                      <td className="px-1.5 py-2.5">
                         <Button
                           variant="ghost"
                           size="icon"
@@ -1113,72 +1186,76 @@ function PurchaseEntryForm({
           </div>
         )}
       </fieldset>
-      <div className="space-y-4 rounded-2xl border border-border bg-card p-5 lg:sticky lg:top-24">
-        <div>
+      <div className="purchase-summary-card rounded-2xl border border-border bg-card p-5">
+        <div className="space-y-3">
+          <div>
+            <p className="text-xs text-muted-foreground">
+              {"Resumen de la compra"}
+            </p>
+            <p className="mt-0.5 truncate font-semibold">
+              {supplier?.name ?? "Sin suplidor"}
+            </p>
+          </div>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">{"Artículos"}</span>
+              <span className="font-medium">{lines.length}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">{"Unidades"}</span>
+              <span className="font-medium tabular-nums">{units === "—" ? units : formatNumber(units)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">
+                {"Nuevos en catálogo"}
+              </span>
+              <span className="font-medium">
+                {new Set(pricedLines.filter(l => !l.existing).map(l => l.code)).size}
+              </span>
+            </div>
+          </div>
           <p className="text-xs text-muted-foreground">
-            {"Resumen de la compra"}
-          </p>
-          <p className="mt-0.5 truncate font-semibold">
-            {supplier?.name ?? "Sin suplidor"}
+            {condition === "credito"
+              ? "Se creará una cuenta por pagar al suplidor."
+              : "Se registra como compra al contado."}{" "}
+            {"Las existencias, costos y precios se actualizan al subir."}
           </p>
         </div>
-        <div className="space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">{"Artículos"}</span>
-            <span className="font-medium">{lines.length}</span>
+        <div className="space-y-3">
+          <div className="rounded-xl bg-accent px-4 py-3.5">
+            <p className="text-xs font-medium uppercase tracking-wider text-accent-foreground/80">
+              {"Total compra"}
+            </p>
+            {total === null ? (
+              <p className="text-[30px] leading-tight text-primary">{"—"}</p>
+            ) : (
+              <MoneyDisplay
+                value={total}
+                className="text-[30px] leading-tight text-primary"
+                symbolClassName="text-primary/70"
+                centsClassName="text-primary/50"
+              />
+            )}
           </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">{"Unidades"}</span>
-            <span className="font-medium tabular-nums">{units === "—" ? units : formatNumber(units)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">
-              {"Nuevos en catálogo"}
-            </span>
-            <span className="font-medium">
-              {new Set(pricedLines.filter(l => !l.existing).map(l => l.code)).size}
-            </span>
-          </div>
-        </div>
-        <div className="rounded-xl bg-accent px-4 py-3.5">
-          <p className="text-xs font-medium uppercase tracking-wider text-accent-foreground/80">
-            {"Total compra"}
-          </p>
-          {total === null ? (
-            <p className="text-[30px] leading-tight text-primary">{"—"}</p>
-          ) : (
-            <MoneyDisplay
-              value={total}
-              className="text-[30px] leading-tight text-primary"
-              symbolClassName="text-primary/70"
-              centsClassName="text-primary/50"
-            />
+          {tried && lines.length === 0 && (
+            <p className="text-xs font-medium text-primary">
+              {"Agrega al menos un artículo."}
+            </p>
           )}
+          {(error || totalError) && <p role="alert" className="text-xs font-medium text-primary">{error || totalError}</p>}
+          {databaseChanged && <div role="alert" className="space-y-2 text-sm">
+            <p>La base de datos cambió. Revisa esta compra antes de iniciar otra.</p>
+            <Button variant="outline" onClick={restart}>Iniciar otra compra</Button>
+          </div>}
+          <Button
+            className="h-12 w-full rounded-xl text-[15px] font-semibold shadow-md shadow-primary/20"
+            onClick={submit}
+            disabled={sending || databaseChanged || (!retryInput && (hasInvalidLine || !!runtime?.pending || runtime?.connection === "unavailable"))}
+          >
+            <Upload />
+            {sending ? "Confirmando compra…" : retryInput ? "Reintentar compra" : "Subir factura al inventario"}
+          </Button>
         </div>
-        <p className="text-xs text-muted-foreground">
-          {condition === "credito"
-            ? "Se creará una cuenta por pagar al suplidor."
-            : "Se registra como compra al contado."}{" "}
-          {"Las existencias, costos y precios se actualizan al subir."}
-        </p>
-        {tried && lines.length === 0 && (
-          <p className="text-xs font-medium text-primary">
-            {"Agrega al menos un artículo."}
-          </p>
-        )}
-        {(error || totalError) && <p role="alert" className="text-xs font-medium text-primary">{error || totalError}</p>}
-        {databaseChanged && <div role="alert" className="space-y-2 text-sm">
-          <p>La base de datos cambió. Revisa esta compra antes de iniciar otra.</p>
-          <Button variant="outline" onClick={restart}>Iniciar otra compra</Button>
-        </div>}
-        <Button
-          className="h-12 w-full rounded-xl text-[15px] font-semibold shadow-md shadow-primary/20"
-          onClick={submit}
-          disabled={sending || databaseChanged || (!retryInput && (hasInvalidLine || !!runtime?.pending || runtime?.connection === "unavailable"))}
-        >
-          <Upload />
-          {sending ? "Confirmando compra…" : retryInput ? "Reintentar compra" : "Subir factura al inventario"}
-        </Button>
       </div>
     </div>
   );

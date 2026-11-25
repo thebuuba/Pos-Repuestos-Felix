@@ -1350,6 +1350,35 @@ label {
 }
 
 /* Cabecera y entrada de Compras: No. Fact. y Condición compactos (~60 %), fecha de factura y resultados sin recortar */
+.purchase-workspace-grid {
+  display: grid;
+  align-items: start;
+  gap: 20px;
+  grid-template-columns: minmax(0, 1fr);
+}
+.purchase-summary-card {
+  display: grid;
+  gap: 16px 24px;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  align-items: center;
+}
+@media (min-width: 1560px) {
+  .purchase-workspace-grid {
+    gap: 24px;
+    grid-template-columns: minmax(0, 1fr) 310px;
+  }
+  .purchase-summary-card {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+    position: sticky;
+    top: 96px;
+  }
+}
+@media (max-width: 899px) {
+  .purchase-summary-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 .purchase-header-grid {
   display: flex;
   flex-wrap: wrap;
@@ -1416,10 +1445,11 @@ label {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  max-width: 100%;
-  padding: 2px 7px;
+  width: 100%;
+  min-height: 22px;
+  padding: 2px 6px;
   border-radius: 6px;
-  border: 1px dashed hsl(var(--primary) / 0.4);
+  border: 1px dashed hsl(var(--primary) / 0.45);
   background: hsl(var(--accent));
   color: hsl(var(--accent-foreground));
   font-size: 11px;
@@ -1438,22 +1468,53 @@ label {
   opacity: 0.6;
   cursor: not-allowed;
 }
-.purchase-price-suggestion-spacer {
-  display: block;
-  height: 20px;
+.purchase-price-suggestion-empty {
+  border-color: hsl(var(--border));
+  background: hsl(var(--muted) / 0.65);
+  color: hsl(var(--muted-foreground));
+  font-weight: 500;
+  cursor: default;
 }
 .purchase-lines-table {
   width: 100%;
-  min-width: 720px;
+  min-width: 820px;
+  border-collapse: collapse;
+}
+.purchase-lines-table th {
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+.purchase-lines-table td {
+  vertical-align: bottom;
+}
+.purchase-lines-table input[type="number"]::-webkit-outer-spin-button,
+.purchase-lines-table input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.purchase-lines-table input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.purchase-col-article {
+  min-width: 230px;
+  width: 100%;
 }
 .purchase-col-qty {
-  width: 64px;
+  width: 68px;
 }
 .purchase-col-money {
-  width: 86px;
+  width: 94px;
 }
 .purchase-col-price {
-  width: 92px;
+  width: 100px;
+}
+.purchase-subtotal-cell {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  white-space: nowrap;
 }
 .purchase-product-results {
   position: absolute;

@@ -63,7 +63,7 @@ test('la compra conserva códigos literales, precios exactos, totales por línea
   await main.getByLabel('No. factura del suplidor').fill('REC-004');
   for (let i = 0; i < 2; i++) {
     await main.getByLabel('Código', { exact: true }).fill('b-x ');
-    assert.equal(await main.getByLabel('Costo unitario').inputValue(), '0.0050');
+    assert.equal(await main.getByLabel('Costo unitario').inputValue(), '0.005');
     await main.getByLabel('Cantidad', { exact: true }).fill('1.25');
     await main.getByRole('button', { name: 'Agregar', exact: true }).click();
   }
@@ -190,7 +190,7 @@ test('dos sesiones que crean o editan un código obligan a revisar la compra ant
   await review.nth(1).waitFor();
   assert.equal(await submit.isDisabled(), true);
   assert.equal(await invoice.inputValue(), 'CONCURRENTE');
-  assert.equal(await main.getByLabel('Detalle', { exact: true }).first().inputValue(), '2.0000');
+  assert.equal(await main.getByLabel('Detalle', { exact: true }).first().inputValue(), '2.00');
   assert.deepEqual(packets[0].items.map(l => [l.productoId, l.versionProducto]), [[oldProduct.id, oldProduct.version], [null, null]]);
   const beforeReview = (await (await fetch(origin + '/api/state')).json()).state;
   assert.equal(beforeReview.compras.some(c => c.suplidorId === supplier.result.id), false);
@@ -253,7 +253,7 @@ test('compras permite buscar suplidor, buscar pieza por nombre y subir cantidad 
   await main.getByLabel('Código', { exact: true }).fill('Platino');
   await main.getByRole('option', { name: /Bujía NGK Punta Platino/i }).click();
   assert.equal(await main.getByLabel('Código', { exact: true }).inputValue(), 'BUJ-NGK-9');
-  assert.equal(await main.getByLabel('Costo unitario').inputValue(), '125.0000');
+  assert.equal(await main.getByLabel('Costo unitario').inputValue(), '125.00');
   assert.equal(await main.getByLabel('Nombre', { exact: true }).count(), 0);
 
   // 3. Flecha arriba en Cantidad debe subir 1 -> 2 -> 3 (no 1.01)

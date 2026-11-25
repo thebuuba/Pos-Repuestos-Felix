@@ -3,6 +3,16 @@ import { costUnits, decimalUnits, money, quantityUnits } from '../../../src/pos/
 
 export const purchaseDecimal = value => String(value).replace(/^\./, '0.').replace(/^0+(?=\d)/, '');
 
+export function cleanPurchaseDecimal(value) {
+  if (value === null || value === undefined || value === '') return '';
+  const text = String(value).trim();
+  const match = /^(\d+)\.(\d+)$/.exec(text);
+  if (!match) return text;
+  const trimmed = match[2].replace(/0+$/, '');
+  const fraction = trimmed.length <= 2 ? trimmed.padEnd(2, '0') : trimmed;
+  return `${match[1]}.${fraction}`;
+}
+
 export function purchaseLineAmounts(cost, quantity) {
   const units = quantityUnits(purchaseDecimal(quantity), 'la cantidad', 0.01);
   const unitCost = costUnits(purchaseDecimal(cost), 'el costo');
@@ -29,7 +39,9 @@ export function purchaseSuggestedPrices(cost, formula, rounding = 0) {
 export function purchasePrices(cost, _formula, _rounding, existingPrices) {
   const decimal = purchaseDecimal(cost);
   costUnits(decimal, 'el costo');
-  return existingPrices ? { p1: existingPrices.p1, p2: existingPrices.p2 } : {};
+  return existingPrices
+    ? { p1: cleanPurchaseDecimal(existingPrices.p1), p2: cleanPurchaseDecimal(existingPrices.p2) }
+    : {};
 }
 
 export function purchaseOperation(input) {

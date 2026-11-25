@@ -141,6 +141,12 @@ test('inventario conectado pagina todo el catálogo, filtra existencias y conser
     await result('Mostrando 1–2 de 2 productos');
     assert.equal(await upper.count(), 1);
     await page.getByRole('button', { name: 'Todos', exact: true }).click();
+    await page.getByRole('link', { name: 'Ver Bajo mínimo', exact: true }).click();
+    await result('Mostrando 1–50 de 120 productos');
+    await page.getByRole('link', { name: 'Ver Agotados', exact: true }).click();
+    await result('Mostrando 1–2 de 2 productos');
+    await page.getByRole('link', { name: 'Ver Artículos activos', exact: true }).click();
+    await result('Mostrando 1–50 de 123 productos');
 
     await next.click();
     await result('Mostrando 51–100 de 123 productos');

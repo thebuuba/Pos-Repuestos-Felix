@@ -115,14 +115,14 @@ function InventoryPage() {
           value={lowCount}
           format="number"
           footer="Requieren reposición pronto"
-          to={isOwner ? "/compras" : "/inventario?existencia=low"}
+          to="/inventario?existencia=low"
         />
         <StatCard
           title="Agotados"
           value={outCount}
           format="number"
           footer="Sin existencia disponible para venta"
-          to={isOwner ? "/compras" : "/inventario?existencia=out"}
+          to="/inventario?existencia=out"
         />
       </div>
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
