@@ -1,22 +1,28 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
 import { cn } from "../../lib/utils.js";
 function intensityClass(value, max) {
+  if (!value) return "bg-muted";
   const r = value / max;
   if (r >= 0.9) return "bg-primary";
   if (r >= 0.7) return "bg-primary/75";
   if (r >= 0.5) return "bg-primary/50";
   if (r >= 0.3) return "bg-primary/25";
-  if (r > 0.15) return "bg-primary/10";
-  return "bg-muted";
+  return "bg-primary/10";
 }
-function PeakHoursHeatmap({ days = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"], hours = ["8a", "9a", "10a", "11a", "12p", "1p", "2p", "3p", "4p", "5p", "6p"], values }) {
+function PeakHoursHeatmap({
+  days = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"],
+  hours = ["8a", "9a", "10a", "11a", "12p", "1p", "2p", "3p", "4p", "5p", "6p"],
+  values,
+  subtitle = "Facturas por hora",
+  emptyMessage = "Las facturas registran la fecha, sin detalle por hora.",
+}) {
   const max = values ? Math.max(1, ...values.flat()) : 1;
   return (
     <section className="flex h-full flex-col rounded-2xl border border-border bg-card p-5">
       <div className="flex items-center justify-between">
         <h2 className="text-[17px] font-medium">{"Horas pico"}</h2>
         <span className="text-xs text-muted-foreground">
-          {"Facturas por hora"}
+          {subtitle}
         </span>
       </div>
       <div className="mt-4 overflow-x-auto">
@@ -28,10 +34,10 @@ function PeakHoursHeatmap({ days = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"],
                   {day}
                 </span>
                 {hours.map((hour, h) => {
-                  const v = values?.[d][h];
+                  const v = values?.[d]?.[h] ?? 0;
                   return (
                     <div
-                      title={values ? `${day} ${hour}: ${v} facturas` : undefined}
+                      title={values ? `${day} ${hour}: ${v} ${v === 1 ? "factura" : "facturas"}` : undefined}
                       className={cn(
                         "aspect-square rounded-md transition-transform hover:scale-110",
                         intensityClass(v, max),
@@ -54,7 +60,7 @@ function PeakHoursHeatmap({ days = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"],
           </div>
         </div>
       </div>
-      {!values && <p className="mt-4 text-xs text-muted-foreground">Las facturas registran la fecha, sin detalle por hora.</p>}
+      {!values && <p className="mt-4 text-xs text-muted-foreground">{emptyMessage}</p>}
       <div className="mt-4 flex items-center justify-end gap-1.5 text-[11px] text-muted-foreground">
         {"Menos"}
         <span className="h-3 w-3 rounded bg-muted" />

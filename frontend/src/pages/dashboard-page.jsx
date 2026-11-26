@@ -1,7 +1,7 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
 import { usePosStore } from "../data/pos-context.jsx";
 import { formatDate } from "../lib/accounts.js";
-import { averageAmount, businessDay, downloadSales, monthlyActivity, paymentGroups, paymentLabel, salesTotal, shiftDay, sumAmounts } from "../lib/sales-analytics.js";
+import { averageAmount, businessDay, downloadSales, monthlyActivity, paymentGroups, paymentLabel, peakHoursActivity, salesTotal, shiftDay, sumAmounts } from "../lib/sales-analytics.js";
 import { useMemo, useState } from "react";
 import { balanceOf } from "../lib/accounts.js";
 import { formatTime } from "../lib/accounts.js";
@@ -58,6 +58,7 @@ function DashboardPage({ reference }) {
     return { balanceCount: list.length, balanceSum: sumAmounts(list) };
   }, [runtime, customers, receivables]);
   const activity = useMemo(() => reference?.activity ?? monthlyActivity(sales, end), [reference, sales, end]);
+  const peak = useMemo(() => reference?.peak ?? peakHoursActivity(sales, end), [reference, sales, end]);
   const weekday = utcWeekdayFmt.format(new Date(lastWeekDay));
   const business = settings.business.name;
   return (
@@ -133,7 +134,7 @@ function DashboardPage({ reference }) {
         />
       </div>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <PeakHoursHeatmap {...reference?.peak} />
+        <PeakHoursHeatmap {...peak} />
         <div className="min-w-0 lg:col-span-2">
           <RecentSalesTable
             sales={recent}

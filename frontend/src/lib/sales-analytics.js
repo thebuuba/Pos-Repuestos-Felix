@@ -65,6 +65,49 @@ export function monthlyActivity(sales, today) {
     lastSix: Array.from({ length: 6 }, (_, index) => monthRow(currentIndex - 5 + index)) };
 }
 
+export function peakHoursActivity(sales, today) {
+  const baseDays = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+  const hours = ["8a", "9a", "10a", "11a", "12p", "1p", "2p", "3p", "4p", "5p", "6p"];
+  const start = shiftDay(today, -29);
+  // 7 rows: 0=Lun .. 5=Sáb, 6=Dom (only included if Sunday has sales)
+  const matrix = Array.from({ length: 7 }, () => Array(hours.length).fill(0));
+  let count = 0;
+  let hasSunday = false;
+  for (let i = 0; i < sales.length; i++) {
+    const sale = sales[i];
+    if (!sale || sale.status === "anulada") continue;
+    if (typeof sale.date !== "string" || sale.date.length <= 10) continue;
+    const parsed = new Date(sale.date);
+    if (!Number.isFinite(parsed.getTime())) continue;
+    const dayIso = businessDay(parsed);
+    if (dayIso < start || dayIso > today) continue;
+    const utcDay = new Date(dayIso + "T00:00:00Z").getUTCDay(); // 0=Dom..6=Sáb
+    const rowIdx = utcDay === 0 ? 6 : utcDay - 1;
+    if (rowIdx === 6) hasSunday = true;
+    const rawHour = Number(hourFormat.format(parsed)) % 24;
+    const colIdx = Math.max(0, Math.min(hours.length - 1, rawHour - 8));
+    matrix[rowIdx][colIdx] += 1;
+    count += 1;
+  }
+  const days = hasSunday ? [...baseDays, "Dom"] : baseDays;
+  if (count === 0) {
+    return {
+      days,
+      hours,
+      values: null,
+      subtitle: "Últimos 30 días",
+      emptyMessage: "Aún no hay facturas con hora registrada en los últimos 30 días.",
+    };
+  }
+  const values = hasSunday ? matrix : matrix.slice(0, 6);
+  return {
+    days,
+    hours,
+    values,
+    subtitle: "Últimos 30 días",
+  };
+}
+
 export function reportData(sales, products, period, end, operational) {
   const start = period === "mes" ? end.slice(0, 8) + "01" : shiftDay(end, period === "7d" ? -6 : period === "30d" ? -29 : 0);
   const inPeriod = sales.filter(sale => {

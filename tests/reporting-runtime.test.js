@@ -7,7 +7,7 @@ import test from 'node:test';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright-core';
 import pg from 'pg';
-import { businessDay, monthlyActivity, reportData, salesCsv, salesTotal } from '../frontend/src/lib/sales-analytics.js';
+import { businessDay, monthlyActivity, peakHoursActivity, reportData, salesCsv, salesTotal } from '../frontend/src/lib/sales-analytics.js';
 import { buildOperational } from '../scripts/build-operational.mjs';
 import { migrateDatabase } from '../src/db/migrations.js';
 import { createApp } from '../src/server.js';
@@ -121,4 +121,31 @@ test('real reports export a confirmed sale and versioned settings and formulas s
   await page.getByRole('button', { name: /Me equivoqué/ }).click();
   await page.getByText(/anular indicando el motivo/).waitFor();
   assert.deepEqual(errors, []);
+});
+
+test('peakHoursActivity agrupa facturas activas de los últimos 30 días en horario America/Santo_Domingo', () => {
+  // 2026-11-25 es miércoles; 2026-11-25T14:30:00Z = 10:30 a. m. RD (Mié índice 2, hora 10a índice 2)
+  // 2026-11-26T02:15:00Z = 2026-11-25 10:15 p. m. RD (Mié índice 2, hora >= 6p clamp índice 10)
+  // 2026-11-22T15:00:00Z = Domingo 11:00 a. m. RD (Dom índice 6, hora 11a índice 3)
+  const empty = peakHoursActivity([{ date: '2026-11-25', status: 'activa' }], '2026-11-25');
+  assert.equal(empty.values, null);
+  assert.equal(empty.days.length, 6);
+
+  const monSat = peakHoursActivity([
+    { date: '2026-11-25T14:30:00.000Z', status: 'activa' },
+    { date: '2026-11-25T14:50:00.000Z', status: 'activa' },
+    { date: '2026-11-25T14:55:00.000Z', status: 'anulada' }, // excluida
+    { date: '2026-10-01T14:30:00.000Z', status: 'activa' },  // fuera de 30 días
+    { date: '2026-11-26T02:15:00.000Z', status: 'activa' },  // Mié 22:15 RD -> borde 6p
+  ], '2026-11-25');
+  assert.equal(monSat.days.length, 6);
+  assert.equal(monSat.values[2][2], 2);
+  assert.equal(monSat.values[2][10], 1);
+
+  const withSun = peakHoursActivity([
+    { date: '2026-11-22T15:00:00.000Z', status: 'activa' },
+  ], '2026-11-25');
+  assert.equal(withSun.days.length, 7);
+  assert.equal(withSun.days[6], 'Dom');
+  assert.equal(withSun.values[6][3], 1);
 });
