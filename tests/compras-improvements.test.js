@@ -143,9 +143,12 @@ test('Puntos 1-5 de Compras: Referencia global, fecha de factura, descripción c
   assert.equal(await codeInput.inputValue(), 'CAD-001', 'Enter debe seleccionar directamente el primer resultado sombreado');
   assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Cantidad');
 
-  // Confirmar referencia cargada, descripción completa y flujo exacto de teclado:
-  // Cantidad (Enter) -> P/Lista (100 -> Costo 112, Enter) -> Costo (Enter) -> agrega línea abajo
+  // Confirmar referencia cargada, descripción completa, P/Lista actual prellenado (450 / 1.12 = 401.79 sin tocar Costo 450.00)
+  // y flujo exacto de teclado: Cantidad (Enter) -> P/Lista (100 -> Costo 112, Enter) -> Costo (Enter) -> agrega línea abajo
   assert.equal(await main.getByLabel('Referencia', { exact: true }).inputValue(), 'OEM-94701-A');
+  assert.equal(await main.getByLabel('Precio de lista', { exact: true }).inputValue(), '401.79');
+  assert.equal(await main.getByLabel('Costo unitario', { exact: true }).inputValue(), '450.00');
+  await main.getByText(/P\/Lista act\.\s*RD\$\s*401\.79/).waitFor();
   await main.getByText(longDesc, { exact: true }).waitFor();
   const qtyInput = main.getByLabel('Cantidad', { exact: true });
   await qtyInput.fill('5');

@@ -1,4 +1,4 @@
-import { calculateCascadeFormula, calculateCascadeFromCost } from '../../../src/domain/pricing.js';
+import { calculateCascadeFormula, calculateCascadeFromCost, normalizeFormula } from '../../../src/domain/pricing.js';
 import { costUnits, decimalUnits, money, quantityUnits } from '../../../src/pos/operation-fields.js';
 
 export const purchaseDecimal = value => String(value).replace(/^\./, '0.').replace(/^0+(?=\d)/, '');
@@ -28,6 +28,28 @@ export function purchaseCostFromList(listPrice, formula) {
     return decimal;
   }
   return calculateCascadeFormula(decimal, formula, 0).cost;
+}
+
+export function purchaseListFromCost(cost, formula) {
+  if (cost === null || cost === undefined || cost === '') return '';
+  const decimal = purchaseDecimal(cost);
+  if (!decimal) return '';
+  try {
+    const unitCost = costUnits(decimal, 'el costo');
+    if (unitCost === 0n) return cleanPurchaseDecimal(decimal);
+    if (!formula || formula.costFactor === null || formula.costFactor === undefined || formula.costFactor === '') {
+      return cleanPurchaseDecimal(decimal);
+    }
+    const normalized = normalizeFormula({ costFactor: formula.costFactor, margins: { p1: 0, p2: 0, p3: 0 } }).costFactor;
+    const factorUnits = BigInt(normalized.replace('.', ''));
+    if (factorUnits === 0n) return cleanPurchaseDecimal(decimal);
+    const numerator = unitCost * 1_000_000n;
+    const denominator = factorUnits * 100n;
+    const cents = (numerator + denominator / 2n) / denominator;
+    return money(cents);
+  } catch {
+    return cleanPurchaseDecimal(decimal);
+  }
 }
 
 export function purchaseSuggestedPrices(cost, formula, rounding = 0) {

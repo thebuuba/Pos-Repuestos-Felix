@@ -4,6 +4,7 @@ import {
   purchaseCostFromList,
   purchaseDecimal,
   purchaseLineAmounts,
+  purchaseListFromCost,
   purchasePrices,
   purchaseSuggestedPrices,
   purchaseTotals,
@@ -44,6 +45,7 @@ var EMPTY_ENTRY = {
   category: "Motor",
   quantity: "1",
   listPrice: "",
+  listPriceAuto: false,
   cost: "",
   costManual: false,
 };
@@ -183,6 +185,12 @@ function PurchaseEntryForm({
     setDueDate(defaultDueDate(s?.creditDays ?? 30, invoiceDate));
     setDueDateManual(false);
     setEntry((e) => {
+      if (e.listPriceAuto && match) {
+        return {
+          ...e,
+          listPrice: purchaseListFromCost(match.costExact ?? String(match.cost), nextFormula),
+        };
+      }
       if (!e.listPrice.trim() || e.costManual) return e;
       try {
         return { ...e, cost: purchaseCostFromList(e.listPrice, nextFormula) };
@@ -191,6 +199,9 @@ function PurchaseEntryForm({
       }
     });
     setLines((prev) => prev.map((l) => {
+      if (l.listPriceAuto) {
+        return { ...l, listPrice: purchaseListFromCost(l.cost, nextFormula) };
+      }
       if (!l.listPrice || !String(l.listPrice).trim() || l.costManual) return l;
       try {
         return { ...l, cost: purchaseCostFromList(l.listPrice, nextFormula) };
@@ -219,6 +230,7 @@ function PurchaseEntryForm({
     return searchTopProducts(products, entry.code, 8);
   }, [products, entry.code]);
   const pickProduct = (product) => {
+    const currentCost = product.costExact ?? String(product.cost);
     setEntry((e) => ({
       ...e,
       code: product.code,
@@ -226,8 +238,9 @@ function PurchaseEntryForm({
       ...catalogFields(product),
       name: product.name,
       category: product.category || e.category,
-      listPrice: "",
-      cost: cleanPurchaseDecimal(product.costExact ?? String(product.cost)),
+      listPrice: purchaseListFromCost(currentCost, formula),
+      listPriceAuto: true,
+      cost: cleanPurchaseDecimal(currentCost),
       costManual: false,
     }));
     setProductMenuOpen(false);
@@ -306,13 +319,15 @@ function PurchaseEntryForm({
   const hasInvalidLine = !!totalError || invalidInvoiceDate || invalidDueDate || pricedLines.some(line => line.error || line.changed);
   const onCodeChange = (code) => {
     const found = findProduct(code);
+    const foundCost = found ? (found.costExact ?? String(found.cost)) : "";
     setEntry(e => ({
       ...e, code, ...catalogFields(found),
       reference: found ? (found.reference ?? "") : match ? "" : e.reference,
       name: found ? found.name : match ? "" : e.name,
       category: found ? found.category : e.category,
-      listPrice: found || match ? "" : e.listPrice,
-      cost: found ? cleanPurchaseDecimal(found.costExact ?? String(found.cost)) : match ? "" : e.cost,
+      listPrice: found ? purchaseListFromCost(foundCost, formula) : match ? "" : e.listPrice,
+      listPriceAuto: found ? true : match ? false : e.listPriceAuto,
+      cost: found ? cleanPurchaseDecimal(foundCost) : match ? "" : e.cost,
       costManual: false,
     }));
   };
@@ -323,29 +338,30 @@ function PurchaseEntryForm({
         return {
           ...e,
           listPrice: raw,
+          listPriceAuto: false,
           costManual: false,
           cost: match ? cleanPurchaseDecimal(match.costExact ?? String(match.cost)) : "",
         };
       }
       try {
         const computed = purchaseCostFromList(raw, formula);
-        return { ...e, listPrice: raw, cost: computed, costManual: false };
+        return { ...e, listPrice: raw, listPriceAuto: false, cost: computed, costManual: false };
       } catch {
-        return { ...e, listPrice: raw, costManual: false };
+        return { ...e, listPrice: raw, listPriceAuto: false, costManual: false };
       }
     });
   };
   const onLineListPriceChange = (lineKey, raw) => {
     const trimmed = raw.trim();
     if (!trimmed) {
-      updateLine(lineKey, { listPrice: raw, costManual: false });
+      updateLine(lineKey, { listPrice: raw, listPriceAuto: false, costManual: false });
       return;
     }
     try {
       const computed = purchaseCostFromList(raw, formula);
-      updateLine(lineKey, { listPrice: raw, cost: computed, costManual: false });
+      updateLine(lineKey, { listPrice: raw, listPriceAuto: false, cost: computed, costManual: false });
     } catch {
-      updateLine(lineKey, { listPrice: raw, costManual: false });
+      updateLine(lineKey, { listPrice: raw, listPriceAuto: false, costManual: false });
     }
   };
   const addLine = () => {
@@ -356,6 +372,7 @@ function PurchaseEntryForm({
       reference: entry.reference.trim(),
       name: entry.name.trim(), category: entry.category, quantity: purchaseDecimal(entry.quantity),
       listPrice: entry.listPrice.trim() ? purchaseDecimal(entry.listPrice) : "",
+      listPriceAuto: entry.listPriceAuto,
       cost: purchaseDecimal(entry.cost),
       costManual: entry.costManual,
       overrides: {},
@@ -907,6 +924,8 @@ function PurchaseEntryForm({
                   <span className="whitespace-nowrap">
                     {" · stock "}
                     {match.stock}
+                    {" · P/Lista act. "}
+                    {formatUnitMoney(purchaseListFromCost(match.costExact ?? match.cost, formula))}
                     {" · costo ant. "}
                     {formatUnitMoney(match.costExact ?? match.cost)}
                   </span>
@@ -1047,7 +1066,8 @@ function PurchaseEntryForm({
                             <p className="text-muted-foreground">Al aceptar se reemplazan la descripción, el costo y los precios de esta línea.</p>
                             <Button variant="outline" size="sm" onClick={() => {
                               updateLine(l.key, { ...catalogFields(existing), reference: existing.reference ?? "", name: existing.name, category: existing.category,
-                                listPrice: "", cost: cleanPurchaseDecimal(existing.costExact ?? String(existing.cost)), costManual: false, overrides: {} });
+                                listPrice: purchaseListFromCost(existing.costExact ?? String(existing.cost), formula), listPriceAuto: true,
+                                cost: cleanPurchaseDecimal(existing.costExact ?? String(existing.cost)), costManual: false, overrides: {} });
                               setError(null);
                             }}>Usar datos actuales</Button>
                           </>}
