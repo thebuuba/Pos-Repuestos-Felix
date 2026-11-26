@@ -60,8 +60,7 @@ const v10 = {
   ...v9,
   productos: [...v9.productos, 'referencia'],
 };
-// Parent rows precede children; reverse order is safe for transactional restore.
-export const tables = {
+const v11 = {
   ...v10,
   recordatorios: [
     'id', 'titulo', 'nota', 'fecha_limite', 'hora_limite', 'prioridad', 'estado',
@@ -69,9 +68,15 @@ export const tables = {
     'completado_en', 'activo', 'version', 'creado_en', 'actualizado_en',
   ],
 };
-export const CURRENT_BACKUP_VERSION = 11;
+// Parent rows precede children; reverse order is safe for transactional restore.
+export const tables = {
+  ...v11,
+  venta_detalles: [...v11.venta_detalles, 'costo_unitario'],
+  cuentas_taller_items: [...v11.cuentas_taller_items, 'costo_unitario'],
+};
+export const CURRENT_BACKUP_VERSION = 12;
 export const LEGACY_SYNC_BACKUP_VERSION = 9;
-const versionLayouts = { 2: v2, 3: v3, 4: v4, 5: v5, 6: v6, 7: v7, 8: v8, 9: v9, 10: v10, 11: tables };
+const versionLayouts = { 2: v2, 3: v3, 4: v4, 5: v5, 6: v6, 7: v7, 8: v8, 9: v9, 10: v10, 11: v11, 12: tables };
 export function layoutForVersion(version) {
   return versionLayouts[version] ?? null;
 }
@@ -87,7 +92,7 @@ function validIsoDate(value, label = 'Fecha documental inválida.') {
 }
 const preferenceFields = { redondeo: 'redondeo', nivel_precio_predeterminado: 'nivelPrecioPredeterminado',
   formato_impresion: 'formatoImpresion', permitir_stock_negativo: 'permitirStockNegativo' };
-const moneyColumns = new Set(['costo', 'precio', 'precio1', 'precio2', 'precio3', 'base', 'itbis', 'total','fondo','esperado','contado','ventas','monto','descuento']);
+const moneyColumns = new Set(['costo', 'costo_unitario', 'precio', 'precio1', 'precio2', 'precio3', 'base', 'itbis', 'total','fondo','esperado','contado','ventas','monto','descuento']);
 const optionalTextColumns = new Set(['rnc', 'tel', 'cliente_rnc', 'motivo', 'correo', 'direccion', 'contacto', 'pie_ticket', 'marca', 'categoria', 'ubicacion', 'referencia', 'nota', 'mecanico', 'vehiculo', 'retirado_por', 'hora_limite', 'creado_por', 'completado_por']);
 function validateBackupRow(table, row, columns, version) {
   if (!exactKeys(row, columns)) fail(`Fila inválida en ${table}.`);
@@ -96,10 +101,12 @@ function validateBackupRow(table, row, columns, version) {
     const value = row[key];
     if (value === null && ((table === 'turnos_caja' && ['cerrado_en','cerrado_por','esperado','contado','ventas'].includes(key)) ||
       (table === 'ventas' && ['caja_id','metodo_pago','anulada_en','anulada_por','motivo_anulacion','vencimiento'].includes(key)) ||
+      (table === 'venta_detalles' && key === 'costo_unitario') ||
       (table === 'compras' && ['vencimiento','anulada_en','anulada_por','motivo_anulacion'].includes(key)) ||
       (table === 'configuracion' && key === 'meta_diaria') ||
       (table === 'abonos_cuentas' && ['venta_id','compra_id','caja_id'].includes(key)) ||
       (table === 'cuentas_taller' && ['venta_id','cerrada_en'].includes(key)) ||
+      (table === 'cuentas_taller_items' && key === 'costo_unitario') ||
       (table === 'recordatorios' && ['fecha_limite','cliente_id','suplidor_id','producto_id','completado_por','completado_en'].includes(key)))) continue;
     if (key === 'id' || key === 'version' || key.endsWith('_id')) {
       if (value === null && ['venta_detalle_id', 'compra_detalle_id', 'formula_id'].includes(key)) continue;
@@ -115,7 +122,7 @@ function validateBackupRow(table, row, columns, version) {
       const pct = cents(value, key);
       if (pct > 10000n) fail('Porcentaje de descuento inválido.');
     } else if (key === 'codigo' && version >= 5) productCode(value);
-    else if (version >= 5 && ['costo','precio','precio1','precio2','precio3'].includes(key)) costUnits(value, key);
+    else if (version >= 5 && ['costo','costo_unitario','precio','precio1','precio2','precio3'].includes(key)) costUnits(value, key);
     else if (moneyColumns.has(key)) cents(value, key);
     else if (key === 'saldo_apertura') {
       if (!['string', 'number'].includes(typeof value)) fail('Saldo de apertura inválido.');

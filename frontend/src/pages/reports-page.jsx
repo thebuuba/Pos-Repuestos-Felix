@@ -103,7 +103,15 @@ function ReportsPage() {
           tone="success"
           label="Ganancia bruta"
           value={data.profit === null ? "—" : formatMoney(data.profit)}
-          hint={data.profit === null ? "Costo histórico de venta no registrado" : `Margen ${Number(data.net) ? ((data.profit / data.net) * 100).toFixed(1) : 0}% sobre venta neta`}
+          hint={
+            data.profit === null
+              ? "Costo histórico de venta no registrado"
+              : operational && data.valid.length === 0
+                ? "Sin ventas en el período"
+                : operational && data.profitCoverage && data.profitCoverage.costed < data.profitCoverage.total
+                  ? `Margen ${data.profitMargin.toFixed(1)}% · ${data.profitCoverage.costed} de ${data.profitCoverage.total} fact. con costo`
+                  : `Margen ${(data.profitMargin ?? (Number(data.net) ? (Number(data.profit) / Number(data.net)) * 100 : 0)).toFixed(1)}% sobre venta neta`
+          }
         />
         <MiniStat
           icon={Receipt}

@@ -293,7 +293,9 @@ function validDocument(row, sale) {
     : { suplidorId: id, suplidor: name, numero: name };
   return complete(row, header) && documentDate(row.fechaISO) && money(row.total) && row.items?.length > 0 &&
     records(row.items, line => complete(line, lineFields) && (sale
-      ? money(line.base) && money(line.itbis) && validUnit(line.precio,line.precioExacto)
+      ? money(line.base) && money(line.itbis) && validUnit(line.precio,line.precioExacto) &&
+        ((line.costoUnitario === undefined || line.costoUnitario === null) && (line.costoUnitarioExacto === undefined || line.costoUnitarioExacto === null)
+          || validUnit(line.costoUnitario, line.costoUnitarioExacto))
       : validUnit(line.costo,line.costoExacto) && validPrices(line,['p1','p2','p3'])));
 }
 function validWorkshopAccount(row) {

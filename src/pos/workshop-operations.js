@@ -30,6 +30,8 @@ export function presentWorkshopAccount(account, items = []) {
       nivelPrecio: item.nivel_precio,
       precio: Number(item.precio),
       precioExacto: String(item.precio),
+      costoUnitario: item.costo_unitario === null || item.costo_unitario === undefined ? null : Number(item.costo_unitario),
+      costoUnitarioExacto: item.costo_unitario === null || item.costo_unitario === undefined ? null : String(item.costo_unitario),
       cantidad: Number(decimalUnits(qty, 2)),
       cantidadDevuelta: Number(decimalUnits(returned, 2)),
       cantidadNeta: Number(decimalUnits(net, 2)),
@@ -87,6 +89,7 @@ async function dispatchLines(client, accountId, label, rawItems, withdrawnBy, us
       fail('El artículo cambió. Actualiza antes de despachar para confirmar su precio y existencia.', 409);
     }
     const frozenPrice = decimalUnits(costUnits(p[item.nivelPrecio], 'el precio'), 4);
+    const frozenCost = decimalUnits(costUnits(p.costo, 'el costo'), 4);
     p.stock -= item.quantity;
     const stockText = quantityText(p.stock);
     await client.query(
@@ -94,9 +97,9 @@ async function dispatchLines(client, accountId, label, rawItems, withdrawnBy, us
       [p.id, stockText],
     );
     const workshopItem = await client.query(
-      `INSERT INTO cuentas_taller_items(cuenta_id,producto_id,codigo,nombre,gravado,nivel_precio,precio,cantidad,cantidad_devuelta,despachado_por,retirado_por,creado_en)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,0,$9,$10,COALESCE($11::timestamptz,clock_timestamp())) RETURNING id`,
-      [accountId, p.id, p.codigo, p.nombre, Boolean(p.gravado), item.nivelPrecio, frozenPrice, quantityText(item.quantity), user, withdrawnBy, occurredAt ?? null],
+      `INSERT INTO cuentas_taller_items(cuenta_id,producto_id,codigo,nombre,gravado,nivel_precio,precio,costo_unitario,cantidad,cantidad_devuelta,despachado_por,retirado_por,creado_en)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,0,$10,$11,COALESCE($12::timestamptz,clock_timestamp())) RETURNING id`,
+      [accountId, p.id, p.codigo, p.nombre, Boolean(p.gravado), item.nivelPrecio, frozenPrice, frozenCost, quantityText(item.quantity), user, withdrawnBy, occurredAt ?? null],
     );
     context?.createdWorkshopItems?.push(Number(workshopItem.rows[0].id));
     const reason = (withdrawnBy ? `${reasonPrefix} · Retiró: ${withdrawnBy}` : reasonPrefix).slice(0, 2000);
@@ -356,14 +359,24 @@ export async function billWorkshopAccount(client, accountId, body, actor, occurr
   const saleId = Number(header.id);
 
   // El inventario ya se descontó en cada despacho; solo se generan las líneas de la factura.
+  const missingCostIds = [...new Set(
+    lines
+      .filter(({ item }) => item.costo_unitario === null || item.costo_unitario === undefined)
+      .map(({ item }) => Number(item.producto_id)),
+  )];
+  const fallbackCosts = missingCostIds.length
+    ? new Map((await client.query('SELECT id, costo FROM productos WHERE id=ANY($1::bigint[])', [missingCostIds])).rows.map(r => [Number(r.id), r.costo]))
+    : new Map();
   for (const line of lines) {
     const { item, netQty } = line;
+    const rawCost = item.costo_unitario ?? fallbackCosts.get(Number(item.producto_id)) ?? null;
+    const unitCost = rawCost === null || rawCost === undefined ? null : decimalUnits(costUnits(rawCost, 'el costo'), 4);
     await client.query(
-      `INSERT INTO venta_detalles(venta_id,producto_id,codigo,nombre,cantidad,nivel_precio,precio,base,itbis,total)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      `INSERT INTO venta_detalles(venta_id,producto_id,codigo,nombre,cantidad,nivel_precio,precio,costo_unitario,base,itbis,total)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
       [
         saleId, item.producto_id, item.codigo, item.nombre, quantityText(netQty),
-        item.nivel_precio, decimalUnits(line.price, 4), money(line.base), money(line.tax), money(line.total),
+        item.nivel_precio, decimalUnits(line.price, 4), unitCost, money(line.base), money(line.tax), money(line.total),
       ],
     );
   }

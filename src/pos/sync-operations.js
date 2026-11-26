@@ -44,7 +44,7 @@ export function operationEffect(method, path, body, result, backup) {
   if (!row) fail('No se encontró el resultado durable de la operación.', 503);
   const immutable = ['ventas', 'compras', 'turnos_caja', 'movimientos_caja', 'abonos_cuentas', 'cuentas_taller'].includes(table);
   const values = (source, dates) => Object.fromEntries(Object.entries(source)
-    .filter(([key]) => key !== 'id' && key !== 'version' && !key.endsWith('_id') &&
+    .filter(([key]) => key !== 'id' && key !== 'version' && key !== 'costo_unitario' && !key.endsWith('_id') &&
       (dates || !key.endsWith('_en')))
     .map(([key, value]) => [key, key.endsWith('_en') && value !== null ? instant(value) : value]));
   const effect = values(row, immutable);

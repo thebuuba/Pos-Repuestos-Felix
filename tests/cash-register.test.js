@@ -64,7 +64,7 @@ test('caja persists, separates payment methods, rejects stale closes and restore
   await pool.end(); pool = new pg.Pool({ connectionString: database.connectionString, options: '-c role=pos_app' });
   assert.equal((await read()).state.caja.closures.length, 1);
   const backup = JSON.parse(JSON.stringify(await readSnapshot(pool, 'Prueba', true)));
-  assert.equal(backup.version, 11);
+  assert.equal(backup.version, 12);
   const invalid = structuredClone(backup); invalid.tables.turnos_caja[0].esperado = '99.00';
   await assert.rejects(write('restore', { backup: invalid, revision: (await read()).revision }), { status: 400 });
   const restored = await write('restore', { backup, revision: (await read()).revision });
@@ -222,17 +222,21 @@ test('a v5 backup restores business records without creating cash turns or payme
   for (const sale of backup.tables.ventas) {
     for (const col of ['caja_id', 'metodo_pago', 'descuento_porcentaje', 'descuento', 'estado', 'anulada_en', 'anulada_por', 'motivo_anulacion', 'vencimiento', 'version']) delete sale[col];
   }
+  for (const d of backup.tables.venta_detalles) delete d.costo_unitario;
   for (const c of backup.tables.compras) { for (const col of ['condicion', 'vencimiento', 'version', 'estado', 'anulada_en', 'anulada_por', 'motivo_anulacion']) delete c[col]; }
   for (const rows of Object.values(backup.tables)) for (const row of rows) {
     for (const key of Object.keys(row)) if (key.endsWith('_en') && row[key] !== null) row[key] = new Date(row[key]).toISOString();
   }
   const restored = (await restoreCashBackup(backup)).state;
-  assert.deepEqual(restored.facturas, before.facturas);
+  assert.deepEqual(restored.facturas, before.facturas.map(f => ({
+    ...f,
+    items: f.items.map(item => ({ ...item, costoUnitario: null, costoUnitarioExacto: null })),
+  })));
   assert.equal(restored.caja.session.open, false);
   assert.deepEqual(restored.caja.closures, []);
   assert.deepEqual(restored.caja.movements, []);
   const current = await exportCashBackup();
-  assert.equal(current.version, 11);
+  assert.equal(current.version, 12);
   assert.deepEqual(current.tables.turnos_caja, []);
   assert.deepEqual(current.tables.movimientos_caja, []);
   assert.ok(current.tables.ventas.every(sale => sale.caja_id === null && sale.metodo_pago === null));

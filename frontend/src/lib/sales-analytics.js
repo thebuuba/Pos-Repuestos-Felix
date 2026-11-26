@@ -1,4 +1,4 @@
-import { decimalUnits } from "../../../src/pos/operation-fields.js";
+import { costUnits, decimalUnits, quantityUnits } from "../../../src/pos/operation-fields.js";
 const zone = "America/Santo_Domingo";
 const dayFormat = new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" });
 const hourFormat = new Intl.DateTimeFormat("es-DO", { timeZone: zone, hour: "2-digit", hourCycle: "h23" });
@@ -11,6 +11,11 @@ const cents = value => {
   return BigInt(whole + fraction.padEnd(2, "0"));
 };
 const money = amount => decimalUnits(amount, 2);
+const lineCostCents = (costUnit, quantity) => {
+  const unit = costUnits(costUnit, "el costo");
+  const qty = quantityUnits(quantity, "la cantidad");
+  return (unit * qty + 5000n) / 10000n;
+};
 export const averageAmount = (total, count) => {
   if (!count) return "0.00";
   const n = BigInt(count);
@@ -76,8 +81,9 @@ export function peakHoursActivity(sales, today) {
   for (let i = 0; i < sales.length; i++) {
     const sale = sales[i];
     if (!sale || sale.status === "anulada") continue;
-    if (typeof sale.date !== "string" || sale.date.length <= 10) continue;
-    const parsed = new Date(sale.date);
+    const ts = sale.createdAt || sale.date;
+    if (typeof ts !== "string" || ts.length <= 10) continue;
+    const parsed = new Date(ts);
     if (!Number.isFinite(parsed.getTime())) continue;
     const dayIso = businessDay(parsed);
     if (dayIso < start || dayIso > today) continue;
@@ -119,7 +125,7 @@ export function reportData(sales, products, period, end, operational) {
   const articles = new Map(), categorySales = new Map(), daySales = new Map(), hourSales = new Map();
   const fiscalGroups = new Map((operational ? [] : ["B01", "B02", "B14", "B15"])
     .map(type => [type, { type, count: 0, base: 0n, itbis: 0n }]));
-  let net = 0n, tax = 0n, cost = 0n;
+  let net = 0n, tax = 0n, cost = 0n, costedNet = 0n, costedSales = 0;
   for (const sale of valid) {
     const base = sale.netBase !== undefined ? cents(sale.netBase) : cents(sale.subtotal) - cents(sale.discount ?? 0);
     const itbis = cents(sale.itbis);
@@ -128,7 +134,8 @@ export function reportData(sales, products, period, end, operational) {
     tax += itbis;
     const day = businessDay(sale.date);
     daySales.set(day, (daySales.get(day) ?? 0n) + amount);
-    const hour = sale.date.length > 10 ? Number(hourFormat.format(new Date(sale.date))) : null;
+    const ts = sale.createdAt || sale.date;
+    const hour = typeof ts === "string" && ts.length > 10 && Number.isFinite(Date.parse(ts)) ? Number(hourFormat.format(new Date(ts))) % 24 : null;
     hourSales.set(hour, (hourSales.get(hour) ?? 0n) + amount);
     const type = operational && !sale.ncf ? "Sin NCF" : sale.comprobante;
     const group = fiscalGroups.get(type) ?? { type, count: 0, base: 0n, itbis: 0n };
@@ -140,11 +147,14 @@ export function reportData(sales, products, period, end, operational) {
     const rawLinesTotal = rawLineBases.reduce((sum, val) => sum + val, 0n);
     const hasDiscount = cents(sale.discount ?? 0) > 0n && rawLinesTotal > 0n && rawLinesTotal !== base;
     let allocated = 0n;
+    let saleCost = 0n;
+    let saleHasAllCosts = sale.lines.length > 0;
     for (let idx = 0; idx < sale.lines.length; idx++) {
       const line = sale.lines[idx];
       const product = catalog.get(line.productId);
-      const row = articles.get(line.productId) ?? { id: line.productId, name: line.name, code: line.code, qty: 0n, revenue: 0n, cost: 0n };
+      const row = articles.get(line.productId) ?? { id: line.productId, name: line.name, code: line.code, qty: 0n, revenue: 0n, cost: 0n, costCount: 0, lineCount: 0 };
       row.qty += cents(line.quantity);
+      row.lineCount += 1;
       const revenue = hasDiscount
         ? (idx === sale.lines.length - 1 ? base - allocated : (base * rawLineBases[idx] + rawLinesTotal / 2n) / rawLinesTotal)
         : rawLineBases[idx];
@@ -153,11 +163,24 @@ export function reportData(sales, products, period, end, operational) {
       if (!operational) {
         const lineCost = cents(((product?.cost ?? 0) * line.quantity).toFixed(2));
         row.cost += lineCost;
+        row.costCount += 1;
         cost += lineCost;
+      } else if (line.costUnit !== null && line.costUnit !== undefined && line.costUnit !== "") {
+        const lineCost = lineCostCents(line.costUnit, line.quantity);
+        row.cost += lineCost;
+        row.costCount += 1;
+        saleCost += lineCost;
+      } else {
+        saleHasAllCosts = false;
       }
       articles.set(line.productId, row);
       const category = product?.category || "Sin categoría";
       categorySales.set(category, (categorySales.get(category) ?? 0n) + revenue);
+    }
+    if (operational && saleHasAllCosts) {
+      cost += saleCost;
+      costedNet += base;
+      costedSales += 1;
     }
   }
   const series = [];
@@ -170,11 +193,32 @@ export function reportData(sales, products, period, end, operational) {
     }
   }
   const top = [...articles.values()].sort((a, b) => Number(b.revenue - a.revenue)).slice(0, 7)
-    .map(row => ({ ...row, qty: Number(money(row.qty)).toLocaleString("es-DO"), revenue: money(row.revenue), profit: operational ? null : money(row.revenue - row.cost) }));
+    .map(row => ({
+      ...row,
+      qty: Number(money(row.qty)).toLocaleString("es-DO"),
+      revenue: money(row.revenue),
+      profit: !operational
+        ? money(row.revenue - row.cost)
+        : row.lineCount > 0 && row.costCount === row.lineCount
+          ? money(row.revenue - row.cost)
+          : null,
+    }));
   const categories = [...categorySales].sort((a, b) => Number(b[1] - a[1])).map(([category, amount]) => [category, money(amount)]);
   const fiscal = [...fiscalGroups.values()].map(group => ({ ...group, base: money(group.base), itbis: money(group.itbis) }));
+  const profit = !operational
+    ? money(net - cost)
+    : valid.length === 0
+      ? money(0n)
+      : costedSales > 0
+        ? money(costedNet - cost)
+        : null;
+  const profitBase = !operational ? net : costedNet;
+  const profitMargin = profit !== null && profitBase > 0n
+    ? (Number(profit) / Number(money(profitBase))) * 100
+    : 0;
   return { inPeriod, valid, series, categories, top, fiscal, methods: paymentGroups(valid, operational),
-    total: salesTotal(valid), net: money(net), itbis: money(tax), profit: operational ? null : money(net - cost),
+    total: salesTotal(valid), net: money(net), itbis: money(tax), profit, profitMargin,
+    profitCoverage: operational ? { costed: costedSales, total: valid.length } : null,
     voided: inPeriod.length - valid.length };
 }
 

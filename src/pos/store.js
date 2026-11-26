@@ -67,6 +67,7 @@ function presentSale(v, items) {
     id: number(v.id), version: number(v.version), cajaId: v.caja_id === null ? null : number(v.caja_id),
     metodoPago: v.metodo_pago, clienteId: number(v.cliente_id), cliente: v.cliente_nombre, clienteRnc: v.cliente_rnc,
     ncf: v.ncf, tipoComprobante: v.tipo_comprobante, fecha: displayDate(v.fecha), fechaISO: date(v.fecha),
+    creadoEn: v.creado_en ? iso(v.creado_en) : null,
     vencimiento: v.vencimiento ? date(v.vencimiento) : null, condicion: v.condicion,
     descuentoPorcentaje: Number(v.descuento_porcentaje), descuento: Number(v.descuento),
     base: Number(v.base), itbis: Number(v.itbis), total: Number(v.total),
@@ -178,6 +179,8 @@ export async function snapshot(client, databaseLabel, { compact = false } = {}) 
         'id', id, 'productoId', producto_id, 'codigo', codigo, 'nombre', nombre,
         'cant', cantidad::double precision, 'subtotal', total::double precision,
         'precio', precio::double precision, 'precioExacto', precio::text,
+        'costoUnitario', CASE WHEN costo_unitario IS NULL THEN NULL ELSE costo_unitario::double precision END,
+        'costoUnitarioExacto', costo_unitario::text,
         'base', base::double precision, 'itbis', itbis::double precision
       ) ORDER BY id) AS items
       FROM public.venta_detalles GROUP BY venta_id
@@ -196,6 +199,7 @@ export async function snapshot(client, databaseLabel, { compact = false } = {}) 
       SELECT cuenta_id, json_agg(json_build_object(
         'id', id, 'producto_id', producto_id, 'codigo', codigo, 'nombre', nombre,
         'gravado', gravado, 'nivel_precio', nivel_precio, 'precio', precio::text,
+        'costo_unitario', costo_unitario::text,
         'cantidad', cantidad::text, 'cantidad_devuelta', cantidad_devuelta::text,
         'despachado_por', despachado_por, 'retirado_por', retirado_por, 'creado_en', creado_en
       ) ORDER BY id) AS items
@@ -229,7 +233,7 @@ export async function snapshot(client, databaseLabel, { compact = false } = {}) 
       'ventas', COALESCE((SELECT json_agg(json_build_object(
         'id', v.id, 'version', v.version, 'caja_id', v.caja_id, 'metodo_pago', v.metodo_pago,
         'cliente_id', v.cliente_id, 'cliente_nombre', v.cliente_nombre, 'cliente_rnc', v.cliente_rnc,
-        'ncf', v.ncf, 'tipo_comprobante', v.tipo_comprobante, 'fecha', v.fecha::text,
+        'ncf', v.ncf, 'tipo_comprobante', v.tipo_comprobante, 'fecha', v.fecha::text, 'creado_en', v.creado_en,
         'vencimiento', v.vencimiento::text, 'condicion', v.condicion,
         'descuento_porcentaje', v.descuento_porcentaje::text, 'descuento', v.descuento::text,
         'base', v.base::text, 'itbis', v.itbis::text, 'total', v.total::text,
@@ -383,7 +387,7 @@ async function fetchSalesSlice(client, ids) {
     SELECT COALESCE(json_agg(json_build_object(
       'id', v.id, 'version', v.version, 'caja_id', v.caja_id, 'metodo_pago', v.metodo_pago,
       'cliente_id', v.cliente_id, 'cliente_nombre', v.cliente_nombre, 'cliente_rnc', v.cliente_rnc,
-      'ncf', v.ncf, 'tipo_comprobante', v.tipo_comprobante, 'fecha', v.fecha::text,
+      'ncf', v.ncf, 'tipo_comprobante', v.tipo_comprobante, 'fecha', v.fecha::text, 'creado_en', v.creado_en,
       'vencimiento', v.vencimiento::text, 'condicion', v.condicion,
       'descuento_porcentaje', v.descuento_porcentaje::text, 'descuento', v.descuento::text,
       'base', v.base::text, 'itbis', v.itbis::text, 'total', v.total::text,
@@ -393,6 +397,8 @@ async function fetchSalesSlice(client, ids) {
         'id', d.id, 'productoId', d.producto_id, 'codigo', d.codigo, 'nombre', d.nombre,
         'cant', d.cantidad::double precision, 'subtotal', d.total::double precision,
         'precio', d.precio::double precision, 'precioExacto', d.precio::text,
+        'costoUnitario', CASE WHEN d.costo_unitario IS NULL THEN NULL ELSE d.costo_unitario::double precision END,
+        'costoUnitarioExacto', d.costo_unitario::text,
         'base', d.base::double precision, 'itbis', d.itbis::double precision
       ) ORDER BY d.id) FROM public.venta_detalles d WHERE d.venta_id=v.id), '[]'::json)
     ) ORDER BY v.id), '[]'::json) AS rows
@@ -829,8 +835,9 @@ async function sale(client, body, occurredAt, allowNcf = true) {
     [customer.id, customer.nombre, customer.rnc, body.condicion, body.tipoComprobante, ncf, money(totals.discountBps), money(totals.discount), money(totals.base), money(totals.tax), money(totals.total), turn.id, body.metodoPago, dueDate, occurredAt ?? null, saleDate])).rows[0];
   for (const line of lines) {
     const { item, p } = line;
-    const detail = (await client.query(`INSERT INTO venta_detalles(venta_id,producto_id,codigo,nombre,cantidad,nivel_precio,precio,base,itbis,total)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`, [header.id, p.id, p.codigo, p.nombre, quantityText(item.quantity), item.nivelPrecio, decimalUnits(line.price, 4), money(line.base), money(line.tax), money(line.total)])).rows[0];
+    const unitCost = decimalUnits(costUnits(p.costo, 'el costo'), 4);
+    const detail = (await client.query(`INSERT INTO venta_detalles(venta_id,producto_id,codigo,nombre,cantidad,nivel_precio,precio,costo_unitario,base,itbis,total)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`, [header.id, p.id, p.codigo, p.nombre, quantityText(item.quantity), item.nivelPrecio, decimalUnits(line.price, 4), unitCost, money(line.base), money(line.tax), money(line.total)])).rows[0];
     p.stock -= item.quantity;
     await client.query('UPDATE productos SET stock=$2,version=version+1,actualizado_en=now() WHERE id=$1', [p.id, quantityText(p.stock)]);
     await movement(client, p.id, -item.quantity, p.stock, 'venta', detail.id, '', occurredAt);

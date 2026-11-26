@@ -610,3 +610,7 @@ DO $$ DECLARE rol text; BEGIN
 END $$;
 GRANT SELECT,INSERT,UPDATE,DELETE ON public.recordatorios TO pos_app;
 GRANT USAGE,SELECT,UPDATE ON SEQUENCE public.recordatorios_id_seq TO pos_app;
+
+-- Costo unitario histórico de cada línea vendida para cálculo de ganancia bruta.
+ALTER TABLE public.venta_detalles
+  ADD COLUMN costo_unitario numeric(16,4) CHECK(costo_unitario IS NULL OR costo_unitario BETWEEN 0 AND 999999999999.9999);

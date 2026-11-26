@@ -61,7 +61,7 @@ function presentationDocsAndCash(state, databaseId) {
   }
   const sales = state?.facturas.map(s => ({
     id: s.id, version: s.version ?? 1, databaseId, customerId: s.clienteId, customerName: s.cliente, customerRnc: s.clienteRnc,
-    number: formatSaleNumber(s.id), date: s.fechaISO, dueDate: s.vencimiento ?? null,
+    number: formatSaleNumber(s.id), date: s.fechaISO, createdAt: s.creadoEn ?? null, dueDate: s.vencimiento ?? null,
     ncf: s.ncf, comprobante: s.tipoComprobante, condition: s.condicion === 'Credito' ? 'credito' : 'contado',
     method: s.metodoPago, paymentMethod: s.metodoPago, cashSessionId: s.cajaId,
     status: s.estado === 'anulada' ? 'anulada' : s.condicion === 'Credito' ? ((s.pagado ?? 0) >= s.total ? 'pagada' : 'pendiente') : 'pagada',
@@ -69,7 +69,14 @@ function presentationDocsAndCash(state, databaseId) {
     discountPercent: s.descuentoPorcentaje ?? 0, discount: s.descuento ?? 0,
     subtotal: s.base, netBase: s.base, itbis: s.itbis, total: s.total, paid: s.pagado ?? 0,
     payments: paymentsBySale.get(s.id) ?? [],
-    lines: s.items.map(line => ({ ...documentLine(line), price: line.precio, priceExact: line.precioExacto, base: line.base, itbis: line.itbis })),
+    lines: s.items.map(line => ({
+      ...documentLine(line),
+      price: line.precio,
+      priceExact: line.precioExacto,
+      costUnit: line.costoUnitarioExacto ?? (line.costoUnitario !== null && line.costoUnitario !== undefined ? String(line.costoUnitario) : null),
+      base: line.base,
+      itbis: line.itbis,
+    })),
   })).sort(newestFirst) ?? [];
   const purchases = state?.compras.map(c => ({
     id: c.id, version: c.version ?? 1, databaseId, supplierId: c.suplidorId, supplierName: c.suplidor,

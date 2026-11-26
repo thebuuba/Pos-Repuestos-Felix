@@ -59,11 +59,22 @@ test('real reports export a confirmed sale and versioned settings and formulas s
     return (await response.json()).result.id;
   };
   const productoId = await post('productos', { nombre: 'Arandela', codigo: 'REP-1', stock: 3,
-    costo: 1, precio1: 118, precio2: 118, precio3: 118, gravado: true });
+    costo: 40, precio1: 118, precio2: 118, precio3: 118, gravado: true });
   const clienteId = await post('clientes', { nombre: 'Cliente de reportes', limiteCredito: 500 });
+  const suplidorId = await post('suplidores', { nombre: 'Suplidor de prueba' });
   const cajaId = await post('caja/abrir', { monto: 0 });
   await post('ventas', { cajaId, metodoPago: 'credito', clienteId, condicion: 'Credito', tipoComprobante: 'B02',
     items: [{ productoId, cantidad: 1, nivelPrecio: 'precio1' }] });
+  // Una compra posterior que cambia el costo en catálogo NO debe alterar el costo histórico de la venta anterior.
+  const prodAfterSale = (await snapshot()).state.productos.find(p => p.id === productoId);
+  await post('compras', {
+    suplidorId, numero: 'FAC-COSTO-2',
+    items: [{ productoId, versionProducto: prodAfterSale.version, codigo: 'REP-1', nombre: 'Arandela', cantidad: 2, costo: 85, precio1: 118, precio2: 118, precio3: 118 }],
+  });
+  const afterBuy = await snapshot();
+  assert.equal(afterBuy.state.facturas[0].items[0].costoUnitario, 40);
+  assert.equal(afterBuy.state.facturas[0].items[0].costoUnitarioExacto, '40.0000');
+  assert.ok(afterBuy.state.facturas[0].creadoEn);
   browser = await chromium.launch({ channel: 'msedge', headless: true });
   const page = await browser.newPage({ timezoneId: 'Asia/Tokyo', locale: 'es-DO' });
   page.setDefaultTimeout(7000);
@@ -74,6 +85,9 @@ test('real reports export a confirmed sale and versioned settings and formulas s
   await page.getByText('1 cliente con saldo pendiente').waitFor();
   await page.goto(origin + '/reportes');
   await page.getByRole('button', { name: 'Hoy', exact: true }).click();
+  // Venta neta RD$ 100.00 - costo histórico congelado RD$ 40.00 = Ganancia bruta RD$ 60.00 (Margen 60.0%)
+  await page.getByText('RD$ 60.00').first().waitFor();
+  await page.getByText('Margen 60.0% sobre venta neta').waitFor();
   const search = page.getByLabel('Buscar facturas');
   await search.fill('inexistente');
   await page.getByText('Sin facturas', { exact: true }).waitFor();
@@ -143,9 +157,40 @@ test('peakHoursActivity agrupa facturas activas de los últimos 30 días en hora
   assert.equal(monSat.values[2][10], 1);
 
   const withSun = peakHoursActivity([
-    { date: '2026-11-22T15:00:00.000Z', status: 'activa' },
+    { date: '2026-11-22', createdAt: '2026-11-22T15:00:00.000Z', status: 'activa' },
   ], '2026-11-25');
   assert.equal(withSun.days.length, 7);
   assert.equal(withSun.days[6], 'Dom');
   assert.equal(withSun.values[6][3], 1);
+});
+
+test('reportData calcula ganancia bruta exacta desde costUnit histórico y cubre ventas parciales', () => {
+  const s1 = {
+    number: 'F-000001', customerName: 'Taller A', date: '2026-11-25', createdAt: '2026-11-25T15:00:00.000Z',
+    condition: 'contado', comprobante: 'B02', subtotal: 200, netBase: 200, discount: 0, itbis: 36, total: 236,
+    lines: [{ productId: 1, name: 'Bujía', code: 'BUJ-1', quantity: 2, base: 200, subtotal: 236, costUnit: '62.5000' }],
+  };
+  const s2 = {
+    number: 'F-000002', customerName: 'Taller B', date: '2026-11-25', createdAt: '2026-11-25T16:00:00.000Z',
+    condition: 'contado', comprobante: 'B02', subtotal: 100, netBase: 100, discount: 0, itbis: 18, total: 118,
+    lines: [{ productId: 2, name: 'Filtro', code: 'FIL-1', quantity: 1, base: 100, subtotal: 118, costUnit: null }],
+  };
+  // Solo s1 tiene costo histórico: 200 - (62.50 * 2 = 125) = 75.00
+  const full = reportData([s1], [], 'hoy', '2026-11-25', true);
+  assert.equal(full.profit, '75.00');
+  assert.equal(Number(full.profitMargin.toFixed(1)), 37.5);
+  assert.deepEqual(full.profitCoverage, { costed: 1, total: 1 });
+  assert.equal(full.top[0].profit, '75.00');
+
+  // Parcial: 1 de 2 facturas con costo
+  const partial = reportData([s1, s2], [], 'hoy', '2026-11-25', true);
+  assert.equal(partial.profit, '75.00');
+  assert.deepEqual(partial.profitCoverage, { costed: 1, total: 2 });
+  assert.equal(partial.top.find(r => r.id === 1).profit, '75.00');
+  assert.equal(partial.top.find(r => r.id === 2).profit, null);
+
+  // Sin ventas en el período
+  const none = reportData([], [], 'hoy', '2026-11-25', true);
+  assert.equal(none.profit, '0.00');
+  assert.deepEqual(none.profitCoverage, { costed: 0, total: 0 });
 });

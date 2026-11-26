@@ -76,7 +76,7 @@ test('Puntos 1-5 de Compras: Referencia global, fecha de factura, descripción c
 
   // Validar respaldo v11 con referencia + compatibilidad hacia atrás con respaldo v9
   const backupV10 = await (await fetch(origin + '/api/backup')).json();
-  assert.equal(backupV10.version, 11);
+  assert.equal(backupV10.version, 12);
   assert.equal(backupV10.tables.productos.find(p => p.codigo === 'CAD-001').referencia, 'OEM-94701-A');
   const backupV9 = structuredClone(backupV10);
   backupV9.version = 9;

@@ -145,7 +145,7 @@ test('Recordatorios E2E: API idempotente, concurrencia, permisos cajero/dueño, 
   // 2. Respaldo v11 incluye recordatorios y negociación v10 sigue funcionando para clientes Windows anteriores
   const backupV11 = await (await ownerCtx.request.get(origin + '/api/backup')).json();
   assert.equal(backupV11.version, CURRENT_BACKUP_VERSION);
-  assert.equal(backupV11.version, 11);
+  assert.equal(backupV11.version, 12);
   assert.equal(backupV11.tables.recordatorios.length, 1);
   const bootV10 = await readSyncBootstrap(adminPool, 'Nube', undefined, { backupVersion: 10 });
   assert.equal(bootV10.backup.version, 10);
