@@ -1,5 +1,5 @@
 const PRICE_KEYS = ['p1', 'p2', 'p3'];
-const FACTOR_SCALE = 1_000n;
+const FACTOR_SCALE = 1_000_000n;
 const PERCENT_SCALE = 1_000_000n; // 100 percent at four decimal places.
 const MAX_CENTS = 99_999_999_999_999n;
 const COST_UNITS_PER_CENT = 100n;
@@ -22,7 +22,7 @@ function decimalString(value, scale) {
 }
 
 function formulaUnits(formula) {
-  const costFactor = scaledDecimal(formula?.costFactor, 6, 3, 'el factor de costo');
+  const costFactor = scaledDecimal(formula?.costFactor, 6, 6, 'el factor de costo');
   if (costFactor === 0n) throw new RangeError('El factor de costo debe ser mayor que cero.');
   const margins = Object.fromEntries(PRICE_KEYS.map((key) => [
     key,
@@ -34,7 +34,7 @@ function formulaUnits(formula) {
 export function normalizeFormula(formula) {
   const { costFactor, margins } = formulaUnits(formula);
   return {
-    costFactor: decimalString(costFactor, 3),
+    costFactor: decimalString(costFactor, 6),
     margins: Object.fromEntries(PRICE_KEYS.map((key) => [key, decimalString(margins[key], 4)])),
   };
 }

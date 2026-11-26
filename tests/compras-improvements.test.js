@@ -367,10 +367,10 @@ test('Puntos 1-5 de Compras: Referencia global, fecha de factura, descripción c
   const listRow = main.getByRole('row').filter({ hasText: 'Suplidor Cálculo Directo' });
   await listRow.getByText(/×1\.15/).waitFor();
   await listRow.getByRole('button', { name: 'Editar cálculo de Suplidor Cálculo Directo' }).click();
-  await sheet.getByLabel('Factor de costo').fill('1.2');
+  await sheet.getByLabel('Factor de costo').fill('1.1092');
   await sheet.getByRole('button', { name: 'Guardar cambios' }).click();
   await sheet.waitFor({ state: 'hidden' });
-  await listRow.getByText(/×1\.2/).waitFor();
+  await listRow.getByText(/×1\.1092/).waitFor();
   await listRow.getByRole('link', { name: 'Registrar compra con Suplidor Cálculo Directo' }).click();
   await page.waitForURL(new RegExp(`/compras\\?suplidor=${customSupp.result.id}$`));
   await page.goto(origin + '/suplidores');
@@ -379,7 +379,7 @@ test('Puntos 1-5 de Compras: Referencia global, fecha de factura, descripción c
   const finalState = (await (await fetch(origin + '/api/state')).json()).state;
   const linkedFormula = finalState.formulas.find(f => f.nombre === 'Fórmula Suplidor Cálculo Directo');
   assert.ok(linkedFormula, 'Debe existir la fórmula creada desde Suplidores');
-  assert.equal(linkedFormula.factorCosto, 1.2);
+  assert.equal(linkedFormula.factorCosto, 1.1092);
   assert.equal(finalState.formulas.filter(f => f.nombre === 'Fórmula Suplidor Cálculo Directo').length, 1);
   assert.equal(finalState.suplidores.find(s => s.id === customSupp.result.id).formulaId, linkedFormula.id);
   assert.deepEqual(errors, []);

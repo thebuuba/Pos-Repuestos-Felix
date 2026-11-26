@@ -131,7 +131,7 @@ function PriceFormulasEditor({ formulas, rounding, usage, onSave, onDelete, runt
                   </p>
                   <Input
                     type="number"
-                    step="0.001"
+                    step="any"
                     disabled={locked}
                     aria-label="Ajuste costo"
                     value={f.costFactor}
@@ -156,7 +156,7 @@ function PriceFormulasEditor({ formulas, rounding, usage, onSave, onDelete, runt
                     <Input
                       type="number"
                       disabled={locked}
-                      step="0.0001"
+                      step="any"
                       aria-label={aria}
                       value={f.margins[key]}
                       onChange={(e) =>

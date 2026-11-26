@@ -9,16 +9,19 @@ const maxCost = '999999999999.99';
 
 test('normalizes a formula at the supported scales', () => {
   assert.deepEqual(normalizeFormula(f), {
-    costFactor: '1.180', margins: { p1: '35.0000', p2: '25.0000', p3: '15.0000' },
+    costFactor: '1.180000', margins: { p1: '35.0000', p2: '25.0000', p3: '15.0000' },
   });
-  assert.deepEqual(normalizeFormula({ costFactor: '999999.999', margins: { p1: '99999.9999', p2: 0, p3: '0' } }), {
-    costFactor: '999999.999', margins: { p1: '99999.9999', p2: '0.0000', p3: '0.0000' },
+  assert.deepEqual(normalizeFormula({ costFactor: '999999.999999', margins: { p1: '99999.9999', p2: 0, p3: '0' } }), {
+    costFactor: '999999.999999', margins: { p1: '99999.9999', p2: '0.0000', p3: '0.0000' },
+  });
+  assert.deepEqual(normalizeFormula({ costFactor: '1.1092', margins: { p1: '15', p2: '13', p3: '0' } }), {
+    costFactor: '1.109200', margins: { p1: '15.0000', p2: '13.0000', p3: '0.0000' },
   });
 });
 
 test('rejects invalid decimal signs, blanks, exponents, bounds and scale', () => {
   assert.throws(()=>normalizeFormula({costFactor:'',margins:{p1:0,p2:0,p3:0}}));
-  for (const costFactor of [0, '1000000', '1.0001']) {
+  for (const costFactor of [0, '1000000', '1.0000001']) {
     assert.throws(() => normalizeFormula({ ...f, costFactor }), /factor de costo/);
   }
   for (const p1 of ['100000', 0.00001, '', '1\n', '+1', '1e0', -1, NaN, Infinity]) {
@@ -87,5 +90,11 @@ test('cascading supplier formula matches exact owner example (P/Lista -> Costo -
     costExact: '112.0000',
     cost: '112',
     prices: { p2: '130.00', p1: '150.00' },
+  });
+  const fourDecimalFormula = { costFactor: '1.1092', margins: { p2: '13', p1: '15', p3: '0' } };
+  assert.deepEqual(calculateCascadeFormula('100', fourDecimalFormula, 0), {
+    costExact: '110.9200',
+    cost: '110.92',
+    prices: { p2: '125.34', p1: '144.14' },
   });
 });

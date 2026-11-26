@@ -385,7 +385,7 @@ function SupplierFormSheet({
                     ref={costFactorRef}
                     id="party-calc-cost"
                     type="number"
-                    step="0.001"
+                    step="any"
                     aria-label="Factor de costo"
                     value={calcDraft.costFactor}
                     onChange={(e) => setCalcDraft((d) => ({ ...d, costFactor: e.target.value }))}
@@ -396,7 +396,7 @@ function SupplierFormSheet({
                   <Input
                     id="party-calc-p2"
                     type="number"
-                    step="0.0001"
+                    step="any"
                     aria-label="Recargo P/Mayor %"
                     value={calcDraft.p2}
                     onChange={(e) => setCalcDraft((d) => ({ ...d, p2: e.target.value }))}
@@ -407,7 +407,7 @@ function SupplierFormSheet({
                   <Input
                     id="party-calc-p1"
                     type="number"
-                    step="0.0001"
+                    step="any"
                     aria-label="Recargo Detalle %"
                     value={calcDraft.p1}
                     onChange={(e) => setCalcDraft((d) => ({ ...d, p1: e.target.value }))}
