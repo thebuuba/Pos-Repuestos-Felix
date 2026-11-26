@@ -1,6 +1,7 @@
 import { balanceOf, daysOverdue, documentaryDate } from "../lib/accounts.js";
 import { businessTodayIso } from "../lib/dates.js";
 import { formatMoney, formatNumber } from "../lib/format.js";
+import { reminderBucket, reminderDueLabel, sortReminders } from "../lib/reminders.js";
 
 const DAY_MS = 86_400_000;
 const VELOCITY_WINDOW_DAYS = 30;
@@ -119,6 +120,7 @@ export function buildSmartNotifications({
   receivables = [],
   payables = [],
   workshopAccounts = [],
+  reminders = [],
   cashSession = null,
   settings = null,
   pending = null,
@@ -686,6 +688,63 @@ export function buildSmartNotifications({
         to: "/ventas",
       })),
       fingerprint: `workshop-stale:${staleWorkshop.map((x) => `${x.account.id}:${x.netTotal}`).join(",")}`,
+      snoozeable: true,
+    });
+  }
+
+  // --- 8b. Recordatorios del equipo vencidos y para hoy ---
+  const overdueReminders = [];
+  const todayReminders = [];
+  for (let i = 0; i < reminders.length; i++) {
+    const r = reminders[i];
+    if (!r || r.status !== "pendiente") continue;
+    const bucket = reminderBucket(r, now);
+    if (bucket === "overdue") overdueReminders.push(r);
+    else if (bucket === "today") todayReminders.push(r);
+  }
+  if (overdueReminders.length > 0) {
+    const sorted = sortReminders(overdueReminders, now);
+    list.push({
+      id: "reminders-overdue",
+      category: "operacion",
+      severity: "critical",
+      priority: 82,
+      title: `${plural(sorted.length, "recordatorio vencido", "recordatorios vencidos")}`,
+      description: sorted.length === 1
+        ? `${sorted[0].title} (${reminderDueLabel(sorted[0], now)}).`
+        : `Hay ${plural(sorted.length, "recordatorio pendiente", "recordatorios pendientes")} con fecha vencida.`,
+      metric: String(sorted.length),
+      actionLabel: "Ver recordatorios",
+      to: "/recordatorios?filtro=vencidos",
+      items: sorted.slice(0, 3).map((r) => ({
+        label: r.title,
+        meta: reminderDueLabel(r, now),
+        to: "/recordatorios?filtro=vencidos",
+      })),
+      fingerprint: `reminders-overdue:${sorted.map((r) => `${r.id}:${r.version}`).join(",")}`,
+      snoozeable: true,
+    });
+  }
+  if (todayReminders.length > 0) {
+    const sorted = sortReminders(todayReminders, now);
+    list.push({
+      id: "reminders-today",
+      category: "operacion",
+      severity: "warning",
+      priority: 68,
+      title: `${plural(sorted.length, "recordatorio para hoy", "recordatorios para hoy")}`,
+      description: sorted.length === 1
+        ? `${sorted[0].title} (${reminderDueLabel(sorted[0], now)}).`
+        : `Tienes ${plural(sorted.length, "tarea programada", "tareas programadas")} para hoy.`,
+      metric: String(sorted.length),
+      actionLabel: "Ver recordatorios",
+      to: "/recordatorios?filtro=hoy",
+      items: sorted.slice(0, 3).map((r) => ({
+        label: r.title,
+        meta: reminderDueLabel(r, now),
+        to: "/recordatorios?filtro=hoy",
+      })),
+      fingerprint: `reminders-today:${todayIso}:${sorted.map((r) => `${r.id}:${r.version}`).join(",")}`,
       snoozeable: true,
     });
   }

@@ -127,12 +127,12 @@ function validateEnvelope(envelope) {
   id(envelope.sequence, 'la secuencia del equipo');
   const { method, path, body, occurredAt, expected } = envelope;
   const validRoute = method === 'POST' && (
-      /^\/api\/(productos|clientes|suplidores|formulas|ventas|compras|taller|caja\/(abrir|cerrar|movimiento)|cuentas\/(cobros|pagos))$/.test(path) ||
+      /^\/api\/(productos|clientes|suplidores|formulas|recordatorios|ventas|compras|taller|caja\/(abrir|cerrar|movimiento)|cuentas\/(cobros|pagos))$/.test(path) ||
       /^\/api\/ventas\/[1-9]\d*\/anular$/.test(path) ||
       /^\/api\/compras\/[1-9]\d*\/anular$/.test(path) ||
       /^\/api\/taller\/[1-9]\d*\/(despachar|devolver|cancelar|facturar)$/.test(path)
     ) ||
-    ['PUT', 'DELETE'].includes(method) && /^\/api\/(productos|clientes|suplidores|formulas)\/[1-9]\d*$/.test(path) ||
+    ['PUT', 'DELETE'].includes(method) && /^\/api\/(productos|clientes|suplidores|formulas|recordatorios)\/[1-9]\d*$/.test(path) ||
     method === 'PUT' && ['/api/configuracion', '/api/ncf'].includes(path);
   if (!validRoute || !body || typeof body !== 'object' || Array.isArray(body) || !uuid.test(body.databaseId)) fail('La operación no se puede sincronizar.');
   if (typeof occurredAt !== 'string' || !Number.isFinite(Date.parse(occurredAt)) || instant(occurredAt) !== occurredAt ||
@@ -296,7 +296,7 @@ function createdRows(method, path, body, result, backup, priorProducts, priorMov
   const created = {};
   const add = (table, list) => { if (list.length) created[table] = list.map(row => Number(row.id)); };
   const selected = table => tbl[table].filter(row => sameId(row.id, result.id));
-  if (method === 'POST' && ['clientes', 'suplidores', 'productos', 'formulas'].includes(resource)) add(tableFor(resource), selected(tableFor(resource)));
+  if (method === 'POST' && ['clientes', 'suplidores', 'productos', 'formulas', 'recordatorios'].includes(resource)) add(tableFor(resource), selected(tableFor(resource)));
   if (resource === 'productos' && method !== 'DELETE') {
     add('movimientos_inventario', tbl.movimientos_inventario.filter(row => Number(row.id) > priorMovement && sameId(row.producto_id, result.id)));
     add('productos_codigos', tbl.productos_codigos.filter(row => Number(row.id) > priorAltCode && sameId(row.producto_id, result.id)));

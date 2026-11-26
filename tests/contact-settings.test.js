@@ -148,8 +148,8 @@ test('v5 restores inactive records, references and cash identity while archiving
   const supplierId = (await confirmed('suplidores', { nombre: 'Archivado', formulaId })).result.id;
   await confirmed('suplidores/' + supplierId, { version: 1 }, 'DELETE');
   const backup = await get('backup');
-  assert.equal(backup.version, 10);
-  assert.deepEqual(Object.keys(backup.tables), ['turnos_caja', 'configuracion', 'secuencias_ncf', 'clientes', 'formulas_precios', 'suplidores', 'productos', 'productos_codigos', 'ventas', 'venta_detalles', 'compras', 'compra_detalles', 'movimientos_inventario', 'movimientos_caja', 'abonos_cuentas', 'cuentas_taller', 'cuentas_taller_items']);
+  assert.equal(backup.version, 11);
+  assert.deepEqual(Object.keys(backup.tables), ['turnos_caja', 'configuracion', 'secuencias_ncf', 'clientes', 'formulas_precios', 'suplidores', 'productos', 'productos_codigos', 'ventas', 'venta_detalles', 'compras', 'compra_detalles', 'movimientos_inventario', 'movimientos_caja', 'abonos_cuentas', 'cuentas_taller', 'cuentas_taller_items', 'recordatorios']);
   const marked = backup.tables.clientes.find(c => c.es_contado);
   marked.id = '8500';
   backup.tables.clientes.sort((a, b) => Number(a.id) - Number(b.id));

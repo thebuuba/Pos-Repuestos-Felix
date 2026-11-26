@@ -208,6 +208,18 @@ function actions(client) {
     saveSupplier: record('suplidores', s => writeFields(s, supplierFields)), deleteSupplier: record('suplidores'),
     saveFormula: record('formulas', f => ({ nombre: f.name, factorCosto: f.costFactor,
       recargo1: f.margins.p1, recargo2: f.margins.p2, recargo3: f.margins.p3 })), deleteFormula: record('formulas'),
+    saveReminder: record('recordatorios', r => ({
+      titulo: r.title,
+      nota: r.note ?? '',
+      fechaLimite: r.dueDate || null,
+      horaLimite: r.dueDate ? (r.dueTime || '') : '',
+      prioridad: r.priority || 'media',
+      estado: r.status || 'pendiente',
+      clienteId: r.customerId ?? null,
+      suplidorId: r.supplierId ?? null,
+      productoId: r.productId ?? null,
+    })),
+    deleteReminder: record('recordatorios'),
     updateSettings: durableAction(client, settingsOperation),
     openWorkshopAccount: durableAction(client, ({ databaseId, ...payload }) => ({
       databaseId, method: 'POST', path: '/api/taller', payload,
@@ -333,6 +345,26 @@ export function OperationalStoreProvider({ client, children }) {
       })),
     })).sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9) || b.id - a.id);
   }, [rawState?.cuentasTaller, databaseId]);
+  const reminders = useMemo(
+    () => (rawState?.recordatorios ?? []).map(r => ({
+      ...recordIdentity(r, databaseId),
+      title: r.titulo,
+      note: r.nota ?? '',
+      dueDate: r.fechaLimite ?? null,
+      dueTime: r.horaLimite ?? '',
+      priority: r.prioridad,
+      status: r.estado,
+      customerId: r.clienteId ?? null,
+      supplierId: r.suplidorId ?? null,
+      productId: r.productoId ?? null,
+      createdBy: r.creadoPor ?? '',
+      completedBy: r.completadoPor ?? null,
+      completedAt: r.completadoEn ?? null,
+      createdAt: r.creadoEn ?? null,
+      updatedAt: r.actualizadoEn ?? null,
+    })),
+    [rawState?.recordatorios, databaseId],
+  );
   const role = normalizeRole(account.role);
   const runtime = useMemo(() => ({
     ...state, mode: 'online', databaseId, revision: snapshot?.revision ?? null,
@@ -341,8 +373,8 @@ export function OperationalStoreProvider({ client, children }) {
     readArchives: client.readArchives, archivePending: client.archivePending, logout: client.logout,
   }), [state, databaseId, snapshot?.revision, role, account, client]);
   const value = useMemo(() => ({
-    runtime, products, categories, customers, suppliers, formulas, settings, workshopAccounts, ...docsAndCash, ...writes,
-  }), [runtime, products, categories, customers, suppliers, formulas, settings, workshopAccounts, docsAndCash, writes]);
+    runtime, products, categories, customers, suppliers, formulas, settings, workshopAccounts, reminders, ...docsAndCash, ...writes,
+  }), [runtime, products, categories, customers, suppliers, formulas, settings, workshopAccounts, reminders, docsAndCash, writes]);
   return <PosStoreContext.Provider value={value}>
     {children}
   </PosStoreContext.Provider>;

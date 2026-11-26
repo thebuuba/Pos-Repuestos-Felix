@@ -8,7 +8,7 @@ const FILES = [
 ];
 const OPTIONAL = [];
 const PAGES = new Set(['/', '/index.html', '/ventas', '/inventario', '/compras', '/taller', '/caja', '/clientes', '/suplidores',
-  '/reportes', '/cuentas-por-cobrar', '/cuentas-por-pagar', '/configuracion', '/ayuda']);
+  '/reportes', '/cuentas-por-cobrar', '/cuentas-por-pagar', '/recordatorios', '/configuracion', '/ayuda']);
 
 self.addEventListener('install', (event) => {
   // La página pública no contiene sesión ni datos del negocio. Nunca guardar HTML autenticado.

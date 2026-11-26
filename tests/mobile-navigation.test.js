@@ -54,10 +54,11 @@ test('la navegación inferior comparte rutas, conserva todos los módulos y deja
     const dialog = page.getByRole('dialog', { name: 'Más opciones' });
     await dialog.waitFor();
     assert.equal(await more.getAttribute('data-active'), 'true');
-    assert.equal(await dialog.getByRole('link').count(), 9, 'Más opciones muestra las 9 tarjetas restantes sin repetir Ventas, Inventario ni Caja');
+    assert.equal(await dialog.getByRole('link').count(), 10, 'Más opciones muestra las 10 tarjetas restantes (incluyendo Recordatorios) sin repetir Ventas, Inventario ni Caja');
     assert.equal(await dialog.getByRole('link', { name: 'Punto de venta', exact: true }).count(), 0);
     assert.equal(await dialog.getByRole('link', { name: 'Inventario', exact: true }).count(), 0);
     assert.equal(await dialog.getByRole('link', { name: 'Caja', exact: true }).count(), 0);
+    assert.equal(await dialog.getByRole('link', { name: 'Recordatorios', exact: true }).count(), 1);
     const panelBox = await dialog.boundingBox();
     assert.equal(panelBox.x, 0, 'El panel Más ocupa de borde a borde, sin tarjeta flotante');
     assert.equal(panelBox.width, 390, 'El panel Más ocupa todo el ancho del teléfono');

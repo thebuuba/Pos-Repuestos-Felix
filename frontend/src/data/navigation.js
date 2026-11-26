@@ -11,6 +11,7 @@ import { HandCoins } from "lucide-react";
 import { ReceiptText } from "lucide-react";
 import { Settings } from "lucide-react";
 import { CircleHelp } from "lucide-react";
+import { BellRing } from "lucide-react";
 var NAV_GROUPS = [
   {
     label: "Menú principal",
@@ -78,6 +79,12 @@ var NAV_GROUPS = [
   {
     label: "Otros",
     items: [
+      {
+        label: "Recordatorios",
+        path: "/recordatorios",
+        icon: BellRing,
+        operationalOnly: true,
+      },
       {
         label: "Configuración",
         path: "/configuracion",

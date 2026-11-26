@@ -867,6 +867,10 @@ label {
 /* Missing Tailwind utilities not included in static theme.css */
 .pr-9 { padding-right: 2.25rem; }
 .pr-11 { padding-right: 2.75rem; }
+.p-3\.5 { padding: 0.875rem; }
+.py-3\.5 { padding-top: 0.875rem; padding-bottom: 0.875rem; }
+.gap-3\.5 { gap: 0.875rem; }
+.max-h-40 { max-height: 10rem; }
 .max-h-60 { max-height: 15rem; }
 .max-h-64 { max-height: 16rem; }
 .max-h-80 { max-height: 20rem; }
@@ -875,10 +879,19 @@ label {
 .opacity-65 { opacity: 0.65; }
 .whitespace-pre-wrap { white-space: pre-wrap; }
 .bg-emerald-500\/15 { background-color: rgb(16 185 129 / 0.15); }
+.bg-emerald-600 { background-color: rgb(5 150 105); }
+.border-emerald-600 { border-color: rgb(5 150 105); }
 .dark\:text-emerald-300:is(.dark *) { color: rgb(110 231 183); }
 .hover\:border-emerald-500\/40:hover { border-color: rgb(16 185 129 / 0.4); }
+.bg-primary\/10 { background-color: hsl(var(--primary) / 0.1); }
+.border-primary\/40 { border-color: hsl(var(--primary) / 0.4); }
+.border-primary\/60 { border-color: hsl(var(--primary) / 0.6); }
+.ring-primary\/40 { --tw-ring-color: hsl(var(--primary) / 0.4); }
+.bg-amber-500\/15 { background-color: rgb(245 158 11 / 0.15); }
 .border-amber-500\/40 { border-color: rgb(245 158 11 / 0.4); }
+.text-amber-700 { color: rgb(180 83 9); }
 .text-amber-900 { color: rgb(120 53 15); }
+.dark\:text-amber-300:is(.dark *) { color: rgb(252 211 77); }
 .dark\:text-amber-200:is(.dark *) { color: rgb(253 230 138); }
 .bg-destructive\/10 { background-color: hsl(var(--destructive) / 0.1); }
 .bg-destructive\/5 { background-color: hsl(var(--destructive) / 0.05); }

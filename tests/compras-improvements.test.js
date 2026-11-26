@@ -74,12 +74,13 @@ test('Puntos 1-5 de Compras: Referencia global, fecha de factura, descripción c
     costo: '250.0000', precio1: '500.0000', precio2: '450.0000', precio3: '420.0000', stock: '8',
   });
 
-  // Validar respaldo v10 con referencia + compatibilidad hacia atrás con respaldo v9
+  // Validar respaldo v11 con referencia + compatibilidad hacia atrás con respaldo v9
   const backupV10 = await (await fetch(origin + '/api/backup')).json();
-  assert.equal(backupV10.version, 10);
+  assert.equal(backupV10.version, 11);
   assert.equal(backupV10.tables.productos.find(p => p.codigo === 'CAD-001').referencia, 'OEM-94701-A');
   const backupV9 = structuredClone(backupV10);
   backupV9.version = 9;
+  delete backupV9.tables.recordatorios;
   for (const row of backupV9.tables.productos) delete row.referencia;
   // Rechazar fecha de vencimiento anterior a fecha de factura en API
   const badDateRes = await fetch(origin + '/api/compras', {

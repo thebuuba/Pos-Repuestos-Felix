@@ -56,14 +56,22 @@ const v9 = {
   ...v8,
   compras: [...v8.compras, 'estado','anulada_en','anulada_por','motivo_anulacion'],
 };
-// Parent rows precede children; reverse order is safe for transactional restore.
-export const tables = {
+const v10 = {
   ...v9,
   productos: [...v9.productos, 'referencia'],
 };
-export const CURRENT_BACKUP_VERSION = 10;
+// Parent rows precede children; reverse order is safe for transactional restore.
+export const tables = {
+  ...v10,
+  recordatorios: [
+    'id', 'titulo', 'nota', 'fecha_limite', 'hora_limite', 'prioridad', 'estado',
+    'cliente_id', 'suplidor_id', 'producto_id', 'creado_por', 'completado_por',
+    'completado_en', 'activo', 'version', 'creado_en', 'actualizado_en',
+  ],
+};
+export const CURRENT_BACKUP_VERSION = 11;
 export const LEGACY_SYNC_BACKUP_VERSION = 9;
-const versionLayouts = { 2: v2, 3: v3, 4: v4, 5: v5, 6: v6, 7: v7, 8: v8, 9: v9, 10: tables };
+const versionLayouts = { 2: v2, 3: v3, 4: v4, 5: v5, 6: v6, 7: v7, 8: v8, 9: v9, 10: v10, 11: tables };
 export function layoutForVersion(version) {
   return versionLayouts[version] ?? null;
 }
@@ -80,7 +88,7 @@ function validIsoDate(value, label = 'Fecha documental inválida.') {
 const preferenceFields = { redondeo: 'redondeo', nivel_precio_predeterminado: 'nivelPrecioPredeterminado',
   formato_impresion: 'formatoImpresion', permitir_stock_negativo: 'permitirStockNegativo' };
 const moneyColumns = new Set(['costo', 'precio', 'precio1', 'precio2', 'precio3', 'base', 'itbis', 'total','fondo','esperado','contado','ventas','monto','descuento']);
-const optionalTextColumns = new Set(['rnc', 'tel', 'cliente_rnc', 'motivo', 'correo', 'direccion', 'contacto', 'pie_ticket', 'marca', 'categoria', 'ubicacion', 'referencia', 'nota', 'mecanico', 'vehiculo', 'retirado_por']);
+const optionalTextColumns = new Set(['rnc', 'tel', 'cliente_rnc', 'motivo', 'correo', 'direccion', 'contacto', 'pie_ticket', 'marca', 'categoria', 'ubicacion', 'referencia', 'nota', 'mecanico', 'vehiculo', 'retirado_por', 'hora_limite', 'creado_por', 'completado_por']);
 function validateBackupRow(table, row, columns, version) {
   if (!exactKeys(row, columns)) fail(`Fila inválida en ${table}.`);
   if (table === 'formulas_precios') formulaValues(row.factor_costo, row.recargo1, row.recargo2, row.recargo3);
@@ -91,7 +99,8 @@ function validateBackupRow(table, row, columns, version) {
       (table === 'compras' && ['vencimiento','anulada_en','anulada_por','motivo_anulacion'].includes(key)) ||
       (table === 'configuracion' && key === 'meta_diaria') ||
       (table === 'abonos_cuentas' && ['venta_id','compra_id','caja_id'].includes(key)) ||
-      (table === 'cuentas_taller' && ['venta_id','cerrada_en'].includes(key)))) continue;
+      (table === 'cuentas_taller' && ['venta_id','cerrada_en'].includes(key)) ||
+      (table === 'recordatorios' && ['fecha_limite','cliente_id','suplidor_id','producto_id','completado_por','completado_en'].includes(key)))) continue;
     if (key === 'id' || key === 'version' || key.endsWith('_id')) {
       if (value === null && ['venta_detalle_id', 'compra_detalle_id', 'formula_id'].includes(key)) continue;
       if (!['number', 'string'].includes(typeof value) || !/^[1-9]\d*$/.test(String(value)) || !Number.isSafeInteger(Number(value))) fail(`Identificador inválido en ${table}.`);
@@ -123,8 +132,14 @@ function validateBackupRow(table, row, columns, version) {
         if (key === 'stock_minimo' && value < 0) fail('Existencia mínima inválida.');
       }
     } else if (['activo', 'gravado', 'es_contado', 'notificar_minimo', 'activa'].includes(key)) { if (typeof value !== 'boolean') fail(`Estado inválido en ${table}.`); }
-    else if (key === 'fecha' || key === 'vencimiento') {
+    else if (key === 'fecha' || key === 'vencimiento' || key === 'fecha_limite') {
       validIsoDate(value);
+    } else if (table === 'recordatorios' && key === 'hora_limite') {
+      if (typeof value !== 'string' || (value !== '' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(value))) fail('Hora límite inválida en recordatorios.');
+    } else if (table === 'recordatorios' && key === 'prioridad') {
+      if (!['baja', 'media', 'alta'].includes(value)) fail('Prioridad inválida en recordatorios.');
+    } else if (table === 'recordatorios' && key === 'estado') {
+      if (!['pendiente', 'completado'].includes(value)) fail('Estado inválido en recordatorios.');
     } else if (key.endsWith('_en')) {
       const timestamp = version >= 6 ? /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3,6}Z$/ : /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
       if (typeof value !== 'string' || !timestamp.test(value) || !Number.isFinite(Date.parse(value))) fail('Fecha de registro inválida.');
@@ -133,7 +148,7 @@ function validateBackupRow(table, row, columns, version) {
 }
 
 export async function rows(client, table, preciseDates = false, filter, columnList = tables[table]) {
-  const columns = columnList.map(key => (key === 'fecha' || key === 'vencimiento') ? `${key}::text AS ${key}` : preciseDates && key.endsWith('_en')
+  const columns = columnList.map(key => (key === 'fecha' || key === 'vencimiento' || key === 'fecha_limite') ? `${key}::text AS ${key}` : preciseDates && key.endsWith('_en')
     ? `to_char(${key} AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS ${key}` : key).join(',');
   return (await client.query(`SELECT ${columns} FROM public.${table}${filter ? ' WHERE ' + filter.sql : ''} ORDER BY id`, filter?.values)).rows;
 }

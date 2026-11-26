@@ -20,26 +20,33 @@ const OWNER_ONLY_PATHS = new Set(["/compras", "/suplidores", "/reportes", "/cuen
 // Polymet's menu list, shared by the desktop sidebar and the phone «Más» panel.
 function SidebarNav({ onNavigate, className, groupsClassName, touch = false, collapsed = false, cards = false, excludePaths, ...props }) {
   const { pathname } = useLocation();
-  const { receivables, payables, products, runtime } =
+  const { receivables, payables, products, reminders = [], runtime } =
     usePosStore();
   const isOwner = !runtime || runtime.isOwner;
   const groups = useMemo(() => NAV_GROUPS.map((group) => ({
     ...group,
     items: group.items.filter((item) =>
-      (isOwner || !OWNER_ONLY_PATHS.has(item.path)) && !excludePaths?.has(item.path),
+      (!item.operationalOnly || Boolean(runtime)) &&
+      (isOwner || !OWNER_ONLY_PATHS.has(item.path)) &&
+      !excludePaths?.has(item.path),
     ),
-  })).filter((group) => group.items.length > 0), [isOwner, excludePaths]);
+  })).filter((group) => group.items.length > 0), [isOwner, runtime, excludePaths]);
   const badges = useMemo(() => {
     let lowStock = 0;
     for (let i = 0; i < products.length; i++) {
       if (needsRestock(products[i])) lowStock++;
     }
+    let pendingReminders = 0;
+    for (let i = 0; i < reminders.length; i++) {
+      if (reminders[i]?.status === "pendiente") pendingReminders++;
+    }
     return {
       "/cuentas-por-cobrar": receivables?.filter((r) => balanceOf(r) > 0).length,
       "/cuentas-por-pagar": payables?.filter((p) => balanceOf(p) > 0).length,
       "/inventario": lowStock,
+      "/recordatorios": pendingReminders,
     };
-  }, [receivables, payables, products]);
+  }, [receivables, payables, products, reminders]);
   if (collapsed) {
     return (
       <nav className={className} {...props}>

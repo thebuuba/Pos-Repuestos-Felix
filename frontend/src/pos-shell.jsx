@@ -15,7 +15,7 @@ import { DesktopUpdateNotice } from './desktop-status.jsx';
 
 const dateLabel = value => formatBusinessDateTime(value);
 const operations = { ventas: 'Venta', 'ventas/anular': 'Anulación de venta', compras: 'Compra', 'compras/anular': 'Anulación de compra', productos: 'Artículo',
-  clientes: 'Cliente', suplidores: 'Suplidor', formulas: 'Fórmula de precios', configuracion: 'Configuración',
+  clientes: 'Cliente', suplidores: 'Suplidor', formulas: 'Fórmula de precios', recordatorios: 'Recordatorio', configuracion: 'Configuración',
   ncf: 'Secuencia NCF', 'cuentas/cobros': 'Cobro a cliente', 'cuentas/pagos': 'Pago a suplidor',
   taller: 'Cuenta de taller', 'taller/despachar': 'Despacho de taller', 'taller/devolver': 'Devolución de taller',
   'taller/cancelar': 'Cancelación de cuenta de taller', 'taller/facturar': 'Cobro de cuenta de taller',

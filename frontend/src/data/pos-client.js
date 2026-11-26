@@ -71,8 +71,22 @@ const settingsRequiredFields = { empresa: name, rnc: text, tel: text, correo: te
   redondeo: oneOf(0, 1, 5, 10, 25), nivelPrecioPredeterminado: oneOf(null, 'p1', 'p2', 'p3'),
   formatoImpresion: oneOf(null, 'Térmica 80 mm', 'Térmica 58 mm', 'Carta (8.5 x 11)'), pieTicket: text,
   permitirStockNegativo: oneOf(false) };
+const reminderTime = value => typeof value === 'string' && (value === '' || /^([01]\d|2[0-3]):[0-5]\d$/.test(value));
+const reminderIsoDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+  Number.isFinite(Date.parse(value + 'T00:00:00Z')) && new Date(value + 'T00:00:00Z').toISOString().slice(0, 10) === value;
+const reminderFields = {
+  titulo: value => name(value) && value.trim().length <= 200,
+  nota: text,
+  fechaLimite: nullable(reminderIsoDate),
+  horaLimite: reminderTime,
+  prioridad: oneOf('baja', 'media', 'alta'),
+  estado: oneOf('pendiente', 'completado'),
+  clienteId: nullable(id),
+  suplidorId: nullable(id),
+  productoId: nullable(id),
+};
 const resourceFields = { productos: productFields, clientes: customerFields, suplidores: supplierFields, formulas: formulaFields,
-  configuracion: settingsFields };
+  recordatorios: reminderFields, configuracion: settingsFields };
 
 function checkTarget(method, path) {
   if (method === 'POST' && ['/api/caja/abrir','/api/caja/cerrar','/api/caja/movimiento'].includes(path)) return { resource: path.slice(5), target: null };
@@ -87,7 +101,7 @@ function checkTarget(method, path) {
   if (method === 'POST' && workshopMatch && id(Number(workshopMatch[1]))) return { resource: 'taller/' + workshopMatch[2], target: Number(workshopMatch[1]) };
   if (method === 'POST' && ['/api/ventas', '/api/compras'].includes(path)) return { resource: path.slice(5), target: null };
   if (method === 'PUT' && path === '/api/configuracion') return { resource: 'configuracion', target: 1 };
-  const match = typeof path === 'string' && /^\/api\/(productos|clientes|suplidores|formulas)(?:\/([1-9]\d*))?$/.exec(path);
+  const match = typeof path === 'string' && /^\/api\/(productos|clientes|suplidores|formulas|recordatorios)(?:\/([1-9]\d*))?$/.exec(path);
   if (match && (match[2] ? ['PUT', 'DELETE'].includes(method) && id(Number(match[2])) : method === 'POST')) {
     return { resource: match[1], target: match[2] ? Number(match[2]) : null };
   }
@@ -225,6 +239,7 @@ function checkPayload(method, resource, payload) {
   if (resource === 'configuracion' && entries.length < 2) invalid();
   if (method !== 'DELETE') {
     if (['clientes', 'suplidores', 'formulas'].includes(resource) && !name(payload.nombre)) invalid();
+    if (resource === 'recordatorios' && method === 'POST' && !name(payload.titulo)) invalid();
     if (resource === 'formulas' && !validFormula(payload)) invalid();
   }
   for (const [key, value] of entries) {
@@ -296,9 +311,21 @@ function validWorkshopAccount(row) {
     despachadoPor: name, retiradoPor: text, creadoEn: instant,
   }) && validUnit(item.precio, item.precioExacto));
 }
+function validReminder(row) {
+  const instant = value => typeof value === 'string' && Number.isFinite(Date.parse(value));
+  return Boolean(row && id(row.version) && complete(row, {
+    ...reminderFields,
+    creadoPor: text,
+    completadoPor: nullable(text),
+    completadoEn: nullable(instant),
+    creadoEn: nullable(instant),
+    actualizadoEn: nullable(instant),
+  }));
+}
 function validOperationalState(state) {
   if (state.caja !== undefined && !validCash(state.caja)) return false;
   if (state.cuentasTaller !== undefined && !records(state.cuentasTaller, validWorkshopAccount)) return false;
+  if (state.recordatorios !== undefined && !records(state.recordatorios, validReminder)) return false;
   const config = state.configuracion;
   if (!complete(config, settingsRequiredFields) || !id(config.version) || typeof config.itbisPorcentaje !== 'number' ||
       (Object.hasOwn(config, 'metaDiaria') && !nullable(money)(config.metaDiaria)) ||
@@ -502,6 +529,14 @@ function mergeDelta(current, body) {
   if (Object.hasOwn(c, 'cuentasTallerUpsert')) {
     if (!records(c.cuentasTallerUpsert, validWorkshopAccount)) invalid();
     next.cuentasTaller = upsertById(next.cuentasTaller ?? [], c.cuentasTallerUpsert);
+  }
+  if (Object.hasOwn(c, 'recordatoriosUpsert')) {
+    if (!records(c.recordatoriosUpsert, validReminder)) invalid();
+    next.recordatorios = upsertById(next.recordatorios ?? [], c.recordatoriosUpsert);
+  }
+  if (Object.hasOwn(c, 'recordatoriosDelete')) {
+    if (!Array.isArray(c.recordatoriosDelete) || !c.recordatoriosDelete.every(id)) invalid();
+    next.recordatorios = deleteById(next.recordatorios ?? [], c.recordatoriosDelete);
   }
   return {
     databaseId: body.databaseId,

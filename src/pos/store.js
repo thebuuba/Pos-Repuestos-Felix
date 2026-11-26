@@ -11,6 +11,7 @@ import {
   billWorkshopAccount, cancelWorkshopAccount, dispatchWorkshopItems,
   openWorkshopAccount, presentWorkshopAccount, returnWorkshopItem,
 } from './workshop-operations.js';
+import { presentReminder, reminderOperation } from './reminder-operations.js';
 export { fail } from './operation-fields.js';
 
 export const maintenanceLock = 74198232;
@@ -266,7 +267,15 @@ export async function snapshot(client, databaseLabel, { compact = false } = {}) 
         'mecanico', ct.mecanico, 'vehiculo', ct.vehiculo, 'nota', ct.nota, 'estado', ct.estado,
         'venta_id', ct.venta_id, 'abierta_por', ct.abierta_por, 'abierta_en', ct.abierta_en,
         'cerrada_en', ct.cerrada_en, 'items', COALESCE(wl.items, '[]'::json)
-      ) ORDER BY ct.id) FROM public.cuentas_taller ct LEFT JOIN workshop_lines wl ON wl.cuenta_id=ct.id), '[]'::json)
+      ) ORDER BY ct.id) FROM public.cuentas_taller ct LEFT JOIN workshop_lines wl ON wl.cuenta_id=ct.id), '[]'::json),
+      'recordatorios', COALESCE((SELECT json_agg(json_build_object(
+        'id', r.id, 'version', r.version, 'titulo', r.titulo, 'nota', r.nota,
+        'fecha_limite', r.fecha_limite::text, 'hora_limite', r.hora_limite,
+        'prioridad', r.prioridad, 'estado', r.estado,
+        'cliente_id', r.cliente_id, 'suplidor_id', r.suplidor_id, 'producto_id', r.producto_id,
+        'creado_por', r.creado_por, 'completado_por', r.completado_por, 'completado_en', r.completado_en,
+        'creado_en', r.creado_en, 'actualizado_en', r.actualizado_en
+      ) ORDER BY r.id) FROM public.recordatorios r WHERE r.activo), '[]'::json)
     ) AS payload
     FROM pos_privado.sistema s WHERE s.id = 1
   `)).rows[0]?.payload;
@@ -291,6 +300,7 @@ export async function snapshot(client, databaseLabel, { compact = false } = {}) 
       abonos: row.abonos_cuentas.map(presentAbono),
       movimientos: row.movimientos.map(m => ({ ...m, creado_en: iso(m.creado_en) })),
       cuentasTaller: (row.cuentas_taller || []).map(a => presentWorkshopAccount(a, a.items)),
+      recordatorios: (row.recordatorios || []).map(presentReminder),
     },
   };
 }
@@ -520,6 +530,14 @@ async function buildDelta(client, method, path, body, result, databaseLabel, bas
       changes.formulasUpsert = (await client.query(`SELECT id,version,nombre,factor_costo::double precision AS "factorCosto",
         recargo1::double precision AS recargo1,recargo2::double precision AS recargo2,recargo3::double precision AS recargo3
         FROM public.formulas_precios WHERE id=$1 AND activo`, [result.id])).rows.map(f => ({ ...f, id: number(f.id), version: number(f.version) }));
+    }
+  } else if (/^\/api\/recordatorios(?:\/\d+)?$/.test(path)) {
+    if (method === 'DELETE') changes.recordatoriosDelete = [result.id];
+    else {
+      const remRows = (await client.query(`SELECT id,version,titulo,nota,fecha_limite::text AS fecha_limite,hora_limite,
+        prioridad,estado,cliente_id,suplidor_id,producto_id,creado_por,completado_por,completado_en,creado_en,actualizado_en
+        FROM public.recordatorios WHERE id=$1 AND activo`, [result.id])).rows;
+      changes.recordatoriosUpsert = remRows.map(presentReminder);
     }
   } else if (method === 'PUT' && path === '/api/configuracion') {
     const cfg = (await client.query('SELECT id,empresa,rnc,tel,correo,direccion,tasa_itbis::text AS tasa_itbis,redondeo,nivel_precio_predeterminado,formato_impresion,pie_ticket,permitir_stock_negativo,meta_diaria::text AS meta_diaria,version FROM public.configuracion ORDER BY id LIMIT 1')).rows[0];
@@ -968,6 +986,9 @@ async function execute(client, method, path, body, actor, occurredAt, context) {
   const contactMatch = path.match(/^\/api\/(clientes|suplidores|formulas)(?:\/(\d+))?$/);
   if (contactMatch && (contactMatch[2] ? ['PUT', 'DELETE'].includes(method) : method === 'POST'))
     return contactOperation(client, contactMatch[1], method, contactMatch[2] ? id(Number(contactMatch[2])) : null, body);
+  const reminderMatch = path.match(/^\/api\/recordatorios(?:\/(\d+))?$/);
+  if (reminderMatch && (reminderMatch[1] ? ['PUT', 'DELETE'].includes(method) : method === 'POST'))
+    return reminderOperation(client, method, reminderMatch[1] ? id(Number(reminderMatch[1])) : null, body, actor, occurredAt);
   if (method === 'PUT' && path === '/api/configuracion') return settingsOperation(client, body);
   if (method === 'POST' && path === '/api/ventas') return sale(client, body, occurredAt, context.allowNcf !== false);
   if (method === 'POST' && path === '/api/compras') return purchase(client, body, occurredAt);

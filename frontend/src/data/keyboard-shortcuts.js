@@ -82,6 +82,11 @@ export const MODULE_SHORTCUTS = [
 
 export const EXTRA_MODULES = [
   {
+    label: "Recordatorios",
+    path: "/recordatorios",
+    keywords: "tareas notas pendientes avisos agenda recordar recordatorios",
+  },
+  {
     label: "Configuración",
     path: "/configuracion",
     keywords: "ajustes empresa ncf usuarios formulas impresora cuenta configuracion",

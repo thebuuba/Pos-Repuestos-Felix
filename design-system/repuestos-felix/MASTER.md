@@ -76,7 +76,7 @@ Por petición posterior del usuario, el lector USB puede agregar a la venta desd
 
 ## Pantallas y estados
 
-Conservar las doce rutas del manifiesto de referencia: Panel, Punto de venta, Inventario, Compras, Caja, Clientes, Suplidores, Reportes, Cuentas x cobrar, Cuentas x pagar, Configuración y Centro de ayuda. Copiar también filtros, búsqueda, diálogos de factura, producto, contacto, cobro/pago, caja y confirmación.
+Conservar las doce rutas del manifiesto de referencia: Panel, Punto de venta, Inventario, Compras, Caja, Clientes, Suplidores, Reportes, Cuentas x cobrar, Cuentas x pagar, Configuración y Centro de ayuda. Copiar también filtros, búsqueda, diálogos de factura, producto, contacto, cobro/pago, caja y confirmación. Por petición posterior del usuario (25 de noviembre de 2026), el modo operativo añade **Recordatorios** (`/recordatorios`) bajo «Otros» (visible en barra lateral, riel compacto `68 px`, tarjetas de «Más opciones» y `Ctrl+K`) para tareas compartidas entre dueño y cajeros con prioridad, fecha/hora opcional, vínculo a cliente/suplidor/artículo y avisos automáticos en la campana superior; la vista de referencia conserva exactamente sus 12 rutas.
 
 Panel: cuatro indicadores superiores; primera tarjeta roja; actividad de ventas con barras redondeadas y trama; medidor semicircular de meta; mapa de horas pico; ventas recientes. Sustituir todas las cifras de muestra por agregaciones reales sin alterar la estructura.
 

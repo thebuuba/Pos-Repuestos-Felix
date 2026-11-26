@@ -35,6 +35,15 @@ const columnDefaults = {
     estado: 'activa',
     version: '1',
   },
+  recordatorios: {
+    nota: '',
+    hora_limite: '',
+    prioridad: 'media',
+    estado: 'pendiente',
+    creado_por: '',
+    activo: 1,
+    version: '1',
+  },
 };
 const legacyEffectDefaults = (method, path) => {
   if (method === 'POST' && path === '/api/ventas') {
@@ -66,6 +75,7 @@ export const references = {
   abonos_cuentas: { venta_id: 'ventas', compra_id: 'compras', caja_id: 'turnos_caja' },
   cuentas_taller: { cliente_id: 'clientes', venta_id: 'ventas' },
   cuentas_taller_items: { cuenta_id: 'cuentas_taller', producto_id: 'productos' },
+  recordatorios: { cliente_id: 'clientes', suplidor_id: 'suplidores', producto_id: 'productos' },
 };
 const encoded = value => typeof value === 'boolean' ? Number(value) : value;
 

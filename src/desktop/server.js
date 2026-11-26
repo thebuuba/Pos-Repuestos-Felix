@@ -6,13 +6,13 @@ import { matchesPassword, passwordRecord, tokenHash } from './credentials.js';
 import { matchesStateTag, stateTag } from '../pos/state-tag.js';
 import { allowedOperation, normalizeRole, redactSnapshotForRole } from '../pos/roles.js';
 
-const pages = new Set(['/', '/index.html', '/ventas', '/inventario', '/compras', '/taller', '/caja', '/clientes', '/suplidores', '/reportes', '/cuentas-por-cobrar', '/cuentas-por-pagar', '/configuracion', '/ayuda']);
+const pages = new Set(['/', '/index.html', '/ventas', '/inventario', '/compras', '/taller', '/caja', '/clientes', '/suplidores', '/reportes', '/cuentas-por-cobrar', '/cuentas-por-pagar', '/recordatorios', '/configuracion', '/ayuda']);
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.webmanifest': 'application/manifest+json' };
 const security = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'no-referrer', 'Permissions-Policy': 'camera=(self), microphone=(), geolocation=()',
   'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; media-src 'self' blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'none'" };
 const error = (message, status = 400) => Object.assign(new Error(message), { status });
-const labels = { productos: 'Producto', clientes: 'Cliente', suplidores: 'Suplidor', formulas: 'Fórmula', configuracion: 'Configuración', ventas: 'Venta', compras: 'Compra', caja: 'Caja', cuentas: 'Abono', ncf: 'Comprobante NCF', taller: 'Cuenta taller' };
+const labels = { productos: 'Producto', clientes: 'Cliente', suplidores: 'Suplidor', formulas: 'Fórmula', recordatorios: 'Recordatorio', configuracion: 'Configuración', ventas: 'Venta', compras: 'Compra', caja: 'Caja', cuentas: 'Abono', ncf: 'Comprobante NCF', taller: 'Cuenta taller' };
 
 export function desktopServer(engine, remote, assetsDirectory, desktopHost = null) {
   const ledger = engine.ledger;

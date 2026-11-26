@@ -9,7 +9,7 @@ import { accountSession } from '../supabase-auth.js';
 
 const pageRoutes = new Set([
   '/', '/index.html', '/ventas', '/inventario', '/compras', '/taller', '/caja', '/clientes', '/suplidores',
-  '/reportes', '/cuentas-por-cobrar', '/cuentas-por-pagar', '/configuracion', '/ayuda',
+  '/reportes', '/cuentas-por-cobrar', '/cuentas-por-pagar', '/recordatorios', '/configuracion', '/ayuda',
 ]);
 const pageAsset = ['index.html', 'text/html'];
 const publicFiles = {

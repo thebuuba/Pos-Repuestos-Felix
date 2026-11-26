@@ -199,7 +199,7 @@ test('cuentas abiertas de taller: inventario en despacho, precio congelado, devo
 
   // 9. Respaldo v8 y restauración íntegra en db2 + compatibilidad hacia atrás con respaldo v7
   const backupV8 = await readSnapshot(pool, 'Taller', true);
-  assert.equal(backupV8.version, 10);
+  assert.equal(backupV8.version, 11);
   assert.equal(backupV8.tables.cuentas_taller.length, 3);
   assert.equal(backupV8.tables.cuentas_taller_items.length, 5);
   const init2 = await readSnapshot(pool2, 'Restaurada');
@@ -219,6 +219,7 @@ test('cuentas abiertas de taller: inventario en despacho, precio congelado, devo
   v7Export.version = 7;
   delete v7Export.tables.cuentas_taller;
   delete v7Export.tables.cuentas_taller_items;
+  delete v7Export.tables.recordatorios;
   const restoredV7 = await writeOperation(pool2, 'POST', '/api/restore', {
     databaseId: restoredV8.databaseId, revision: restoredV8.revision, backup: v7Export,
   }, randomUUID(), 'Restaurada', actor);

@@ -176,9 +176,9 @@ export class DesktopEngine {
     if (voidPurchaseMatch) path = `/api/compras/${map('compras', voidPurchaseMatch[1])}/anular`;
     const workshopMatch = path.match(/^\/api\/taller\/(\d+)\/(despachar|devolver|cancelar|facturar)$/);
     if (workshopMatch) path = `/api/taller/${map('cuentas_taller', workshopMatch[1])}/${workshopMatch[2]}`;
-    const resource = path.match(/^\/api\/(productos|clientes|suplidores|formulas)\/(\d+)$/);
+    const resource = path.match(/^\/api\/(productos|clientes|suplidores|formulas|recordatorios)\/(\d+)$/);
     if (resource) path = `/api/${resource[1]}/${map(resource[1] === 'formulas' ? 'formulas_precios' : resource[1], resource[2])}`;
-    for (const [key, table] of Object.entries({ clienteId: 'clientes', suplidorId: 'suplidores', formulaId: 'formulas_precios', cajaId: 'turnos_caja', ventaId: 'ventas', compraId: 'compras', itemId: 'cuentas_taller_items' })) {
+    for (const [key, table] of Object.entries({ clienteId: 'clientes', suplidorId: 'suplidores', formulaId: 'formulas_precios', productoId: 'productos', cajaId: 'turnos_caja', ventaId: 'ventas', compraId: 'compras', itemId: 'cuentas_taller_items' })) {
       if (body[key] !== undefined && body[key] !== null) body[key] = map(table, body[key]);
     }
     for (const item of body.items || []) if (item.productoId !== null && item.productoId !== undefined) item.productoId = map('productos', item.productoId);

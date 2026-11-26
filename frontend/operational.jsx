@@ -21,6 +21,7 @@ const modules = {
   '/caja': () => import('./src/pages/cash-register-page.jsx').then(m => ({ default: m.CashRegisterPage })),
   '/cuentas-por-cobrar': () => import('./src/pages/receivables-page.jsx').then(m => ({ default: m.ReceivablesPage })),
   '/cuentas-por-pagar': () => import('./src/pages/payables-page.jsx').then(m => ({ default: m.PayablesPage })),
+  '/recordatorios': () => import('./src/pages/reminders-page.jsx').then(m => ({ default: m.RemindersPage })),
 };
 const pages = Object.fromEntries(Object.entries(modules).map(([path, load]) => [path, lazy(load)]));
 pages['/ventas'] = OperationalPointOfSalePage;

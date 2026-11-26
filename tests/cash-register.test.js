@@ -64,7 +64,7 @@ test('caja persists, separates payment methods, rejects stale closes and restore
   await pool.end(); pool = new pg.Pool({ connectionString: database.connectionString, options: '-c role=pos_app' });
   assert.equal((await read()).state.caja.closures.length, 1);
   const backup = JSON.parse(JSON.stringify(await readSnapshot(pool, 'Prueba', true)));
-  assert.equal(backup.version, 10);
+  assert.equal(backup.version, 11);
   const invalid = structuredClone(backup); invalid.tables.turnos_caja[0].esperado = '99.00';
   await assert.rejects(write('restore', { backup: invalid, revision: (await read()).revision }), { status: 400 });
   const restored = await write('restore', { backup, revision: (await read()).revision });
@@ -216,6 +216,7 @@ test('a v5 backup restores business records without creating cash turns or payme
   delete backup.tables.abonos_cuentas;
   delete backup.tables.cuentas_taller;
   delete backup.tables.cuentas_taller_items;
+  delete backup.tables.recordatorios;
   for (const row of backup.tables.configuracion) delete row.meta_diaria;
   for (const p of backup.tables.productos) delete p.referencia;
   for (const sale of backup.tables.ventas) {
@@ -231,7 +232,7 @@ test('a v5 backup restores business records without creating cash turns or payme
   assert.deepEqual(restored.caja.closures, []);
   assert.deepEqual(restored.caja.movements, []);
   const current = await exportCashBackup();
-  assert.equal(current.version, 10);
+  assert.equal(current.version, 11);
   assert.deepEqual(current.tables.turnos_caja, []);
   assert.deepEqual(current.tables.movimientos_caja, []);
   assert.ok(current.tables.ventas.every(sale => sale.caja_id === null && sale.metodo_pago === null));

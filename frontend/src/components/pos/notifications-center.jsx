@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
   Bell,
+  BellRing,
   Box,
   CheckCheck,
   ChevronDown,
@@ -40,6 +41,7 @@ import {
 
 function alertIconFor(alert) {
   if (alert.id === "sync-conflict" || alert.id === "pending") return ShieldAlert;
+  if (alert.id?.startsWith("reminders-")) return BellRing;
   if (alert.id === "stock-velocity") return TrendingDown;
   if (alert.category === "inventario") return Box;
   if (alert.category === "cuentas") return HandCoins;
@@ -58,6 +60,7 @@ export function NotificationsCenter({ onNavigate }) {
     receivables = [],
     payables = [],
     workshopAccounts = [],
+    reminders = [],
     settings,
     cashSession,
   } = usePosStore();
@@ -157,6 +160,7 @@ export function NotificationsCenter({ onNavigate }) {
         receivables,
         payables,
         workshopAccounts,
+        reminders,
         cashSession,
         settings,
         pending,
