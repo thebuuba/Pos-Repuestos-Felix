@@ -105,7 +105,7 @@ export const SHORTCUT_SECTIONS = [
     paths: ["/ventas"],
     items: [
       { keys: "F1", label: "Ir a Ventas o enfocar el buscador de productos" },
-      { keys: "F2", label: "Enfocar búsqueda de producto" },
+      { keys: "F2", label: "Abrir Búsqueda de artículos (Catálogo completo)" },
       { keys: "↑ ↓ · Enter", label: "Elegir resultado y agregarlo al carrito" },
       { keys: "F3", label: "Editar cantidad del último artículo (↑ ↓ cambia de fila, Enter vuelve al buscador)" },
       { keys: "Ctrl+Retroceso", label: "Quitar la fila activa desde la cantidad del carrito" },
@@ -128,6 +128,7 @@ export const SHORTCUT_SECTIONS = [
     paths: ["*"],
     items: [
       { keys: "Ctrl+K", label: "Buscador rápido (productos, clientes, facturas y módulos)" },
+      { keys: "Shift+F2", label: "Abrir Catálogo completo de artículos desde cualquier pantalla" },
       { keys: "F1", label: "Abrir Punto de venta desde cualquier módulo" },
       { keys: "Alt+1 … Alt+0", label: "Cambiar entre módulos del menú principal y cuentas" },
       { keys: "Alt+A", label: "Abrir o cerrar el centro de notificaciones" },
@@ -139,7 +140,7 @@ export const SHORTCUT_SECTIONS = [
     title: "Compras, inventario y otros módulos",
     paths: ["/compras", "/inventario", "/caja", "/clientes", "/suplidores", "/reportes", "/cuentas-por-cobrar", "/cuentas-por-pagar"],
     items: [
-      { keys: "F2", label: "Enfocar el buscador de la pantalla actual" },
+      { keys: "F2", label: "Abrir Catálogo completo en Compras o enfocar buscador de la pantalla" },
       { keys: "Alt+N", label: "Acción principal: nuevo artículo, cliente, suplidor o movimiento de caja" },
       { keys: "Alt+S", label: "Enfocar selector de suplidor en Compras", ownerOnly: true },
       { keys: "F9", label: "Confirmar factura de compra (en Compras)", ownerOnly: true },

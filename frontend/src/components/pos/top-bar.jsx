@@ -3,7 +3,7 @@ import { TooltipProvider } from "../ui/tooltip.jsx";
 import { Button } from "../ui/button.jsx";
 import { Link, useNavigate } from "react-router-dom";
 import { BrandLogo } from "./brand-logo.jsx";
-import { Search, RefreshCw, Download, Sun, Moon, Box, Users, Truck, ReceiptText, CornerDownLeft } from "lucide-react";
+import { Search, RefreshCw, Download, Sun, Moon, Box, Users, Truck, ReceiptText, CornerDownLeft, BookOpen } from "lucide-react";
 import { Input } from "../ui/input.jsx";
 import { cn } from "../../lib/utils.js";
 import { Tooltip, TooltipTrigger, TooltipContent } from "../ui/tooltip.jsx";
@@ -13,8 +13,8 @@ import { usePwa } from "../../pwa.jsx";
 import { DesktopSyncStatus } from "../../desktop-status.jsx";
 import { SalesScanner } from './sales-scanner.jsx';
 import { NotificationsCenter } from "./notifications-center.jsx";
-import { formatMoney } from "../../lib/format.js";
-import { searchTopProducts } from "../../data/product-search.js";
+import { formatMoney, formatNumber } from "../../lib/format.js";
+import { countMatchingProducts, searchTopProducts } from "../../data/product-search.js";
 import { EXTRA_MODULES, MODULE_SHORTCUTS } from "../../data/keyboard-shortcuts.js";
 
 var dateFormatter = new Intl.DateTimeFormat("es-DO", {
@@ -214,9 +214,35 @@ function TopBar({ onBrandClick } = {}) {
           <kbd className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md border border-border bg-card px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
             {"Ctrl K"}
           </kbd>
-          {searchOpen && searchQuery.trim() && (
+          {searchOpen && (searchQuery.trim() || runtime) && (
             <div role="listbox" aria-label="Resultados de búsqueda" className="absolute left-0 right-0 top-full z-40 mt-1.5 max-h-80 overflow-y-auto rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-lg">
-              {searchResults.length === 0 ? (
+              {runtime && (
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    const seed = searchQuery.trim();
+                    setSearchQuery("");
+                    setSearchOpen(false);
+                    searchRef.current?.blur();
+                    window.dispatchEvent(new CustomEvent("felix:open-global-catalog", { detail: { query: seed } }));
+                  }}
+                  className="mb-1 flex w-full items-center justify-between gap-2 rounded-lg bg-accent/70 px-2.5 py-2 text-left text-xs font-semibold text-primary transition-colors hover:bg-accent"
+                >
+                  <span className="inline-flex min-w-0 items-center gap-2 truncate">
+                    <BookOpen className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">
+                      {searchQuery.trim()
+                        ? `Ver los ${formatNumber(countMatchingProducts(products, searchQuery))} artículos en catálogo completo`
+                        : `Explorar catálogo completo (${formatNumber(products.length)} artículos)`}
+                    </span>
+                  </span>
+                  <kbd className="shrink-0 rounded border border-border bg-card px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground">
+                    {"Shift F2"}
+                  </kbd>
+                </button>
+              )}
+              {!searchQuery.trim() ? null : searchResults.length === 0 ? (
                 <p className="px-3 py-4 text-center text-xs text-muted-foreground">Sin coincidencias para «{searchQuery.trim()}».</p>
               ) : (
                 searchResults.map((item, idx) => {

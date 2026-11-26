@@ -20,7 +20,7 @@ import { SelectItem } from "../ui/select.jsx";
 import { Input } from "../ui/input.jsx";
 import { cn } from "../../lib/utils.js";
 import { Button } from "../ui/button.jsx";
-import { Check, ChevronDown, Plus, Search, X } from "lucide-react";
+import { BookOpen, Check, ChevronDown, Plus, Search, X } from "lucide-react";
 import { CircleCheck } from "lucide-react";
 import { formatMoney, formatNumber, formatUnitMoney } from "../../lib/format.js";
 import { CATEGORIES } from "../../data/catalog-options.js";
@@ -32,7 +32,8 @@ import { MoneyDisplay } from "./money-display.jsx";
 import { Upload } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { businessTodayIso } from "../../lib/dates.js";
-import { searchTopProducts } from "../../data/product-search.js";
+import { countMatchingProducts, searchTopProducts } from "../../data/product-search.js";
+import { CatalogBrowserDialog } from "./catalog-browser-dialog.jsx";
 import { hasOpenModal, isPlainAlt, isPrimaryMod, isTouchMobile } from "../../data/keyboard-shortcuts.js";
 const PURCHASE_PRICE_COLUMNS = [
   { key: "p2", label: "P/Mayor" },
@@ -75,6 +76,7 @@ function PurchaseEntryForm({
   rounding,
   runtime,
   initialSupplierId = "",
+  initialSearch = "",
   onSubmit,
 }) {
   const initialMatchedSupplier = initialSupplierId
@@ -105,6 +107,9 @@ function PurchaseEntryForm({
   const [productMenuOpen, setProductMenuOpen] = useState(false);
   const [productHighlight, setProductHighlight] = useState(0);
   const [productSelected, setProductSelected] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const [catalogSeed, setCatalogSeed] = useState("");
+  const appliedInitialSearchRef = useRef("");
   const [error, setError] = useState(null);
   const [retryInput, setRetryInput] = useState(null);
   const [sending, setSending] = useState(false);
@@ -229,6 +234,94 @@ function PurchaseEntryForm({
     if (!entry.code.trim()) return [];
     return searchTopProducts(products, entry.code, 8);
   }, [products, entry.code]);
+  const totalProductMatches = useMemo(() => {
+    if (!entry.code.trim()) return 0;
+    return countMatchingProducts(products, entry.code);
+  }, [products, entry.code]);
+  const existingPurchaseQuantities = useMemo(() => {
+    const map = new Map();
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      if (l.productId == null) continue;
+      const qty = Number(l.quantity);
+      if (!Number.isFinite(qty) || qty <= 0) continue;
+      map.set(l.productId, Math.round(((map.get(l.productId) ?? 0) + qty) * 100) / 100);
+    }
+    return map;
+  }, [lines]);
+  const openCatalogBrowser = (seed = entry.code.trim()) => {
+    if (locked) return;
+    setProductMenuOpen(false);
+    setCatalogSeed(seed);
+    setCatalogOpen(true);
+  };
+  useEffect(() => {
+    if (!runtime) return undefined;
+    const onShortcut = (event) => {
+      if (event.detail?.action === "open-catalog" && !locked) {
+        event.preventDefault();
+        openCatalogBrowser(entry.code.trim());
+      }
+    };
+    window.addEventListener("felix:shortcut", onShortcut);
+    return () => window.removeEventListener("felix:shortcut", onShortcut);
+  }, [runtime, locked, entry.code]);
+  useEffect(() => {
+    const clean = (initialSearch || "").trim();
+    if (!clean || appliedInitialSearchRef.current === clean) return;
+    const found = findProduct(clean);
+    if (found) {
+      appliedInitialSearchRef.current = clean;
+      pickProduct(found);
+    }
+  }, [initialSearch, productsByCode, productsByLowerCode]);
+  const quickAddFromCatalog = (product, rawQty) => {
+    if (locked || !product) return false;
+    let qtyUnits;
+    try {
+      qtyUnits = quantityUnits(purchaseDecimal(rawQty), "la cantidad", 0.01);
+    } catch {
+      return false;
+    }
+    const currentCost = product.costExact ?? String(product.cost);
+    const normalizedCost = purchaseDecimal(cleanPurchaseDecimal(currentCost));
+    const autoList = purchaseListFromCost(currentCost, formula);
+    let added = false;
+    setLines((prev) => {
+      const existingIdx = prev.findIndex(
+        (l) => l.productId === product.id && !l.costManual && l.listPriceAuto && l.cost === normalizedCost,
+      );
+      if (existingIdx >= 0) {
+        added = true;
+        return prev.map((l, idx) => {
+          if (idx !== existingIdx) return l;
+          const prevUnits = quantityUnits(purchaseDecimal(l.quantity), "la cantidad", 0.01);
+          const sumText = cleanPurchaseDecimal(decimalUnits(prevUnits + qtyUnits, 2));
+          return { ...l, quantity: purchaseDecimal(sumText) };
+        });
+      }
+      if (prev.length >= 1000) return prev;
+      added = true;
+      return [
+        ...prev,
+        {
+          key: crypto.randomUUID(),
+          ...catalogFields(product),
+          code: runtime ? product.code : product.code.trim().toUpperCase(),
+          reference: (product.reference ?? "").trim(),
+          name: product.name.trim(),
+          category: product.category || "Motor",
+          quantity: purchaseDecimal(cleanPurchaseDecimal(decimalUnits(qtyUnits, 2))),
+          listPrice: autoList ? purchaseDecimal(autoList) : "",
+          listPriceAuto: true,
+          cost: normalizedCost,
+          costManual: false,
+          overrides: {},
+        },
+      ];
+    });
+    return added;
+  };
   const pickProduct = (product) => {
     const currentCost = product.costExact ?? String(product.cost);
     setEntry((e) => ({
@@ -739,6 +832,24 @@ function PurchaseEntryForm({
                         </li>
                       ))}
                     </ul>
+                    {totalProductMatches > productResults.length && (
+                      <div className="border-t border-border bg-accent/60 px-3 py-2">
+                        <button
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => openCatalogBrowser(entry.code.trim())}
+                          className="flex w-full items-center justify-between gap-2 text-left text-xs font-semibold text-primary hover:underline"
+                        >
+                          <span className="inline-flex min-w-0 items-center gap-1.5 truncate">
+                            <BookOpen className="h-3.5 w-3.5 shrink-0" />
+                            <span className="truncate">
+                              {`Ver los ${formatNumber(totalProductMatches)} artículos en el catálogo completo`}
+                            </span>
+                          </span>
+                          <span className="shrink-0 font-mono text-[11px] font-medium text-muted-foreground">{"F2"}</span>
+                        </button>
+                      </div>
+                    )}
                     {!match && !altCodeOwner && (
                       <div className="border-t border-border bg-muted/40 px-3 py-1.5">
                         <button
@@ -778,6 +889,20 @@ function PurchaseEntryForm({
                 className={cn(inputClass, "font-mono")}
               />
             </Field>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={locked}
+              onClick={() => openCatalogBrowser(entry.code.trim())}
+              className="catalog-trigger-btn h-10 shrink-0 rounded-xl bg-card px-3 text-xs font-medium"
+              title="Explorar todo el catálogo por referencia, código o existencia (F2)"
+            >
+              <BookOpen className="h-4 w-4 text-primary" />
+              <span>{"Catálogo"}</span>
+              <kbd className="hidden rounded border border-border bg-muted px-1 py-0.5 font-mono text-[10px] text-muted-foreground lg:inline">
+                {"F2"}
+              </kbd>
+            </Button>
           </div>
           <div className="purchase-entry-metrics">
             <Field label="Cantidad" className="purchase-entry-qty">
@@ -1305,6 +1430,23 @@ function PurchaseEntryForm({
           </Button>
         </div>
       </div>
+      <CatalogBrowserDialog
+        open={catalogOpen}
+        onOpenChange={(next) => {
+          setCatalogOpen(next);
+          if (!next && !isTouchMobile()) {
+            window.requestAnimationFrame(() => codeRef.current?.focus());
+          }
+        }}
+        products={products}
+        mode="purchase"
+        showCosts={true}
+        initialQuery={catalogSeed}
+        supplierName={supplier?.name || ""}
+        existingQuantities={existingPurchaseQuantities}
+        onQuickAdd={quickAddFromCatalog}
+        onSelect={pickProduct}
+      />
     </div>
   );
 }

@@ -2,6 +2,7 @@
 import { AppSidebar, SidebarNav } from "../components/pos/app-sidebar.jsx";
 import { TopBar } from "../components/pos/top-bar.jsx";
 import { ShortcutsDialog } from "../components/pos/shortcuts-dialog.jsx";
+import { CatalogBrowserDialog } from "../components/pos/catalog-browser-dialog.jsx";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { LayoutGrid } from "lucide-react";
@@ -30,6 +31,8 @@ const isQuickActive = (item, pathname) => pathname === item.path || pathname.sta
 function PosLayout({ children }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [globalCatalogOpen, setGlobalCatalogOpen] = useState(false);
+  const [globalCatalogSeed, setGlobalCatalogSeed] = useState("");
   const [compactDesktop, setCompactDesktop] = useState(matchesCompactDesktop);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [wideCollapsed, setWideCollapsed] = useState(false);
@@ -38,7 +41,7 @@ function PosLayout({ children }) {
   const sidebarTriggerRef = useRef(null);
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const { runtime } = usePosStore();
+  const { runtime, products = [] } = usePosStore();
   const isOwner = !runtime || (runtime.isOwner !== false && (!runtime.accountDetailsAvailable || Boolean(runtime.account?.username)));
   const reload = runtime?.reload;
   const previousPath = useRef(pathname);
@@ -119,10 +122,15 @@ function PosLayout({ children }) {
         }
         return;
       }
-      if (event.key === "F2" && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey) {
+      if (event.key === "F2" && !event.ctrlKey && !event.altKey && !event.metaKey) {
         event.preventDefault();
         if (event.repeat) return;
-        if (!dispatchShortcut("focus-search")) {
+        if (event.shiftKey) {
+          setGlobalCatalogSeed("");
+          setGlobalCatalogOpen(true);
+          return;
+        }
+        if (!dispatchShortcut("open-catalog") && !dispatchShortcut("focus-search")) {
           focusFirstSelector("[data-shortcut-search]", { select: true });
         }
         return;
@@ -168,6 +176,15 @@ function PosLayout({ children }) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [runtime, isOwner, pathname, navigate, menuOpen, shortcutsOpen]);
+  useEffect(() => {
+    if (!runtime) return undefined;
+    const onOpenGlobalCatalog = (event) => {
+      setGlobalCatalogSeed(typeof event.detail?.query === "string" ? event.detail.query : "");
+      setGlobalCatalogOpen(true);
+    };
+    window.addEventListener("felix:open-global-catalog", onOpenGlobalCatalog);
+    return () => window.removeEventListener("felix:open-global-catalog", onOpenGlobalCatalog);
+  }, [runtime]);
   // «Más» is a full page between the top bar and the bottom navigation, below lg only.
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -279,6 +296,19 @@ function PosLayout({ children }) {
           onOpenChange={setShortcutsOpen}
           isOwner={isOwner}
           pathname={pathname}
+        />
+      )}
+      {runtime && (
+        <CatalogBrowserDialog
+          open={globalCatalogOpen}
+          onOpenChange={setGlobalCatalogOpen}
+          products={products}
+          mode="browse"
+          showCosts={isOwner}
+          initialQuery={globalCatalogSeed}
+          onInspect={(p) => navigate(`/inventario?buscar=${encodeURIComponent(p.code)}`)}
+          onGoSale={(p) => navigate(`/ventas?buscar=${encodeURIComponent(p.code)}`)}
+          onGoPurchase={isOwner ? (p) => navigate(`/compras?buscar=${encodeURIComponent(p.code)}`) : undefined}
         />
       )}
     </div>

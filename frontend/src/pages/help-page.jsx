@@ -98,7 +98,8 @@ function HelpPage({ reference }) {
   const operationalShortcuts = !reference
     ? [
         ["F1", "Ir a Ventas / enfocar buscador"],
-        ["F2", "Enfocar buscador de la pantalla"],
+        ["F2", "Abrir Catálogo completo (Ventas/Compras) o buscar en pantalla"],
+        ["Shift + F2", "Abrir Catálogo completo desde cualquier pantalla"],
         ["F3", "Editar cantidad en el carrito"],
         ["F4", "Cambiar nivel de precio (Detalle ↔ Por mayor)"],
         ["F6", "Ventas en espera"],

@@ -20,6 +20,7 @@ import { needsRestock } from "../components/pos/inventory-table.jsx";
 function PurchasesPage() {
   const [params] = useSearchParams();
   const initialSupplierId = params.get("suplidor") ?? "";
+  const initialSearch = params.get("buscar") ?? "";
   const {
     suppliers,
     formulas,
@@ -95,6 +96,7 @@ function PurchasesPage() {
         rounding={settings.rounding}
         runtime={runtime}
         initialSupplierId={initialSupplierId}
+        initialSearch={initialSearch}
         onSubmit={async (input) => {
           const result = await registerPurchase(input);
           const purchase = runtime ? result.state.compras.find(row => row.id === result.result.id) : result;

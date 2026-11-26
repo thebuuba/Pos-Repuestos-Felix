@@ -1,5 +1,5 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
-import { History, PackageSearch, Pencil, Search, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, History, PackageSearch, Pencil, Search, Trash2 } from "lucide-react";
 import { Input } from "../ui/input.jsx";
 import { Select } from "../ui/select.jsx";
 import { SelectTrigger } from "../ui/select.jsx";
@@ -11,8 +11,24 @@ import { formatNumber, formatUnitMoney } from "../../lib/format.js";
 import { Button } from "../ui/button.jsx";
 import { memo, useDeferredValue, useMemo, useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
-import { compactSearchText, indexedProducts, matchesIndexed } from "../../data/product-search.js";
+import { filterAndSortCatalog } from "../../data/product-search.js";
 const PAGE_SIZE = 50;
+const INV_SCOPE_OPTIONS = [
+  { key: "all", label: "Todo" },
+  { key: "reference", label: "Solo ref." },
+  { key: "code", label: "Código" },
+  { key: "name", label: "Nombre" },
+];
+const INV_SORT_OPTIONS = [
+  { value: "default:asc", label: "Orden original" },
+  { value: "stock:asc", label: "Existencia: 0 → +" },
+  { value: "stock:desc", label: "Existencia: + → 0" },
+  { value: "reference:asc", label: "Referencia (A–Z)" },
+  { value: "code:asc", label: "Código (A–Z)" },
+  { value: "name:asc", label: "Nombre (A–Z)" },
+  { value: "p1:asc", label: "Precio 1: menor" },
+  { value: "p1:desc", label: "Precio 1: mayor" },
+];
 const STOCK_FILTERS = [
   ["all", "Todos"],
   ["ok", "OK"],
@@ -55,8 +71,8 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
   const urlQuery = params.get("buscar") ?? "";
   const restock = selectedStock === "reposicion";
   const stock = restock || STOCK_FILTERS.some(([value]) => value === selectedStock) ? selectedStock : "all";
-  const [filters, setFilters] = useState({ query: urlQuery, category: "", location: "", page: 0, stock, restockKey: key, urlQuery });
-  const { query } = filters;
+  const [filters, setFilters] = useState({ query: urlQuery, scope: "all", category: "", location: "", sortBy: "default", sortDir: "asc", page: 0, stock, restockKey: key, urlQuery });
+  const { query, scope = "all", sortBy = "default", sortDir = "asc" } = filters;
   const deferredQuery = useDeferredValue(query);
   const locations = useMemo(() => {
     const used = new Set();
@@ -68,29 +84,38 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
   }, [products]);
   const category = categories.includes(filters.category) ? filters.category : "";
   const location = locations.includes(filters.location) ? filters.location : "";
-  const rows = useMemo(() => {
-    const q = deferredQuery.trim().toLowerCase();
-    const qCompact = q ? compactSearchText(q) : "";
-    const index = indexedProducts(products);
-    const out = [];
-    for (let i = 0; i < index.length; i++) {
-      const entry = index[i];
-      const p = entry.p;
-      if (category && p.category !== category) continue;
-      if (location && (p.location || "").trim() !== location) continue;
-      if (restock ? !needsRestock(p) : stock !== "all" && stockState(p) !== stock) continue;
-      if (q && !matchesIndexed(entry, q, qCompact)) continue;
-      out.push(p);
-    }
-    return out;
-  }, [products, deferredQuery, category, location, stock, restock]);
+  const rows = useMemo(
+    () =>
+      filterAndSortCatalog(products, {
+        query: deferredQuery,
+        scope,
+        stockFilter: restock ? "restock" : stock,
+        category,
+        location,
+        sortBy,
+        sortDir,
+      }),
+    [products, deferredQuery, scope, category, location, stock, restock, sortBy, sortDir],
+  );
+  const toggleSort = (column) => {
+    setFilters((prev) => ({
+      ...prev,
+      page: 0,
+      sortBy: column,
+      sortDir: prev.sortBy === column ? (prev.sortDir === "asc" ? "desc" : "asc") : "asc",
+    }));
+  };
+  const renderSortIcon = (column) => {
+    if (sortBy !== column) return <ArrowUpDown className="h-3 w-3 opacity-45" />;
+    return sortDir === "asc" ? <ArrowUp className="h-3.5 w-3.5 text-primary" /> : <ArrowDown className="h-3.5 w-3.5 text-primary" />;
+  };
   const lastPage = Math.max(0, Math.ceil(rows.length / PAGE_SIZE) - 1);
   const resetPage = stock !== filters.stock || category !== filters.category || location !== filters.location;
   const page = resetPage ? 0 : Math.min(filters.page, lastPage);
   if (urlQuery !== filters.urlQuery) {
-    setFilters({ query: urlQuery, category: "", location: "", page: 0, stock, restockKey: key, urlQuery });
+    setFilters({ query: urlQuery, scope: "all", category: "", location: "", sortBy: "default", sortDir: "asc", page: 0, stock, restockKey: key, urlQuery });
   } else if (restock && filters.restockKey !== key) {
-    setFilters({ query: "", category: "", location: "", page: 0, stock, restockKey: key, urlQuery });
+    setFilters({ query: "", scope: "all", category: "", location: "", sortBy: "default", sortDir: "asc", page: 0, stock, restockKey: key, urlQuery });
   } else if (resetPage || filters.page !== page) {
     setFilters({ ...filters, category, location, page, stock });
   }
@@ -126,6 +151,43 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
           />
         </div>
         <div className="inv-toolbar-controls">
+          {connected && (
+            <Select
+              value={scope}
+              onValueChange={(value) => setFilters({ ...filters, scope: value, page: 0 })}
+            >
+              <SelectTrigger aria-label="Buscar en campo" className="inv-toolbar-select h-10 rounded-xl">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {INV_SCOPE_OPTIONS.map((opt) => (
+                  <SelectItem value={opt.key} key={opt.key}>
+                    {`En: ${opt.label}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {connected && (
+            <Select
+              value={`${sortBy}:${sortDir}`}
+              onValueChange={(value) => {
+                const [col, dir] = value.split(":");
+                setFilters({ ...filters, sortBy: col, sortDir: dir, page: 0 });
+              }}
+            >
+              <SelectTrigger aria-label="Ordenar inventario" className="inv-toolbar-select h-10 rounded-xl">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {INV_SORT_OPTIONS.map((opt) => (
+                  <SelectItem value={opt.value} key={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Select
             value={category ? `categoria:${category}` : "all"}
             onValueChange={(value) => setFilters({
@@ -329,24 +391,71 @@ const InventoryTable = memo(function InventoryTable({ products, categories, conn
             <table className="w-full min-w-[980px] text-sm">
             <thead>
               <tr className="border-y border-border bg-muted/50 text-left text-xs text-muted-foreground">
-                <th className="px-5 py-2.5 font-medium">{"Producto"}</th>
-                <th className="px-3 py-2.5 font-medium">{"Categoría"}</th>
+                <th className="px-5 py-2.5 font-medium">
+                  {connected ? (
+                    <div className="inline-flex items-center gap-3">
+                      <button type="button" onClick={() => toggleSort("name")} className={cn("inv-sort-btn", sortBy === "name" && "inv-sort-btn-active")}>
+                        <span>{"Producto"}</span>
+                        {renderSortIcon("name")}
+                      </button>
+                      <button type="button" onClick={() => toggleSort("reference")} className={cn("inv-sort-btn text-[11px]", sortBy === "reference" && "inv-sort-btn-active")}>
+                        <span>{"Ref."}</span>
+                        {renderSortIcon("reference")}
+                      </button>
+                    </div>
+                  ) : "Producto"}
+                </th>
+                <th className="px-3 py-2.5 font-medium">
+                  {connected ? (
+                    <button type="button" onClick={() => toggleSort("category")} className={cn("inv-sort-btn", sortBy === "category" && "inv-sort-btn-active")}>
+                      <span>{"Categoría"}</span>
+                      {renderSortIcon("category")}
+                    </button>
+                  ) : "Categoría"}
+                </th>
                 <th className="px-3 py-2.5 font-medium">{"Ubic."}</th>
-                <th className="px-3 py-2.5 font-medium">{"Existencia"}</th>
+                <th className="px-3 py-2.5 font-medium">
+                  {connected ? (
+                    <button type="button" onClick={() => toggleSort("stock")} className={cn("inv-sort-btn", sortBy === "stock" && "inv-sort-btn-active")}>
+                      <span>{"Existencia"}</span>
+                      {renderSortIcon("stock")}
+                    </button>
+                  ) : "Existencia"}
+                </th>
                 {showCosts && (
                   <th className="px-3 py-2.5 text-right font-medium">
-                    {"Costo"}
+                    {connected ? (
+                      <button type="button" onClick={() => toggleSort("cost")} className={cn("inv-sort-btn ml-auto", sortBy === "cost" && "inv-sort-btn-active")}>
+                        <span>{"Costo"}</span>
+                        {renderSortIcon("cost")}
+                      </button>
+                    ) : "Costo"}
                   </th>
                 )}
                 <th className="px-3 py-2.5 text-right font-medium">
-                  {"Precio 1"}
+                  {connected ? (
+                    <button type="button" onClick={() => toggleSort("p1")} className={cn("inv-sort-btn ml-auto", sortBy === "p1" && "inv-sort-btn-active")}>
+                      <span>{"Precio 1"}</span>
+                      {renderSortIcon("p1")}
+                    </button>
+                  ) : "Precio 1"}
                 </th>
                 <th className="px-3 py-2.5 text-right font-medium">
-                  {"Precio 2"}
+                  {connected ? (
+                    <button type="button" onClick={() => toggleSort("p2")} className={cn("inv-sort-btn ml-auto", sortBy === "p2" && "inv-sort-btn-active")}>
+                      <span>{"Precio 2"}</span>
+                      {renderSortIcon("p2")}
+                    </button>
+                  ) : "Precio 2"}
                 </th>
                 {showCosts && (
                   <th className="px-3 py-2.5 text-right font-medium">
-                    {"Margen"}
+                    {connected ? (
+                      <button type="button" onClick={() => toggleSort("margin")} className={cn("inv-sort-btn ml-auto", sortBy === "margin" && "inv-sort-btn-active")}>
+                        <span>{"Margen"}</span>
+                        {renderSortIcon("margin")}
+                      </button>
+                    ) : "Margen"}
                   </th>
                 )}
                 {showActions && (

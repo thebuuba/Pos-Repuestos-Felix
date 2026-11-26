@@ -1,10 +1,10 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
 import { Label } from "../ui/label.jsx";
-import { ScanBarcode } from "lucide-react";
+import { BookOpen, ScanBarcode } from "lucide-react";
 import { Input } from "../ui/input.jsx";
 import { Search } from "lucide-react";
 import { cn } from "../../lib/utils.js";
-import { formatUnitMoney } from "../../lib/format.js";
+import { formatNumber, formatUnitMoney } from "../../lib/format.js";
 import { Minus } from "lucide-react";
 import { Plus } from "lucide-react";
 import { X } from "lucide-react";
@@ -22,11 +22,22 @@ import { useId } from "react";
 import { useEffect } from "react";
 import { Camera } from "lucide-react";
 import { BarcodeCameraDialog } from "./barcode-camera-dialog.jsx";
+import { CatalogBrowserDialog } from "./catalog-browser-dialog.jsx";
 import { createKeyboardScan, productForBarcode } from "../../data/barcode-scanner.js";
-import { searchTopProducts } from "../../data/product-search.js";
+import { countMatchingProducts, searchTopProducts } from "../../data/product-search.js";
 import { useScanFeedback } from "../../data/use-scan-feedback.js";
 import { hasOpenModal, isEditableElement, isTouchMobile } from "../../data/keyboard-shortcuts.js";
-function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, onEmptyEnter, operational = false, disabled = false }) {
+function ProductSearchBar({
+  products,
+  priceLevel,
+  onPriceLevelChange,
+  onAdd,
+  onEmptyEnter,
+  cartQuantities = null,
+  initialSearch = "",
+  operational = false,
+  disabled = false,
+}) {
   const [query, setQuery] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [open, setOpen] = useState(false);
@@ -34,6 +45,9 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, onE
   const [selected, setSelected] = useState(false);
   const [error, setError] = useState("");
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const [catalogSeed, setCatalogSeed] = useState("");
+  const appliedInitialSearchRef = useRef("");
   const inputId = useId();
   const inputRef = useRef(null);
   const wrapRef = useRef(null);
@@ -48,7 +62,23 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, onE
       if (select) inputRef.current?.select();
     }
   };
-  useEffect(() => { if (disabled) setCameraOpen(false); }, [disabled]);
+  useEffect(() => {
+    if (disabled) {
+      setCameraOpen(false);
+      setCatalogOpen(false);
+    }
+  }, [disabled]);
+  useEffect(() => {
+    const clean = (initialSearch || "").trim();
+    if (!operational || !clean || appliedInitialSearchRef.current === clean) return;
+    appliedInitialSearchRef.current = clean;
+    setQuery(clean);
+    setOpen(true);
+    setHighlight(0);
+    setSelected(false);
+    typedByHumanRef.current = true;
+    focusSearch(true);
+  }, [operational, initialSearch]);
   useEffect(() => {
     if (!operational || disabled || isTouchMobile()) return undefined;
     const raf = window.requestAnimationFrame(() => {
@@ -62,6 +92,14 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, onE
   useEffect(() => {
     if (!operational) return undefined;
     const onShortcut = (event) => {
+      if (event.detail?.action === "open-catalog" && !disabled) {
+        event.preventDefault();
+        setOpen(false);
+        setCameraOpen(false);
+        setCatalogSeed(query.trim());
+        setCatalogOpen(true);
+        return;
+      }
       if (event.detail?.action === "focus-search" && !disabled) {
         event.preventDefault();
         focusSearch(true);
@@ -69,7 +107,7 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, onE
     };
     window.addEventListener("felix:shortcut", onShortcut);
     return () => window.removeEventListener("felix:shortcut", onShortcut);
-  }, [operational, disabled]);
+  }, [operational, disabled, query]);
   useEffect(() => {
     if (!operational || !open) return undefined;
     const onPointerDown = (event) => {
@@ -83,6 +121,7 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, onE
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [operational, open]);
   const results = useMemo(() => searchTopProducts(products, query, operational ? 12 : 6), [products, query, operational]);
+  const totalMatches = useMemo(() => (operational && query.trim() ? countMatchingProducts(products, query) : 0), [products, query, operational]);
   useEffect(() => {
     if (!open || !results.length) return;
     optionRefs.current[highlight]?.scrollIntoView?.({ block: "nearest" });
@@ -326,6 +365,27 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, onE
                 )}
               </div>
             </div>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={disabled}
+              aria-label="Abrir catálogo completo (F2)"
+              title="Explorar todo el catálogo (F2)"
+              className="catalog-trigger-btn h-11 shrink-0 rounded-xl bg-card px-3 text-xs font-medium text-foreground"
+              onClick={() => {
+                dismissScan();
+                setOpen(false);
+                setError("");
+                setCatalogSeed(query.trim());
+                setCatalogOpen(true);
+              }}
+            >
+              <BookOpen className="h-4 w-4 text-primary" aria-hidden="true" />
+              <span className="hidden sm:inline">{"Catálogo"}</span>
+              <kbd className="hidden rounded border border-border bg-muted px-1 py-0.5 font-mono text-[10px] text-muted-foreground lg:inline">
+                {"F2"}
+              </kbd>
+            </Button>
             <Button type="button" variant="outline" size="icon" disabled={disabled}
               aria-label="Escanear con cámara" title="Escanear con cámara"
               className="sale-camera-button h-11 w-11 rounded-xl bg-card text-muted-foreground"
@@ -347,12 +407,31 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, onE
               <span className="font-medium text-foreground">
                 {results.length === 0
                   ? "Sin coincidencias"
-                  : `Catálogo de búsqueda · ${results.length} ${results.length === 1 ? "producto" : "productos"}`}
+                  : totalMatches > results.length
+                    ? `Mostrando ${results.length} de ${formatNumber(totalMatches)} productos`
+                    : `Catálogo de búsqueda · ${results.length} ${results.length === 1 ? "producto" : "productos"}`}
               </span>
-              <div className="sale-keyboard-hint flex items-center gap-3">
-                <span>{"↑↓ navegar"}</span>
-                <span>{"Enter agregar"}</span>
-                <span>{"Esc cerrar"}</span>
+              <div className="flex items-center gap-3">
+                {totalMatches > results.length && (
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      setOpen(false);
+                      setCatalogSeed(query.trim());
+                      setCatalogOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1 font-semibold text-primary hover:underline"
+                  >
+                    <BookOpen className="h-3 w-3" />
+                    <span>{`Ver todos (${formatNumber(totalMatches)}) · F2`}</span>
+                  </button>
+                )}
+                <div className="sale-keyboard-hint flex items-center gap-3">
+                  <span>{"↑↓ navegar"}</span>
+                  <span>{"Enter agregar"}</span>
+                  <span>{"Esc cerrar"}</span>
+                </div>
               </div>
             </div>
             {results.length === 0 ? (
@@ -415,6 +494,32 @@ function ProductSearchBar({ products, priceLevel, onPriceLevelChange, onAdd, onE
           onClose={() => { setCameraOpen(false); focusSearch(); }}
           onCode={scanCode}
         />}
+        <CatalogBrowserDialog
+          open={catalogOpen}
+          onOpenChange={(next) => {
+            setCatalogOpen(next);
+            if (!next) focusSearch();
+          }}
+          products={products}
+          mode="sale"
+          showCosts={false}
+          priceLevel={priceLevel}
+          initialQuery={catalogSeed}
+          existingQuantities={cartQuantities}
+          onQuickAdd={(product) => {
+            const ok = onAdd(product, operational ? quantity : Math.max(1, quantity));
+            if (ok === false) return false;
+            setQuery("");
+            setQuantity(1);
+            setHighlight(0);
+            setOpen(false);
+            setSelected(false);
+            setError("");
+            typedByHumanRef.current = false;
+            keyboardScanRef.current.reset();
+            return true;
+          }}
+        />
       </div>
     );
   }

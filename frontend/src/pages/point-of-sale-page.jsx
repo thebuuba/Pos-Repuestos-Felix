@@ -9,7 +9,7 @@ import { PAYMENT_METHODS } from "../data/sales-options.js";
 import { PageHeader } from "../components/pos/page-header.jsx";
 import { Button } from "../components/ui/button.jsx";
 import { CirclePause, RotateCcw, Lock, ChevronDown, LayoutGrid, Printer } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { InvoiceSettingsCard } from "../components/pos/invoice-settings-card.jsx";
 import { HeldSalesDialog } from "../components/pos/held-sales-dialog.jsx";
 import { SalesHistoryDialog } from "../components/pos/sales-history-dialog.jsx";
@@ -380,6 +380,8 @@ function PointOfSalePage() {
 export { PointOfSalePage };
 
 export function OperationalPointOfSalePage() {
+  const [params] = useSearchParams();
+  const posInitialSearch = params.get("buscar") ?? "";
   const { sales } = usePosStore();
   const { products, customers, settings, cashSession, runtime, cashCustomer,
     customerId, setCustomerId, comprobante, setComprobante, condition, setCondition,
@@ -388,6 +390,16 @@ export function OperationalPointOfSalePage() {
     items, setItems, heldSales, activeHoldLabel, holdCurrentSale, resumeHeldSale, renameHeldSale, removeHeldSale, openQuote,
     receipt, failure, sending, customer, lines, totals,
     locked, disabledReason, resetSale, editQuantity, checkout } = useSaleDraft();
+  const operationalCartQuantities = useMemo(() => {
+    const map = new Map();
+    for (let i = 0; i < items.length; i++) {
+      const row = items[i];
+      const pid = row.product?.id;
+      if (pid == null) continue;
+      map.set(pid, Math.round(((map.get(pid) ?? 0) + (Number(row.quantity) || 0)) * 100) / 100);
+    }
+    return map;
+  }, [items]);
   const [heldOpen, setHeldOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [reprintSale, setReprintSale] = useState(null);
@@ -699,6 +711,8 @@ export function OperationalPointOfSalePage() {
             products={products}
             priceLevel={priceLevel}
             onPriceLevelChange={setPriceLevel}
+            cartQuantities={operationalCartQuantities}
+            initialSearch={posInitialSearch}
             onAdd={(p, qty) => editQuantity(p, priceLevel, qty)}
             onEmptyEnter={() => tryEnterCheckoutRef.current?.()}
           />
