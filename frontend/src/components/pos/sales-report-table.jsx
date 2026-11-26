@@ -103,7 +103,7 @@ function SalesReportTable({ sales, allSales, onVoid, onReprint, operational = fa
                 <div className="space-y-0.5 text-xs">
                   <p className="truncate text-sm font-medium text-foreground">{s.customerName}</p>
                   <p className="text-muted-foreground">
-                    {formatDateTime(s.date)}
+                    {formatDateTime(s.createdAt || s.date)}
                     {" · "}
                     {paymentLabel(s)}
                   </p>
@@ -196,7 +196,7 @@ function SalesReportTable({ sales, allSales, onVoid, onReprint, operational = fa
                     </p>
                   </td>
                   <td className="px-3 py-3 text-muted-foreground">
-                    {formatDateTime(s.date)}
+                    {formatDateTime(s.createdAt || s.date)}
                   </td>
                   <td className="max-w-[200px] truncate px-3 py-3">
                     {s.customerName}

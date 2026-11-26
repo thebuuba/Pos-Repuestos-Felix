@@ -1,10 +1,8 @@
 // Recovered from the approved Polymet reference; see docs/design/polymet-reference.json.
 import { usePosStore } from "../data/pos-context.jsx";
-import { formatDate } from "../lib/accounts.js";
+import { formatDate, formatDateTime, formatTime, balanceOf } from "../lib/accounts.js";
 import { averageAmount, businessDay, downloadSales, monthlyActivity, paymentGroups, paymentLabel, peakHoursActivity, salesTotal, shiftDay, sumAmounts } from "../lib/sales-analytics.js";
 import { useMemo, useState } from "react";
-import { balanceOf } from "../lib/accounts.js";
-import { formatTime } from "../lib/accounts.js";
 import { PageHeader } from "../components/pos/page-header.jsx";
 import { Button } from "../components/ui/button.jsx";
 import { Download } from "lucide-react";
@@ -49,7 +47,13 @@ function DashboardPage({ reference }) {
       recent: sales.slice(0, 5).map((s) => ({
         id: s.id, invoice: s.number, customer: s.customerName, comprobante: s.ncf ?? s.comprobante,
         method: paymentLabel(s), items: Number(sumAmounts(s.lines.map(line => line.quantity))).toLocaleString("es-DO"),
-        amount: s.total, time: formatTime(s.date) || formatDate(s.date), status: s.status,
+        amount: s.total,
+        time: !runtime
+          ? (formatTime(s.date) || formatDate(s.date))
+          : businessDay(s.date) === end
+            ? (formatTime(s.createdAt || s.date) || formatDate(s.date))
+            : formatDateTime(s.createdAt || s.date),
+        status: s.status,
       })),
     };
   }, [sales, end, lastWeekDay, runtime]);

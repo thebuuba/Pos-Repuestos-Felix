@@ -224,8 +224,13 @@ export function receiptFromConfirmation(snapshot) {
   const doc = snapshot.state.facturas.find(row => row.id === saleId);
   if (!doc) throw new Error('Falta la factura en la confirmación del servidor.');
   const localReference = typeof snapshot.localReceipt === 'string' ? snapshot.localReceipt : null;
+  const parsedCreatedAt = typeof doc.creadoEn === 'string' && doc.creadoEn.includes('T') ? new Date(doc.creadoEn) : null;
+  const validCreatedAt = parsedCreatedAt && !Number.isNaN(parsedCreatedAt.getTime()) ? parsedCreatedAt : null;
   return { invoiceNumber: formatSaleNumber(doc.id),
-    ...(localReference ? { localReference } : {}), dateOnly: doc.fechaISO, dueDate: doc.vencimiento ?? null,
+    ...(localReference ? { localReference } : {}),
+    ...(validCreatedAt ? { date: validCreatedAt } : { dateOnly: doc.fechaISO }),
+    useExactUnitMoney: true,
+    dueDate: doc.vencimiento ?? null,
     customerName: doc.cliente, customerRnc: doc.clienteRnc, ncf: localReference ? null : doc.ncf,
     comprobante: doc.tipoComprobante, itbisRate: null,
     conditionLabel: doc.condicion === 'Credito' ? 'Crédito' : 'Contado',
@@ -251,10 +256,13 @@ const STORED_PAYMENT_LABELS = {
 
 export function receiptFromStoredSale(sale) {
   if (!sale) return null;
-  const rawDate = typeof sale.date === 'string' ? sale.date : '';
-  const hasTime = rawDate.includes('T');
-  const parsedDate = hasTime ? new Date(rawDate) : null;
+  const rawTimestamp = typeof sale.createdAt === 'string' && sale.createdAt.includes('T')
+    ? sale.createdAt
+    : (typeof sale.date === 'string' ? sale.date : '');
+  const hasTime = rawTimestamp.includes('T');
+  const parsedDate = hasTime ? new Date(rawTimestamp) : null;
   const validDate = parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate : null;
+  const rawDate = typeof sale.date === 'string' ? sale.date : rawTimestamp;
   const discount = Number(sale.discount ?? 0) || 0;
   const total = Number(sale.total ?? 0) || 0;
   const subtotal = Number(sale.subtotal ?? sale.netBase ?? 0) || 0;

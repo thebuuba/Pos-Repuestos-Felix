@@ -152,7 +152,7 @@ export function SalesHistoryDialog({ open, onOpenChange, sales, onSelect }) {
                       {sale.customerName}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {formatDateTime(sale.date)}
+                      {formatDateTime(sale.createdAt || sale.date)}
                       {" · "}
                       {paymentLabel(sale)}
                       {sale.ncf ? ` · ${sale.ncf}` : ""}
