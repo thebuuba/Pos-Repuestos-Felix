@@ -18,10 +18,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { cn } from "../../lib/utils.js";
 import { formatNumber, formatUnitMoney } from "../../lib/format.js";
 import { filterAndSortCatalog } from "../../data/product-search.js";
+import { createKeyboardScan, productForBarcode } from "../../data/barcode-scanner.js";
 import { isTouchMobile } from "../../data/keyboard-shortcuts.js";
 
 const DESKTOP_ROW_HEIGHT = 46;
-const MOBILE_CARD_HEIGHT = 142;
+const MOBILE_CARD_HEIGHT = 166;
 const OVERSCAN = 8;
 
 const SCOPE_OPTIONS = [
@@ -108,6 +109,7 @@ function CatalogBrowserBody({
   showCosts,
   priceLevel,
   supplierName,
+  listPriceForProduct,
   existingQuantities,
   onQuickAdd,
   onSelect,
@@ -135,6 +137,8 @@ function CatalogBrowserBody({
   const scrollRef = useRef(null);
   const startIndexRef = useRef(0);
   const flashTimerRef = useRef(null);
+  const keyboardScanRef = useRef(null);
+  if (!keyboardScanRef.current) keyboardScanRef.current = createKeyboardScan();
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return undefined;
@@ -142,17 +146,6 @@ function CatalogBrowserBody({
     const sync = () => setIsDesktop(mq.matches);
     mq.addEventListener("change", sync);
     return () => mq.removeEventListener("change", sync);
-  }, []);
-
-  useEffect(() => {
-    if (!scrollRef.current || typeof ResizeObserver === "undefined") return undefined;
-    const node = scrollRef.current;
-    const observer = new ResizeObserver(() => {
-      setViewportHeight(node.clientHeight || 500);
-    });
-    observer.observe(node);
-    setViewportHeight(node.clientHeight || 500);
-    return () => observer.disconnect();
   }, []);
 
   useEffect(() => () => {
@@ -170,6 +163,18 @@ function CatalogBrowserBody({
       }),
     [products, deferredQuery, scope, stockFilter, sortBy, sortDir],
   );
+
+  const hasRows = filtered.length > 0;
+  useEffect(() => {
+    if (!hasRows || !scrollRef.current || typeof ResizeObserver === "undefined") return undefined;
+    const node = scrollRef.current;
+    const observer = new ResizeObserver(() => {
+      setViewportHeight(node.clientHeight || 500);
+    });
+    observer.observe(node);
+    setViewportHeight(node.clientHeight || 500);
+    return () => observer.disconnect();
+  }, [hasRows]);
 
   useEffect(() => {
     setHighlight((h) => (filtered.length === 0 ? 0 : Math.min(h, filtered.length - 1)));
@@ -227,18 +232,21 @@ function CatalogBrowserBody({
 
   const toggleSort = useCallback(
     (column) => {
-      setSortBy((prevCol) => {
-        if (prevCol === column) {
-          setSortDir((prevDir) => (prevDir === "asc" ? "desc" : "asc"));
-          return prevCol;
+      if (sortBy === column) {
+        if (sortDir === "asc") {
+          setSortDir("desc");
+        } else {
+          setSortBy("default");
+          setSortDir("asc");
         }
+      } else {
+        setSortBy(column);
         setSortDir("asc");
-        return column;
-      });
+      }
       setHighlight(0);
       resetScroll();
     },
-    [resetScroll],
+    [sortBy, sortDir, resetScroll],
   );
 
   const existingQtyOf = useCallback(
@@ -367,9 +375,36 @@ function CatalogBrowserBody({
       setHighlight(next);
       scrollToIndex(next);
     } else if (e.key === "Enter") {
-      if (!filtered.length) return;
+      const fastScan = keyboardScanRef.current.push(e);
+      if (mode === "sale" && fastScan !== null) {
+        e.preventDefault();
+        const raw = e.currentTarget.value;
+        const scan = productForBarcode(products, raw);
+        if (scan?.status === "match" && scan.product.stock > 0) {
+          handleQuickAddRow(scan.product, "1", null);
+        } else if (scan?.status === "match") {
+          triggerFlash(`Sin existencias: ${scan.product.name}`);
+        } else {
+          triggerFlash(`Código no encontrado: ${raw.trim()}`);
+        }
+        return;
+      }
+      const activeList =
+        query === deferredQuery
+          ? filtered
+          : filterAndSortCatalog(products, {
+              query,
+              scope,
+              stockFilter,
+              sortBy,
+              sortDir,
+            });
+      if (!activeList.length) return;
       e.preventDefault();
-      handleAcceptRow(filtered[highlight], highlight);
+      const idx = query === deferredQuery ? Math.min(highlight, activeList.length - 1) : 0;
+      handleAcceptRow(activeList[idx], idx);
+    } else {
+      keyboardScanRef.current.push(e);
     }
   };
 
@@ -588,7 +623,14 @@ function CatalogBrowserBody({
               className={mode === "sale" && priceLevel === "p2" ? "text-primary" : ""}
             />
             {canShowCosts && (
-              <SortHeaderButton column="p3" label="P/Lista" activeSort={sortBy} sortDir={sortDir} onSort={toggleSort} align="right" />
+              <SortHeaderButton
+                column="p3"
+                label={mode === "purchase" && listPriceForProduct ? "P/Lista" : "Tarifa 3"}
+                activeSort={sortBy}
+                sortDir={sortDir}
+                onSort={toggleSort}
+                align="right"
+              />
             )}
             <div className="text-right text-[11px] font-medium text-muted-foreground">
               {mode === "purchase" ? "Pedir" : mode === "sale" ? "Acción" : "Ir a"}
@@ -648,7 +690,8 @@ function CatalogBrowserBody({
                   const rowQtyValue = draftQty[p.id] ?? "1";
                   const p1 = p.pricesExact?.p1 ?? p.prices.p1;
                   const p2 = p.pricesExact?.p2 ?? p.prices.p2;
-                  const p3 = p.pricesExact?.p3 ?? p.prices.p3;
+                  const computedList = mode === "purchase" && listPriceForProduct ? listPriceForProduct(p) : null;
+                  const p3 = computedList || (p.pricesExact?.p3 ?? p.prices.p3);
 
                   if (!isDesktop) {
                     return (
@@ -656,7 +699,7 @@ function CatalogBrowserBody({
                         <div
                           onClick={() => setHighlight(index)}
                           className={cn(
-                            "flex h-full flex-col justify-between rounded-2xl border bg-card p-3",
+                            "flex h-full flex-col justify-between overflow-hidden rounded-2xl border bg-card p-3",
                             isActive ? "border-foreground/20 bg-muted/35" : "border-border",
                           )}
                         >
@@ -709,8 +752,8 @@ function CatalogBrowserBody({
                                   <Input
                                     type="number"
                                     inputMode="decimal"
-                                    min="1"
-                                    step="1"
+                                    min="0.01"
+                                    step="any"
                                     aria-label={`Cantidad a pedir de ${p.name}`}
                                     value={rowQtyValue}
                                     onClick={(e) => e.stopPropagation()}

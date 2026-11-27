@@ -1,5 +1,6 @@
 import { normalizeFormula } from '../domain/pricing.js';
 import { cents, fail, id, integer, money, text } from './operation-fields.js';
+import { isOwner } from './roles.js';
 
 const optionalText = value => text(value, 'el texto', false);
 const nullable = validate => value => value === null ? null : validate(value);
@@ -69,6 +70,8 @@ async function refuseUsedRecord(client, table, recordId) {
       + COALESCE((SELECT sum(v.total) FROM ventas v WHERE v.cliente_id=c.id AND v.condicion='Credito' AND v.estado='activa'),0)
       - COALESCE((SELECT sum(a.monto) FROM abonos_cuentas a JOIN ventas v ON v.id=a.venta_id WHERE v.cliente_id=c.id AND v.condicion='Credito' AND v.estado='activa'),0)<>0`, [recordId]);
     if (result.rowCount) fail('El cliente tiene saldo pendiente.', 409);
+    const workshop = await client.query("SELECT 1 FROM cuentas_taller WHERE cliente_id=$1 AND estado='abierta' LIMIT 1", [recordId]);
+    if (workshop.rowCount) fail('El cliente tiene una cuenta de taller abierta.', 409);
   }
   if (table === 'suplidores') {
     const result = await client.query(`SELECT 1 FROM suplidores s WHERE s.id=$1 AND
@@ -82,7 +85,7 @@ async function refuseUsedRecord(client, table, recordId) {
   }
 }
 
-export async function contactOperation(client, resource, method, recordId, body) {
+export async function contactOperation(client, resource, method, recordId, body, actor = null) {
   const isFormula = resource === 'formulas';
   const table = isFormula ? 'formulas_precios' : resource === 'clientes' ? 'clientes' : 'suplidores';
   const fields = table === 'clientes' ? customer : supplier;
@@ -94,11 +97,19 @@ export async function contactOperation(client, resource, method, recordId, body)
     const formula = await client.query('SELECT activo FROM formulas_precios WHERE id=$1 FOR SHARE', [id(body.formulaId, 'la fórmula')]);
     if (!formula.rows[0]?.activo) fail('Selecciona una fórmula activa.');
   }
+  let previous = null;
   if (recordId !== null) {
     const version = id(body.version, 'la versión');
-    const previous = (await client.query(`SELECT * FROM ${table} WHERE id=$1 FOR UPDATE`, [recordId])).rows[0];
+    previous = (await client.query(`SELECT * FROM ${table} WHERE id=$1 FOR UPDATE`, [recordId])).rows[0];
     if (!previous?.activo || Number(previous.version) !== version) fail('El registro cambió. Actualiza antes de guardar.', 409);
     if (previous.es_contado) fail('El cliente de contado está protegido.', 409);
+  }
+  if (table === 'clientes' && method !== 'DELETE' && !isOwner(actor?.role) && Object.hasOwn(body, 'limiteCredito')) {
+    const nextLimit = body.limiteCredito === null ? null : money(cents(body.limiteCredito, 'el límite de crédito'));
+    const prevLimit = previous?.limite_credito == null ? null : String(previous.limite_credito);
+    if (method === 'POST' ? nextLimit !== null : nextLimit !== prevLimit) {
+      fail('Solo el dueño puede asignar o modificar el límite de crédito de un cliente.', 403);
+    }
   }
   if (method === 'DELETE') {
     await refuseUsedRecord(client, table, recordId);

@@ -51,9 +51,9 @@ test('sale is computed by server, transactional, and concurrent retry creates on
   });
   snapshot = await get();
   assert.equal(snapshot.state.facturas.length, 1);
-  assert.equal(snapshot.state.facturas[0].total, 0.3);
+  assert.equal(snapshot.state.facturas[0].total, 1);
   assert.equal(snapshot.state.facturas[0].ncf, null);
-  assert.equal(snapshot.state.clientes.find(c => c.id === customerId).deuda, 0.3);
+  assert.equal(snapshot.state.clientes.find(c => c.id === customerId).deuda, 1);
   assert.equal(snapshot.state.productos.find(p => p.id === product.id).stock, 0);
   assert.equal((await write('ventas', sale)).status, 409);
   assert.equal((await write('ventas', { ...sale, condicion: 'Contado' }, key)).status, 409);

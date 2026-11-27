@@ -4,7 +4,7 @@ import { resolve, sep } from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { matchesPassword, passwordRecord, tokenHash } from './credentials.js';
 import { matchesStateTag, stateTag } from '../pos/state-tag.js';
-import { allowedOperation, normalizeRole, redactSnapshotForRole } from '../pos/roles.js';
+import { allowedOperation, isOwner, normalizeRole, redactBackupTablesForRole, redactSnapshotForRole } from '../pos/roles.js';
 
 const pages = new Set(['/', '/index.html', '/ventas', '/inventario', '/compras', '/taller', '/caja', '/clientes', '/suplidores', '/reportes', '/cuentas-por-cobrar', '/cuentas-por-pagar', '/recordatorios', '/configuracion', '/ayuda']);
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.webmanifest': 'application/manifest+json' };
@@ -69,7 +69,11 @@ export function desktopServer(engine, remote, assetsDirectory, desktopHost = nul
     })().finally(() => { syncing = null; });
     return syncing;
   }
-  const timer = setInterval(() => { synchronize().catch(() => {}); }, 30000); timer.unref();
+  const hasActiveLocalSessions = () => Boolean(ledger.database.prepare('SELECT 1 FROM sessions WHERE expires>? LIMIT 1').get(Date.now()));
+  const timer = setInterval(() => {
+    if (!hasActiveLocalSessions() && !ledger.pending().length) return;
+    synchronize().catch(() => {});
+  }, 30000); timer.unref();
   const pendingRows = () => ledger.pending().map(row => ({
     reference: row.operation_id, date: row.record.occurredAt, operation: labels[row.record.path.split('/')[2]] || 'Operación',
     status: row.status, error: row.error, total: row.record.expected.effect?.total || null,
@@ -160,6 +164,11 @@ export function desktopServer(engine, remote, assetsDirectory, desktopHost = nul
       if (path === '/health') return send(200, { ok: true, desktop: true });
       if (path === '/logout' && request.method === 'POST') {
         ledger.database.prepare('DELETE FROM sessions WHERE token_hash=?').run(tokenHash(cookie));
+        if (!hasActiveLocalSessions() && !ledger.pending().length && ledger.get('remoteCookie')) {
+          remote.request('/logout', { method: 'POST', timeoutMs: 3000 }).catch(() => {}).finally(() => {
+            if (!hasActiveLocalSessions()) remote.clear();
+          });
+        }
         return send(200, { redirect: '/login' }, { 'Set-Cookie': 'felix-desktop=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0' });
       }
       if ((pages.has(path) || path.startsWith('/api/')) && !authenticated) {
@@ -167,39 +176,64 @@ export function desktopServer(engine, remote, assetsDirectory, desktopHost = nul
         throw error('Inicia sesión para acceder al sistema.', 401);
       }
       if (path === '/api/account') {
-        return await engine.serial(async () => {
-          const profile = requireAccess();
+        if (request.method === 'GET') {
+          // Evitar competir por refresh_token con synchronize(), esperar cualquier login
+          // en curso dentro de engine.serial() y NO retener engine.serial() durante la red.
+          if (syncing) await syncing.catch(() => {});
+          const freshProfile = await engine.serial(() => requireAccess());
+          if (engine.connection === 'offline' && !syncing) {
+            return send(200, {
+              id: freshProfile.id,
+              username: freshProfile.username,
+              role: normalizeRole(freshProfile.role),
+              canChangeUsername: false,
+              canChangePassword: false,
+              offline: true,
+            });
+          }
           try {
-            if (request.method === 'GET') {
-              try {
-                const remoteAccount = await remote.request(path);
-                if (remoteAccount?.id && remoteAccount.id !== profile.id) {
-                  throw error('La cuenta del servidor cambió. Vuelve a iniciar sesión.', 401);
-                }
-                if (remoteAccount?.id === profile.id && remoteAccount.role) {
-                  const nextRole = normalizeRole(remoteAccount.role);
-                  if (profile.role !== nextRole) ledger.set('profile', { ...profile, role: nextRole });
-                }
-                return send(200, remoteAccount);
-              } catch (cause) {
-                if (cause.status === 401) throw cause;
-                return send(200, {
-                  id: profile.id,
-                  username: profile.username,
-                  role: normalizeRole(profile.role),
-                  canChangeUsername: false,
-                  canChangePassword: false,
-                  offline: true,
-                });
-              }
+            const remoteAccount = await remote.request(path, { timeoutMs: 5000 });
+            if (remoteAccount?.id && remoteAccount.id !== freshProfile.id) {
+              revokeAccess(freshProfile);
+              throw error('La cuenta del servidor cambió. Vuelve a iniciar sesión.', 401);
             }
-            if (request.method !== 'PUT') throw error('Método no permitido.', 405);
-            if (ledger.pending().length) throw error('Sincroniza las operaciones pendientes antes de cambiar tu cuenta.', 409);
-            const result = await remote.request(path, { method: 'PUT', body });
-            revokeAccess();
-            return send(200, result, { 'Set-Cookie': 'felix-desktop=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0' });
-          } catch (cause) { if (cause.status === 401) revokeAccess(); throw cause; }
-        });
+            let roleChanged = false;
+            if (remoteAccount?.id === freshProfile.id && remoteAccount.role) {
+              const nextRole = normalizeRole(remoteAccount.role);
+              await engine.serial(() => {
+                const current = ledger.get('profile');
+                if (current && sameProfile(current, freshProfile) && normalizeRole(current.role) !== nextRole) {
+                  ledger.set('profile', { ...current, role: nextRole });
+                  ledger.set('needsRefresh', true);
+                  roleChanged = true;
+                }
+              });
+            }
+            if (roleChanged) synchronize().catch(() => {});
+            return send(200, remoteAccount);
+          } catch (cause) {
+            if (cause.status === 401) { revokeAccess(freshProfile); throw cause; }
+            return send(200, {
+              id: freshProfile.id,
+              username: freshProfile.username,
+              role: normalizeRole(freshProfile.role),
+              canChangeUsername: false,
+              canChangePassword: false,
+              offline: true,
+            });
+          }
+        }
+        if (request.method !== 'PUT') throw error('Método no permitido.', 405);
+        const profile = requireAccess();
+        if (ledger.pending().length) throw error('Sincroniza las operaciones pendientes antes de cambiar tu cuenta.', 409);
+        try {
+          const result = await remote.request(path, { method: 'PUT', body });
+          await engine.serial(() => revokeAccess(profile));
+          return send(200, result, { 'Set-Cookie': 'felix-desktop=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0' });
+        } catch (cause) {
+          if (cause.status === 401) await engine.serial(() => revokeAccess(profile));
+          throw cause;
+        }
       }
       if (path === '/api/usuarios' || /^\/api\/usuarios\/[^/]+$/.test(path)) {
         const profile = requireAccess();
@@ -243,7 +277,8 @@ export function desktopServer(engine, remote, assetsDirectory, desktopHost = nul
         return send(200, { update: next });
       }
       if (path === '/api/desktop/update' && request.method === 'POST') {
-        requireAccess();
+        const profile = requireAccess();
+        if (!isOwner(profile.role)) throw error('Solo el dueño puede instalar actualizaciones en este equipo.', 403);
         const next = desktopHost?.applyUpdate?.();
         if (!next) throw error('No hay una actualización lista para instalar en este momento.', 409);
         return send(200, { update: next });
@@ -278,21 +313,42 @@ export function desktopServer(engine, remote, assetsDirectory, desktopHost = nul
         });
         return send(200, await engine.reconcile(requestRemote, current, body));
       }
-      if (path === '/api/desktop/archive' && request.method === 'GET') return send(200,
-        { format: 'repuestos-felix-revision', version: 1, exportedAt: new Date().toISOString(), archives: ledger.archives() },
-        { 'Content-Disposition': 'attachment; filename="historial-revision-felix.json"' });
-      if (path === '/api/desktop/export' && request.method === 'GET') return send(200,
-        { format: 'repuestos-felix-pendientes', version: 1, exportedAt: new Date().toISOString(), databaseId: ledger.get('databaseId'), operations: ledger.pending().map(row => ({ ...row.record, error: row.error })) },
-        { 'Content-Disposition': 'attachment; filename="operaciones-pendientes-felix.json"' });
+      if (path === '/api/desktop/archive' && request.method === 'GET') {
+        const profile = requireAccess();
+        const role = normalizeRole(profile.role);
+        const rawArchives = ledger.archives();
+        const archives = isOwner(role)
+          ? rawArchives
+          : rawArchives
+              .filter(entry => entry.actorId === profile.id)
+              .map(entry => ({
+                ...entry,
+                checkpoint: entry.checkpoint ? redactBackupTablesForRole(entry.checkpoint, role) : entry.checkpoint,
+              }));
+        return send(200,
+          { format: 'repuestos-felix-revision', version: 1, exportedAt: new Date().toISOString(), archives },
+          { 'Content-Disposition': 'attachment; filename="historial-revision-felix.json"' });
+      }
+      if (path === '/api/desktop/export' && request.method === 'GET') {
+        const profile = requireAccess();
+        const role = normalizeRole(profile.role);
+        const ops = ledger.pending()
+          .filter(row => isOwner(role) || row.record?.actor?.id === profile.id)
+          .map(row => ({ ...row.record, error: row.error }));
+        return send(200,
+          { format: 'repuestos-felix-pendientes', version: 1, exportedAt: new Date().toISOString(), databaseId: ledger.get('databaseId'), operations: ops },
+          { 'Content-Disposition': 'attachment; filename="operaciones-pendientes-felix.json"' });
+      }
       if (path === '/api/state' && request.method === 'GET') {
         if (!engine.pool && syncing) await syncing.catch(() => {});
         return await engine.serial(async () => {
           const profile = requireAccess();
           const role = normalizeRole(profile.role);
           const tag = stateTag({ databaseId: ledger.get('databaseId'), revision: ledger.get('revision'), databaseLabel: 'Este equipo · almacenamiento local', role });
-          if (engine.pool && matchesStateTag(request.headers['if-none-match'], tag)) return send(304, undefined, { ETag: tag });
+          const headers = { ETag: tag, 'X-Felix-Role': role };
+          if (engine.pool && matchesStateTag(request.headers['if-none-match'], tag)) return send(304, undefined, headers);
           const compact = request.headers['x-felix-compact'] === '1';
-          return send(200, redactSnapshotForRole(await engine.snapshot({ compact }), role), { ETag: tag });
+          return send(200, redactSnapshotForRole(await engine.snapshot({ compact }), role), headers);
         });
       }
       const productMovementsMatch = request.method === 'GET' ? /^\/api\/productos\/([1-9]\d*)\/movimientos$/.exec(path) : null;
@@ -336,7 +392,7 @@ export function desktopServer(engine, remote, assetsDirectory, desktopHost = nul
         if (name === 'login.html') html = html.replace('<html ', '<html data-accounts="true" ');
         data = Buffer.from(html);
       }
-      const immutable = /^assets\/pwa\/(app-[a-f0-9]{16}\.js|styles-[a-f0-9]{16}\.css|chunk-[A-Z0-9]{8}\.js)$/.test(name);
+      const immutable = /^assets\/pwa\/(app-[a-f0-9]{16}\.js|styles-[a-f0-9]{16}\.css|chunk-[A-Z0-9]{8}\.(?:js|css))$/.test(name);
       response.writeHead(200, {
         ...security,
         ...(immutable ? { 'Cache-Control': 'public, max-age=31536000, immutable' } : {}),

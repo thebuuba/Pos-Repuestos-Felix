@@ -1,4 +1,5 @@
 import { fail, id, text } from './operation-fields.js';
+import { isOwner } from './roles.js';
 
 const PRIORITIES = new Set(['baja', 'media', 'alta']);
 const STATUSES = new Set(['pendiente', 'completado']);
@@ -131,6 +132,9 @@ export async function reminderOperation(client, method, target, body, actor, occ
     const prioridad = parsePriority(body.prioridad, 'media');
     const estado = parseStatus(body.estado, 'pendiente');
     const clienteId = await resolveOptionalLink(client, 'clientes', body.clienteId, 'un cliente');
+    if (!isOwner(actor?.role) && body.suplidorId !== undefined && body.suplidorId !== null && body.suplidorId !== '') {
+      fail('Tu cuenta de cajero no puede vincular recordatorios a suplidores.', 403);
+    }
     const suplidorId = await resolveOptionalLink(client, 'suplidores', body.suplidorId, 'un suplidor');
     const productoId = await resolveOptionalLink(client, 'productos', body.productoId, 'un artículo');
     const completadoPor = estado === 'completado' ? actorName : null;
@@ -178,6 +182,11 @@ export async function reminderOperation(client, method, target, body, actor, occ
   const clienteId = Object.hasOwn(body, 'clienteId')
     ? await resolveOptionalLink(client, 'clientes', body.clienteId, 'un cliente')
     : (existing.cliente_id == null ? null : Number(existing.cliente_id));
+  if (!isOwner(actor?.role) && Object.hasOwn(body, 'suplidorId')) {
+    const nextSup = body.suplidorId === null || body.suplidorId === '' ? null : id(body.suplidorId, 'un suplidor');
+    const prevSup = existing.suplidor_id == null ? null : Number(existing.suplidor_id);
+    if (nextSup !== prevSup) fail('Tu cuenta de cajero no puede vincular recordatorios a suplidores.', 403);
+  }
   const suplidorId = Object.hasOwn(body, 'suplidorId')
     ? await resolveOptionalLink(client, 'suplidores', body.suplidorId, 'un suplidor')
     : (existing.suplidor_id == null ? null : Number(existing.suplidor_id));

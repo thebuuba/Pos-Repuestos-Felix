@@ -91,7 +91,7 @@ test('PWA operativa instala recursos públicos, conserva navegación y espera pa
     await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Más', exact: true }).click();
     for (const path of ['/ventas', '/inventario', '/compras', '/caja', '/clientes', '/suplidores', '/reportes', '/cuentas-por-cobrar', '/cuentas-por-pagar', '/configuracion', '/ayuda']) {
-      assert.ok(await page.getByRole('dialog').locator(`a[href="${path}"]`).count() >= 1, path);
+      assert.ok(await page.locator(`nav[aria-label="Navegación rápida"] a[href="${path}"], [role="dialog"] a[href="${path}"]`).count() >= 1, path);
     }
     await page.keyboard.press('Escape');
     await page.getByRole('heading', { name: 'Agregar productos', exact: true }).waitFor();

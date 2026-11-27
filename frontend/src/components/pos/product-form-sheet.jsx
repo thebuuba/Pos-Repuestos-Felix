@@ -100,7 +100,8 @@ function ProductFormSheet({
   const categoryChoices = product?.category && !categories.includes(product.category)
     ? [product.category, ...categories]
     : categories;
-  const [form, setForm] = useState(EMPTY);
+  const [syncedDraft, setSyncedDraft] = useState(null);
+  const [form, setForm] = useState(() => (open && product ? fromProduct(product) : EMPTY));
   const [altDraft, setAltDraft] = useState("");
   const [formulaId, setFormulaId] = useState(String(formulas[0]?.id ?? ""));
   const [submitted, setSubmitted] = useState(false);
@@ -112,15 +113,17 @@ function ProductFormSheet({
   const formId = useId();
   const fieldId = (key) => `${formId}-${key}`;
   const locked = sending || retryPayload !== null;
-  useEffect(() => {
-    if (open) {
-      setForm(product ? fromProduct(product) : { ...EMPTY, category: "" });
-      setAltDraft("");
-      setSubmitted(false);
-      setError(null);
-      setRetryPayload(null);
-    }
-  }, [open, draft, product]);
+  const targetSync = open ? (draft ?? "__open__") : null;
+  if (open && syncedDraft !== targetSync) {
+    setSyncedDraft(targetSync);
+    setForm(product ? fromProduct(product) : { ...EMPTY, category: "" });
+    setAltDraft("");
+    setSubmitted(false);
+    setError(null);
+    setRetryPayload(null);
+  } else if (!open && syncedDraft !== null) {
+    setSyncedDraft(null);
+  }
   const set = (key, value) =>
     setForm((f) => ({
       ...f,

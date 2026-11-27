@@ -131,7 +131,11 @@ test('formulas validate assignments, including an inactive supplier, and seriali
   await confirmed('formulas/' + id, { ...formula, version: 1, recargo2: 8 }, 'PUT');
   const sid = (await confirmed('suplidores', { nombre: 'Vinculado', formulaId: id })).result.id;
   await confirmed('suplidores/' + sid, { version: 1 }, 'DELETE');
-  await rejected(409, 'formulas/' + id, { version: 2 }, 'DELETE');
+  // Al desactivar un suplidor se libera formula_id para no bloquear la baja de fórmulas huérfanas.
+  await confirmed('formulas/' + id, { version: 2 }, 'DELETE');
+  const activeSupFormula = (await confirmed('formulas', formula)).result.id;
+  await confirmed('suplidores', { nombre: 'Vinculado Activo', formulaId: activeSupFormula });
+  await rejected(409, 'formulas/' + activeSupFormula, { version: 1 }, 'DELETE');
   const other = (await confirmed('formulas', formula)).result.id;
   const [saved, removed] = await Promise.all([write('suplidores', { nombre: 'En carrera', formulaId: other }),
     write('formulas/' + other, { version: 1 }, 'DELETE')]);
@@ -158,7 +162,7 @@ test('v5 restores inactive records, references and cash identity while archiving
   assert.notEqual(restored.databaseId, original.databaseId);
   assert.deepEqual((await get('backup')).tables, backup.tables);
   const archived = (await pool.query("SELECT datos FROM pos_privado.respaldos WHERE motivo='Antes de restaurar' ORDER BY id DESC LIMIT 1")).rows[0].datos;
-  assert.equal(archived.version, 10);
+  assert.equal(archived.version, 12);
   assert.notEqual(archived.tables.clientes.find(c => c.es_contado).id, '8500');
   for (const method of ['PUT', 'DELETE'])
     await rejected(409, 'clientes/8500', method === 'PUT' ? { nombre: 'Cambio', version: 1 } : { version: 1 }, method);

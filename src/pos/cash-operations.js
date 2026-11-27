@@ -60,11 +60,14 @@ export async function turnTotals(client, turn, { atClose = false } = {}) {
   return totals(turn, sales, movements, payments, closedAt);
 }
 // Shared order for sales, movements and closing prevents a sale from entering a closed turn.
-export async function lockCash(client, cajaId, version) {
+export async function lockCash(client, cajaId, version, occurredAt = null) {
   await client.query('SELECT pg_advisory_xact_lock(74198233)');
   const turn = (await client.query('SELECT * FROM turnos_caja WHERE cerrado_en IS NULL FOR UPDATE')).rows[0];
   if (!turn || Number(turn.id) !== id(cajaId, 'el turno de caja')) fail('La caja está cerrada o cambió de turno. Actualiza los datos y abre la caja para vender.', 409);
   if (version !== undefined && Number(turn.version) !== id(version, 'la versión de caja')) fail('La caja cambió. Revisa los movimientos y el efectivo esperado antes de continuar.', 409);
+  if (occurredAt && new Date(occurredAt).getTime() < new Date(turn.abierto_en).getTime()) {
+    fail('La fecha del equipo es anterior a la apertura de caja. Revisa la hora del equipo.', 409);
+  }
   return turn;
 }
 export async function cashOperation(client, path, body, actor, occurredAt = null) {
@@ -73,11 +76,17 @@ export async function cashOperation(client, path, body, actor, occurredAt = null
     const amount = money(wholePesos(body.monto, 'el fondo inicial'));
     await client.query('SELECT pg_advisory_xact_lock(74198233)');
     if ((await client.query('SELECT 1 FROM turnos_caja WHERE cerrado_en IS NULL')).rowCount) fail('Ya hay un turno de caja abierto. Actualiza los datos.', 409);
+    if (occurredAt) {
+      const last = (await client.query('SELECT cerrado_en FROM turnos_caja ORDER BY abierto_en DESC, id DESC LIMIT 1')).rows[0];
+      if (last?.cerrado_en && new Date(occurredAt).getTime() < new Date(last.cerrado_en).getTime()) {
+        fail('La fecha del equipo es anterior al último cierre de caja. Revisa la hora del equipo.', 409);
+      }
+    }
     const row = (await client.query('INSERT INTO turnos_caja(usuario,cajero,fondo,abierto_en) VALUES($1,$2,$3,COALESCE($4::timestamptz,clock_timestamp())) RETURNING id',
       [user, text(actor.name, 'el cajero'), amount, occurredAt])).rows[0];
     return { id: Number(row.id) };
   }
-  const turn = await lockCash(client, body.cajaId, id(body.version, 'la versión de caja'));
+  const turn = await lockCash(client, body.cajaId, id(body.version, 'la versión de caja'), occurredAt);
   const summary = await turnTotals(client, turn);
   if (path === '/api/caja/movimiento') {
     if (!['entrada', 'salida'].includes(body.tipo)) fail('Selecciona entrada o salida.');
@@ -99,13 +108,42 @@ export async function cashOperation(client, path, body, actor, occurredAt = null
 
 export async function validateCashRestore(client) {
   const turns = (await client.query('SELECT * FROM turnos_caja')).rows;
-  for (const turn of turns) {
-    const summary = await turnTotals(client, turn, { atClose: Boolean(turn.cerrado_en) });
-    if (turn.cerrado_en) {
-      const savedExpected = cents(turn.esperado);
-      const validExpected = savedExpected === summary.rawExpected || savedExpected === summary.expected;
-      if (!validExpected || cents(turn.ventas) !== summary.sales) {
-        fail('El respaldo contiene un cierre de caja que no coincide con sus ventas y movimientos.');
+  if (turns.length) {
+    // 3 consultas fijas agrupadas por caja_id en lugar de 3*N consultas por turno.
+    const [allSales, allMovements, allPayments] = await Promise.all([
+      client.query('SELECT caja_id,total,metodo_pago,estado,anulada_en FROM ventas WHERE caja_id IS NOT NULL'),
+      client.query('SELECT caja_id,tipo,monto FROM movimientos_caja'),
+      client.query('SELECT caja_id,tipo,metodo_pago,monto FROM abonos_cuentas WHERE caja_id IS NOT NULL'),
+    ]);
+    const groupByTurn = list => {
+      const map = new Map();
+      for (const row of list) {
+        const key = String(row.caja_id);
+        let bucket = map.get(key);
+        if (!bucket) { bucket = []; map.set(key, bucket); }
+        bucket.push(row);
+      }
+      return map;
+    };
+    const salesByTurn = groupByTurn(allSales.rows);
+    const movementsByTurn = groupByTurn(allMovements.rows);
+    const paymentsByTurn = groupByTurn(allPayments.rows);
+    for (const turn of turns) {
+      const key = String(turn.id);
+      const closedAt = turn.cerrado_en || null;
+      const summary = totals(
+        turn,
+        salesByTurn.get(key) || [],
+        movementsByTurn.get(key) || [],
+        paymentsByTurn.get(key) || [],
+        closedAt,
+      );
+      if (turn.cerrado_en) {
+        const savedExpected = cents(turn.esperado);
+        const validExpected = savedExpected === summary.rawExpected || savedExpected === summary.expected;
+        if (!validExpected || cents(turn.ventas) !== summary.sales) {
+          fail('El respaldo contiene un cierre de caja que no coincide con sus ventas y movimientos.');
+        }
       }
     }
   }

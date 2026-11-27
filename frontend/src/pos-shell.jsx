@@ -220,7 +220,7 @@ async function activateUpdateAndReload({ automatic = false } = {}) {
         if (!waiting && registration.installing) {
           waiting = await new Promise((resolve) => {
             const worker = registration.installing;
-            const timer = window.setTimeout(() => resolve(registration.waiting), 4000);
+            const timer = window.setTimeout(() => resolve(registration.waiting), 12000);
             worker.addEventListener('statechange', () => {
               if (worker.state === 'installed') {
                 window.clearTimeout(timer);
@@ -235,7 +235,8 @@ async function activateUpdateAndReload({ automatic = false } = {}) {
       }
     } catch { /* ignore SW errors */ }
   }
-  if (automatic && !waiting) return false;
+  const hasController = Boolean(!window.__FELIX_DESKTOP__ && 'serviceWorker' in navigator && navigator.serviceWorker.controller);
+  if (automatic && !waiting && !hasController) return false;
   if (automatic) {
     try { sessionStorage.setItem(reloadKey, String(Date.now())); } catch { /* ignore */ }
   }

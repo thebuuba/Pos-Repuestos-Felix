@@ -2,13 +2,20 @@ import { createHash, randomUUID } from 'node:crypto';
 import { memoryPool } from './memory-pool.js';
 import { migrateDatabase } from '../db/migrations.js';
 import { canonical, readProductMovements, readSnapshot, snapshotVersion, writeOperation } from '../pos/store.js';
-import { tables, rows as exportRows } from '../pos/relational-backup.js';
+import { CURRENT_BACKUP_VERSION, tables, rows as exportRows } from '../pos/relational-backup.js';
 import { cashHeadFromBackup, isCashSyncOperation, operationEffect } from '../pos/sync-operations.js';
 import { stateTag } from '../pos/state-tag.js';
 
 const label = 'Este equipo · almacenamiento local';
 const failure = (message, status = 409) => Object.assign(new Error(message), { status });
 const bareTag = tag => typeof tag === 'string' ? tag.replace(/^W\//, '') : tag;
+function inferWireBackupVersion(envelope) {
+  const effect = envelope?.expected?.effect;
+  if (effect && typeof effect === 'object') {
+    if (/^\/api\/productos(?:\/\d+)?$/.test(envelope.path) && !Object.hasOwn(effect, 'referencia')) return 9;
+  }
+  return CURRENT_BACKUP_VERSION;
+}
 const createdRows = (beforeIds, after) => Object.fromEntries(Object.keys(tables).map(table => {
   const ids = beforeIds[table];
   return [table, (after.tables[table] || []).filter(row => !ids.has(String(row.id))).map(row => Number(row.id))];
@@ -40,37 +47,47 @@ async function exportSaleSlice(pool, saleId, body) {
 export class DesktopEngine {
   constructor(ledger) { this.ledger = ledger; this.tail = Promise.resolve(); this.syncFlight = null; this.pool = null; this.connection = 'offline'; this.lastError = null; }
   serial(action) { const result = this.tail.then(action); this.tail = result.catch(() => {}); return result; }
-  async rebuild({ reuse = false } = {}) {
+  async rebuild({ reuse = false, backupOverride = null, metadataOverride = null } = {}) {
     const previous = this.pool;
+    const databaseId = metadataOverride ? metadataOverride.databaseId : this.ledger.get('databaseId');
+    const revision = metadataOverride ? metadataOverride.revision : this.ledger.get('revision');
+    const catalogo = metadataOverride ? metadataOverride.catalogo : this.ledger.get('catalogo');
     this.pool = null;
-    const databaseId = this.ledger.get('databaseId');
-    if (!reuse || !databaseId) await previous?.end();
+    const reusing = Boolean(reuse && previous && databaseId);
+    if (!reusing) await previous?.end();
     if (!databaseId) return;
-    const pool = reuse && previous || await memoryPool();
+    const pool = reusing ? previous : await memoryPool();
+    const backup = backupOverride ?? this.ledger.backup();
     try {
-      if (pool !== previous) await migrateDatabase(pool);
+      if (!reusing) await migrateDatabase(pool);
       const client = await pool.connect();
       let initial;
       try { initial = await snapshotVersion(client, label); }
       finally { client.release(); }
-      await writeOperation(pool, 'POST', '/api/restore', { databaseId: initial.databaseId, revision: initial.revision, backup: this.ledger.backup() }, randomUUID(), label, undefined, {
+      await writeOperation(pool, 'POST', '/api/restore', { databaseId: initial.databaseId, revision: initial.revision, backup }, randomUUID(), label, undefined, {
         versionOnly: true,
+        skipArchive: true,
         // Restore the authoritative rows and desktop metadata in the same transaction.
         // The executor becomes available only after every step commits successfully.
         represent: async (client, response) => {
-          await client.query('UPDATE pos_privado.sistema SET database_id=$1,revision=$2 WHERE id=1', [databaseId, this.ledger.get('revision')]);
+          await client.query('UPDATE pos_privado.sistema SET database_id=$1,revision=$2 WHERE id=1', [databaseId, revision]);
           await client.query('DELETE FROM pos_privado.solicitudes; DELETE FROM pos_privado.respaldos;');
-          await client.query("SELECT set_config('pos.desktop_catalog',$1,false)", [JSON.stringify(this.ledger.get('catalogo'))]);
+          await client.query("SELECT set_config('pos.desktop_catalog',$1,false)", [JSON.stringify(catalogo)]);
           await client.query("CREATE OR REPLACE FUNCTION pos_privado.netpos_opciones() RETURNS jsonb LANGUAGE sql STABLE AS $$ SELECT current_setting('pos.desktop_catalog')::jsonb $$");
           for (const table of Object.keys(tables).filter(table => table !== 'configuracion')) {
-            const maximum = this.ledger.maxId(table);
+            const maximum = backupOverride
+              ? (backup.tables[table] || []).reduce((max, row) => Math.max(max, Number(row.id) || 0), 0)
+              : this.ledger.maxId(table);
             await client.query(`SELECT setval(pg_get_serial_sequence('public.${table}','id'),$1,$2)`, [maximum || 1, maximum > 0]);
           }
           return response;
         },
       });
       this.pool = pool;
-    } catch (error) { await pool.end(); throw error; }
+    } catch (error) {
+      await pool.end();
+      throw error;
+    }
   }
   status() {
     const pending = this.ledger.pending();
@@ -90,15 +107,34 @@ export class DesktopEngine {
   snapshotTag() { return stateTag({ databaseId: this.ledger.get('databaseId'), revision: this.ledger.get('revision'), databaseLabel: label }); }
   async adopt(download) {
     if (this.ledger.pending().length) throw failure('Hay operaciones locales pendientes; la descarga no puede reemplazarlas.');
-    this.ledger.transaction(() => this.saveDownload(download));
-    await this.rebuild({ reuse: true });
-  }
-  saveDownload(download) {
+    const generationChanged = Boolean(this.ledger.get('databaseId') && this.ledger.get('databaseId') !== download.snapshot.databaseId);
+    const plan = this.ledger.planRemoteImport(download.backup, { resetAll: generationChanged });
     const revision = this.ledger.get('databaseId') === download.snapshot.databaseId
       ? Math.max(this.ledger.get('revision') + 1, download.snapshot.revision) : download.snapshot.revision;
-    if (this.ledger.get('databaseId') && this.ledger.get('databaseId') !== download.snapshot.databaseId)
-      this.ledger.database.exec('DELETE FROM identities');
-    this.ledger.importRemote(download.backup);
+    // Validar y restaurar en PGlite ANTES de sobrescribir pos.sqlite para no perder una copia local sana.
+    try {
+      await this.rebuild({
+        reuse: true,
+        backupOverride: plan.translated,
+        metadataOverride: { databaseId: download.snapshot.databaseId, revision, catalogo: download.catalogo },
+      });
+    } catch (error) {
+      // Si el respaldo fue rechazado por integridad (4xx), no sobrescribir SQLite con datos inválidos.
+      // Ante un fallo transitorio del motor en memoria, conservar la descarga ya validada estructuralmente.
+      if (!error?.status || error.status >= 500) {
+        this.ledger.transaction(() => this.saveDownload(download, plan));
+      }
+      throw error;
+    }
+    this.ledger.transaction(() => this.saveDownload(download, plan));
+  }
+  saveDownload(download, precomputedPlan = null) {
+    const revision = this.ledger.get('databaseId') === download.snapshot.databaseId
+      ? Math.max(this.ledger.get('revision') + 1, download.snapshot.revision) : download.snapshot.revision;
+    const generationChanged = Boolean(this.ledger.get('databaseId') && this.ledger.get('databaseId') !== download.snapshot.databaseId);
+    if (generationChanged) this.ledger.database.exec('DELETE FROM identities');
+    if (precomputedPlan) this.ledger.applyRemoteImport(precomputedPlan);
+    else this.ledger.importRemote(download.backup, { resetAll: generationChanged });
     this.ledger.set('databaseId', download.snapshot.databaseId);
     this.ledger.set('revision', revision);
     this.ledger.set('remoteRevision', download.snapshot.revision);
@@ -125,7 +161,13 @@ export class DesktopEngine {
       if (this.ledger.get('reconciliation')) throw failure('Hay una revisión de pendientes en curso. Reanúdala antes de registrar nuevas operaciones.');
       const beforeIds = this.ledger.tableIds();
       const beforeCashHead = isCashSyncOperation(path, body) ? cashHeadFromBackup(this.ledger.cashTables()) : null;
-      const occurredAt = new Date().toISOString();
+      // Reloj monótono: evita que un desfase de segundos en Windows genere un occurredAt anterior al turno o a la última operación.
+      const latestCashMs = beforeCashHead?.latestAt ? Date.parse(beforeCashHead.latestAt) : 0;
+      const lastOpRow = this.ledger.database.prepare("SELECT json_extract(record, '$.occurredAt') AS at FROM operations WHERE status IN ('pending','conflict','synced') ORDER BY sequence DESC LIMIT 1").get();
+      const lastOpMs = lastOpRow?.at ? Date.parse(lastOpRow.at) : 0;
+      const minFloorMs = Math.max(Number.isFinite(latestCashMs) ? latestCashMs : 0, Number.isFinite(lastOpMs) ? lastOpMs : 0);
+      const nowMs = Date.now();
+      const occurredAt = new Date(minFloorMs > 0 && nowMs <= minFloorMs ? minFloorMs + 1 : nowMs).toISOString();
       const writeContext = {
         occurredAt,
         allowNcf: false,
@@ -215,7 +257,7 @@ export class DesktopEngine {
           return envelope;
         });
         let reply;
-        try { reply = await remote('/api/sync/operations', { method: 'POST', body: envelope, key: envelope.operationId, receiptOnly: true }); }
+        try { reply = await remote('/api/sync/operations', { method: 'POST', body: envelope, key: envelope.operationId, receiptOnly: true, backupVersion: inferWireBackupVersion(envelope) }); }
         catch (error) {
           await this.serial(() => {
             assertActor();
@@ -228,15 +270,25 @@ export class DesktopEngine {
           if (reply.receipt?.operationId !== envelope.operationId || reply.receipt.deviceId !== envelope.deviceId || reply.receipt.sequence !== envelope.sequence)
             throw failure('El servidor no confirmó la identidad de la operación.', 503);
           this.ledger.transaction(() => {
+            let idsAligned = true;
             for (const [table, localIds] of Object.entries(operation.record.created)) {
               const remoteIds = reply.receipt.created[table] || [];
               if (localIds.length !== remoteIds.length) throw failure('El servidor confirmó un conjunto distinto de registros.', 503);
-              localIds.forEach((local, index) => this.ledger.bind(table, local, remoteIds[index]));
+              localIds.forEach((local, index) => {
+                if (Number(local) !== Number(remoteIds[index])) idsAligned = false;
+                this.ledger.bind(table, local, remoteIds[index]);
+              });
             }
+            const prevRemoteRev = this.ledger.get('remoteRevision');
+            const sequential = prevRemoteRev !== null && reply.snapshot?.revision === prevRemoteRev + 1;
             this.ledger.database.prepare("UPDATE operations SET status='synced',receipt=?,error=NULL WHERE operation_id=?")
               .run(JSON.stringify(reply.receipt), operation.operation_id);
             this.ledger.set('remoteRevision', reply.snapshot.revision);
-            this.ledger.set('needsRefresh', true);
+            if (idsAligned && sequential && reply.bootstrapEtag && !this.ledger.get('needsRefresh')) {
+              this.ledger.set('bootstrapEtag', reply.bootstrapEtag);
+            } else {
+              this.ledger.set('needsRefresh', true);
+            }
             this.ledger.set('lastSync', new Date().toISOString());
           });
         });

@@ -114,13 +114,13 @@ test('venta corta en teléfono: cobro confirmado, más sin perder el carrito, re
       await page.setViewportSize({ width: 390, height: 844 });
       await page.getByRole('button', { name: /^Cobrar/ }).tap();
       await page.getByRole('button', { name: 'Exacto', exact: true }).tap();
-      assert.equal(await page.getByRole('spinbutton', { name: 'Monto recibido' }).inputValue(), '30.38');
+      assert.equal(await page.getByRole('spinbutton', { name: 'Monto recibido' }).inputValue(), '30');
       await page.screenshot({ path: path.join(evidence, `${name}-cobro.png`), animations: 'disabled' });
       await page.getByRole('button', { name: /Registrar venta/ }).tap();
       await page.getByRole('dialog').waitFor();
       const state = await (await fetch(origin + '/api/state')).json();
       assert.equal(state.state.facturas.length, name === 'chromium' ? 1 : 2);
-      assert.equal(state.state.facturas.at(-1).total, 30.38);
+      assert.equal(state.state.facturas.at(-1).total, 30);
       assert.equal(state.state.productos[0].stock, name === 'chromium' ? 7 : 4);
       assert.deepEqual(errors, []);
       // Same components at desktop width retain the full controls and unrestricted browser zoom.

@@ -178,6 +178,7 @@ export function NotificationsCenter({ onNavigate }) {
       receivables,
       payables,
       workshopAccounts,
+      reminders,
       cashSession,
       settings,
       pending,

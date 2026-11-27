@@ -82,7 +82,7 @@ test('fractional inventory survives catalog edits, sales, purchases and v5 backu
   const document = sold.state.facturas.find(f => f.id === sold.result.id);
   assert.deepEqual(document.items.map(i => [i.cant, i.precio, i.base, i.itbis, i.subtotal]),
     [[0.25, 23.45, 4.97, 0.89, 5.86], [0.25, 23.45, 4.97, 0.89, 5.86]]);
-  assert.equal(document.total, 11.72);
+  assert.equal(document.total, 12);
   const { stock, stockMinimo, notificarMinimo, ...purchaseFields } = item;
   const purchaseLine = { ...purchaseFields, cantidad: 0.10 };
   const purchase = { suplidorId: supplier.id, numero: 'PRUEBA-01', items: [purchaseLine, purchaseLine] };
@@ -146,7 +146,7 @@ test('tarifas unitarias exactas en compra, venta fraccionaria y restauración v5
   const sold = await write('ventas', { clienteId:made.state.clientes[0].id, condicion:'Contado',tipoComprobante:'B02',
     items:[{productoId:product.id,cantidad:'2.50',nivelPrecio:'precio2'}] });
   const invoice = sold.state.facturas.find(f => f.id === sold.result.id);
-  assert.deepEqual([invoice.items[0].precioExacto,invoice.items[0].subtotal,invoice.total], ['10.0030',25.01,25.01]);
+  assert.deepEqual([invoice.items[0].precioExacto,invoice.items[0].subtotal,invoice.total], ['10.0030',25.01,25]);
   const supplier = await write('suplidores',{nombre:'Suplidor de prueba de precios'});
   const bought = await write('compras',{suplidorId:supplier.result.id,numero:'Precisión',items:[{...draft,cantidad:'1.25'}]});
   const line = bought.state.compras.find(c => c.id === bought.result.id).items[0];

@@ -99,7 +99,15 @@ export function PwaProvider({ enabled, children }) {
           <DialogTitle>Instalar Repuestos Félix</DialogTitle>
         </DialogHeader>
         {error && <p role="status" className="text-sm text-destructive">{error}</p>}
-        {prompt && <Button onClick={install}>Instalar ahora</Button>}
+        {prompt ? (
+          <Button onClick={install}>Instalar ahora</Button>
+        ) : (
+          <div className="space-y-2 text-sm text-muted-foreground">
+            <p>{"Puedes instalar el POS como aplicación directa en tu pantalla de inicio:"}</p>
+            <p><strong className="text-foreground">{"iPhone / iPad (Safari): "}</strong>{"toca el botón Compartir y elige «Agregar a pantalla de inicio»."}</p>
+            <p><strong className="text-foreground">{"Android / PC (Chrome o Edge): "}</strong>{"abre el menú del navegador (⋮) y selecciona «Instalar aplicación»."}</p>
+          </div>
+        )}
       </DialogContent>
     </Dialog>}
   </PwaContext.Provider>;

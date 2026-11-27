@@ -166,7 +166,7 @@ function SettingsPage() {
         </TabsList>
         {runtime && isOwner && <TabsContent value="usuarios" className="mt-0"><UsersSettings /></TabsContent>}
         {runtime && <TabsContent value="cuenta" className="mt-0"><AccountSettings /></TabsContent>}
-        <TabsContent value="negocio" className="mt-0">
+        {(!runtime || isOwner) && <TabsContent value="negocio" className="mt-0">
           <SectionCard
             title="Datos del negocio"
             description="Aparecen en el ticket y en los reportes."
@@ -251,8 +251,8 @@ function SettingsPage() {
             </Button>
             {controls("negocio")}
           </SectionCard>
-        </TabsContent>
-        <TabsContent value="precios" className="mt-0">
+        </TabsContent>}
+        {(!runtime || isOwner) && <TabsContent value="precios" className="mt-0">
           <SectionCard
             title="Fórmulas de precios"
             description={runtime ? "Guarda la fórmula en cascada de cada suplidor para calcular Costo y sugerir P/Mayor y Detalle en Compras." : "Se guardan al escribir. Cada suplidor usa su fórmula en cascada para Costo, P/Mayor y Detalle."}
@@ -267,8 +267,8 @@ function SettingsPage() {
               onDelete={deleteFormula}
             />
           </SectionCard>
-        </TabsContent>
-        <TabsContent value="ncf" className="mt-0">
+        </TabsContent>}
+        {(!runtime || isOwner) && <TabsContent value="ncf" className="mt-0">
           <SectionCard
             title="Secuencias de comprobantes"
             description={
@@ -601,8 +601,8 @@ function SettingsPage() {
             </Button>
             </>}
           </SectionCard>
-        </TabsContent>
-        <TabsContent value="facturacion" className="mt-0">
+        </TabsContent>}
+        {(!runtime || isOwner) && <TabsContent value="facturacion" className="mt-0">
           <SectionCard title="Facturación e impresión" icon={Printer}>
             <fieldset disabled={busy || Boolean(request)} className="grid min-w-0 max-w-3xl gap-4 sm:grid-cols-3">
               <Field label="ITBIS %" htmlFor="billing-tax">
@@ -769,7 +769,7 @@ function SettingsPage() {
             </Button>
             {controls("facturacion")}
           </SectionCard>
-        </TabsContent>
+        </TabsContent>}
       </Tabs>
     </div>
   );

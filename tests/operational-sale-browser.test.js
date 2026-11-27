@@ -68,7 +68,7 @@ test('el POS abre caja, recupera una venta confirmada, registra movimientos y co
     await page.getByRole('main').getByRole('button', { name: 'Abrir caja', exact: true }).click();
     await page.getByText('Caja abierta', { exact: true }).waitFor();
     await page.goto(origin + '/ventas');
-    const search = page.getByPlaceholder('Escanea o escribe… ej. BUJ-C7HSA');
+    const search = page.getByPlaceholder('Escanea o escribe código, referencia o nombre…');
     await search.waitFor();
     assert.equal(await page.locator('.sale-product-catalog').count(), 0);
     assert.equal(await page.locator('.sale-search-catalog').count(), 0);

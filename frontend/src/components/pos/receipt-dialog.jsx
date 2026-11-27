@@ -155,7 +155,7 @@ function ReceiptDialog({
                   <span className="font-semibold">{sale.ncf}</span>
                 </div>
               )}
-              {(sale.dateOnly || isReprint) && !sale.ncf && !isQuote && <p className="text-muted-foreground">Sin emisión de NCF</p>}
+              {isOperational && !sale.ncf && !isQuote && <p className="text-muted-foreground">Sin emisión de NCF</p>}
             </div>
             <div className="my-3 border-t border-dashed border-border" />
             <div className="space-y-2">

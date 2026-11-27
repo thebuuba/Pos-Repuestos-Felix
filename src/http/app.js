@@ -40,6 +40,7 @@ const securityFor = hosting => hosting?.origin
   ? { ...baseSecurityHeaders, 'Strict-Transport-Security': 'max-age=31536000; includeSubDomains' }
   : baseSecurityHeaders;
 const maxBodyBytes = 10 * 1024 * 1024;
+const maxGzipRestoreBytes = 50 * 1024 * 1024;
 
 function syncBackupVersion(request) {
   const raw = request.headers.get('x-felix-backup-version');
@@ -57,22 +58,50 @@ function json(status, data, headers = {}, hosting = null) {
 
 function fail(message, status) { const error = new Error(message); error.status = status; throw error; }
 
-async function readBody(request, limit = maxBodyBytes) {
-  let length = 0;
+async function readBody(request, limit = maxBodyBytes, { allowGzip = false } = {}) {
+  const encoding = (request.headers.get('content-encoding') || '').trim().toLowerCase();
+  const isGzip = encoding === 'gzip';
+  if (encoding && !(allowGzip && isGzip)) fail('Codificación de contenido no admitida.', 415);
+  const rawLimit = limit;
+  const outputLimit = isGzip ? maxGzipRestoreBytes : limit;
+  let rawLength = 0;
+  let outLength = 0;
   const chunks = [];
   const decoder = new TextDecoder();
-  const reader = request.body?.getReader();
+  let stream = request.body;
+  if (isGzip && stream) {
+    // Limitar bytes comprimidos antes de descomprimir para evitar gzip bombs.
+    const rawReader = stream.getReader();
+    const bounded = new ReadableStream({
+      async pull(controller) {
+        const { done, value } = await rawReader.read();
+        if (done) { controller.close(); return; }
+        rawLength += value.byteLength;
+        if (rawLength > rawLimit) {
+          controller.error(Object.assign(new Error('El respaldo comprimido supera el límite permitido.'), { status: 413 }));
+          return;
+        }
+        controller.enqueue(value);
+      },
+      cancel() { rawReader.cancel().catch(() => {}); },
+    });
+    stream = bounded.pipeThrough(new DecompressionStream('gzip'));
+  }
+  const reader = stream?.getReader();
   try {
     if (reader) {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        length += value.byteLength;
-        if (length > limit) fail(limit === maxBodyBytes ? 'El respaldo supera el límite de 10 MB.' : 'La solicitud supera el tamaño permitido.', 413);
+        outLength += value.byteLength;
+        if (outLength > outputLimit) fail(limit === maxBodyBytes ? 'El respaldo supera el límite de 10 MB.' : 'La solicitud supera el tamaño permitido.', 413);
         chunks.push(decoder.decode(value, { stream: true }));
       }
     }
     chunks.push(decoder.decode());
+  } catch (err) {
+    if (err?.status) throw err;
+    fail('El contenido comprimido o JSON no es válido.', 400);
   } finally { reader?.releaseLock(); }
   try { return JSON.parse(chunks.join('')); }
   catch { fail('El contenido JSON no es válido.', 400); }
@@ -185,29 +214,31 @@ async function route(request, { pool, hosting, databaseLabel = 'PostgreSQL', rea
       if (!allowedOperation(role, request.method, pathname)) {
         return json(403, { error: 'Tu cuenta de cajero no tiene permiso para esta operación.' });
       }
-      if (request.method === 'GET' && pathname === '/api/backup') {
-        return json(200, await readSnapshot(pool, databaseLabel, true));
-      }
+      const isBackupRead = request.method === 'GET' && pathname === '/api/backup';
       const isStateRead = request.method === 'GET' && pathname === '/api/state';
       const isSyncBootstrap = request.method === 'GET' && pathname === '/api/sync/bootstrap';
       const productMovementsMatch = request.method === 'GET' ? /^\/api\/productos\/([1-9]\d*)\/movimientos$/.exec(pathname) : null;
-      if (!isStateRead && !isSyncBootstrap && !productMovementsMatch && !['POST', 'PUT', 'DELETE'].includes(request.method)) return json(405, { error: 'Método no permitido.' });
+      if (!isBackupRead && !isStateRead && !isSyncBootstrap && !productMovementsMatch && !['POST', 'PUT', 'DELETE'].includes(request.method)) return json(405, { error: 'Método no permitido.' });
       const expectedOrigin = hosting.origin || url.origin;
       const origin = request.headers.get('origin');
       if ((origin && origin !== expectedOrigin) || request.headers.get('sec-fetch-site') === 'cross-site') {
         return json(403, { error: 'Origen no permitido.' });
+      }
+      if (isBackupRead) {
+        return json(200, await readSnapshot(pool, databaseLabel, true));
       }
       if (productMovementsMatch) {
         return json(200, await readProductMovements(pool, Number(productMovementsMatch[1]), { role }));
       }
       if (isSyncBootstrap) {
         const backupVersion = syncBackupVersion(request);
+        const minimal = request.headers.get('x-felix-bootstrap') === 'minimal';
         const condition = request.headers.get('if-none-match');
         const download = await readSyncBootstrap(
           pool,
           databaseLabel,
           condition ? version => matchesStateTag(condition, bootstrapTag({ ...version, role, backupVersion })) : undefined,
-          { backupVersion },
+          { backupVersion, minimal },
         );
         const headers = { ETag: bootstrapTag({ ...(download.notModified ?? download.snapshot), role, backupVersion }) };
         return download.notModified ? new Response(null, { status: 304, headers: { ...securityHeaders, ...headers } }) : json(200, redactBootstrapForRole(download, role), headers);
@@ -216,20 +247,21 @@ async function route(request, { pool, hosting, databaseLabel = 'PostgreSQL', rea
         const condition = request.headers.get('if-none-match');
         const compact = request.headers.get('x-felix-compact') === '1';
         const state = await readSnapshot(pool, databaseLabel, false, condition ? version => matchesStateTag(condition, stateTag({ ...version, role })) : undefined, { compact });
-        const headers = { ETag: stateTag({ ...(state.notModified ?? state), role }) };
+        const headers = { ETag: stateTag({ ...(state.notModified ?? state), role }), 'X-Felix-Role': role };
         if (state.notModified) return new Response(null, { status: 304, headers: { ...securityHeaders, ...headers, 'Content-Type': 'application/json; charset=utf-8' } });
         return json(200, redactSnapshotForRole(state, role), headers);
       }
       if (request.headers.get('content-type')?.split(';')[0].trim() !== 'application/json') {
         return json(415, { error: 'Se requiere application/json.' });
       }
-      const body = await readBody(request);
+      const body = await readBody(request, maxBodyBytes, { allowGzip: pathname === '/api/restore' });
       const actor = account?.user ? { id: account.user.id, name: account.user.email.split('@')[0], role } :
         { id: 'local', name: hosting.username || 'Usuario local', role };
       if (pathname === '/api/sync/retire') {
         if (request.method !== 'POST') return json(405, { error: 'Método no permitido.' });
         const backupVersion = syncBackupVersion(request);
-        return json(200, redactBootstrapForRole(await retireSyncStream(pool, body, databaseLabel, actor, { backupVersion }), role));
+        const minimal = request.headers.get('x-felix-bootstrap') === 'minimal';
+        return json(200, redactBootstrapForRole(await retireSyncStream(pool, body, databaseLabel, actor, { backupVersion, minimal }), role));
       }
       if (pathname === '/api/sync/operations') {
         if (request.method !== 'POST') return json(405, { error: 'Método no permitido.' });
@@ -240,7 +272,10 @@ async function route(request, { pool, hosting, databaseLabel = 'PostgreSQL', rea
           receiptOnly: request.headers.get('prefer') === 'return=receipt',
           backupVersion,
         });
-        return json(200, redactBootstrapForRole(result, role), { ETag: stateTag({ ...result.snapshot, role }) });
+        return json(200, redactBootstrapForRole(result, role), {
+          ETag: stateTag({ ...result.snapshot, role }),
+          'X-Felix-Bootstrap-ETag': bootstrapTag({ ...result.snapshot, role, backupVersion }),
+        });
       }
       const rawDelta = request.headers.get('x-felix-delta');
       const deltaBaseRevision = rawDelta !== null && /^\d+$/.test(rawDelta) && Number.isSafeInteger(Number(rawDelta)) ? Number(rawDelta) : null;
@@ -251,7 +286,7 @@ async function route(request, { pool, hosting, databaseLabel = 'PostgreSQL', rea
       });
       return json(200, redactSnapshotForRole(result, role), { ETag: stateTag({ ...result, role }) });
     }
-    const immutableAsset = /^\/assets\/pwa\/(app-[a-f0-9]{16}\.js|styles-[a-f0-9]{16}\.css|chunk-[A-Z0-9]{8}\.js)$/.exec(pathname);
+    const immutableAsset = /^\/assets\/pwa\/(app-[a-f0-9]{16}\.js|styles-[a-f0-9]{16}\.css|chunk-[A-Z0-9]{8}\.(?:js|css))$/.exec(pathname);
     const asset = isPage ? pageAsset : publicFiles[pathname] || (immutableAsset && [pathname.slice(1), pathname.endsWith('.js') ? 'text/javascript' : 'text/css']);
     if (!asset || !['GET', 'HEAD'].includes(request.method)) return json(404, { error: 'No encontrado.' });
     const content = await readAsset(asset[0]);

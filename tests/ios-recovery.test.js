@@ -153,7 +153,7 @@ test('the sale draft follows global confirmation and presents one receipt withou
     return allow ? route.continue() : route.abort();
   });
   await page.goto(origin + '/ventas');
-  const search = page.getByPlaceholder('Escanea o escribe… ej. BUJ-C7HSA');
+  const search = page.getByPlaceholder('Escanea o escribe código, referencia o nombre…');
   await search.fill('REC-1');
   await search.press('Enter');
   await page.getByRole('button', { name: 'Tarjeta', exact: true }).click();
@@ -337,7 +337,7 @@ for (const mobile of [false, true]) test(`reopening recovers after an initial 50
     return route.continue();
   });
   await page.goto(origin + '/ventas');
-  const search = page.getByPlaceholder('Escanea o escribe… ej. BUJ-C7HSA');
+  const search = page.getByPlaceholder('Escanea o escribe código, referencia o nombre…');
   await search.fill('REC-1');
   await search.press('Enter');
   if (mobile) await page.getByRole('button', { name: /^Cobrar/ }).click();
@@ -385,7 +385,7 @@ test('another tab can confirm a sale while only the originating draft receives i
     return otherConfirmed ? route.continue() : route.abort();
   });
   await page.goto(origin + '/ventas');
-  const search = page.getByPlaceholder('Escanea o escribe… ej. BUJ-C7HSA');
+  const search = page.getByPlaceholder('Escanea o escribe código, referencia o nombre…');
   await search.fill('REC-1');
   await search.press('Enter');
   await page.getByRole('button', { name: 'Tarjeta', exact: true }).click();
@@ -421,7 +421,7 @@ test('a permanent error during automatic recovery replaces the old temporary sal
       json: { error: packets.length === 1 ? 'Servicio temporalmente ocupado.' : 'El servicio rechazó el acceso a esta operación.' } });
   });
   await page.goto(origin + '/ventas');
-  const search = page.getByPlaceholder('Escanea o escribe… ej. BUJ-C7HSA');
+  const search = page.getByPlaceholder('Escanea o escribe código, referencia o nombre…');
   await search.fill('REC-1');
   await search.press('Enter');
   await page.getByRole('button', { name: 'Tarjeta', exact: true }).click();

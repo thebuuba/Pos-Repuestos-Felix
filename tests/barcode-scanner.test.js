@@ -61,7 +61,7 @@ async function openSale(t, products = [product], categories = [], engineBrowser 
   };
   await context.route('**/api/state', route => route.fulfill({ json: snapshot }));
   await page.goto(server.origin + '/ventas');
-  const search = page.getByPlaceholder('Escanea o escribe… ej. BUJ-C7HSA');
+  const search = page.getByPlaceholder('Escanea o escribe código, referencia o nombre…');
   await search.waitFor();
   return { page, search, writes, snapshot, context };
 }
@@ -600,7 +600,7 @@ test('la cámara solicita permiso sólo al abrir y muestra el rechazo en españo
 });
 
 async function searchVisible(page) {
-  return page.getByPlaceholder('Escanea o escribe… ej. BUJ-C7HSA').isVisible();
+  return page.getByPlaceholder('Escanea o escribe código, referencia o nombre…').isVisible();
 }
 
 // Independent EAN-13 fixture: 0012345678905, with its check digit 5.

@@ -1,6 +1,8 @@
 // Roles del negocio: "dueno" (acceso completo) y "cajero" (operación de mostrador).
 // Las cuentas creadas antes de asignar roles conservan "dueno" para no bloquear acceso existente.
 export const ROLES = Object.freeze({ DUENO: 'dueno', CAJERO: 'cajero' });
+// Tope máximo de descuento permitido a un cajero sin autorización del dueño (10.00 %).
+export const MAX_CASHIER_DISCOUNT_BPS = 1000n;
 
 export function normalizeRole(value) {
   return value === ROLES.CAJERO ? ROLES.CAJERO : ROLES.DUENO;
@@ -32,6 +34,14 @@ export function allowedOperation(role, method, path) {
   return false;
 }
 
+const redactItemsCost = items => Array.isArray(items)
+  ? items.map(item => ({ ...item, costoUnitario: null, costoUnitarioExacto: null }))
+  : items;
+
+const redactDocWithItems = list => (list || []).map(doc => ({ ...doc, items: redactItemsCost(doc.items) }));
+
+const redactSupplier = s => ({ ...s, deuda: 0, diasCredito: null, formulaId: null });
+
 export function redactSnapshotForRole(snapshot, role) {
   if (isOwner(role) || !snapshot) return snapshot;
   if (snapshot.delta && snapshot.changes) {
@@ -43,7 +53,14 @@ export function redactSnapshotForRole(snapshot, role) {
           ? { productosUpsert: snapshot.changes.productosUpsert.map(p => ({ ...p, costo: 0, costoExacto: '0.0000' })) }
           : {}),
         ...(snapshot.changes.suplidoresUpsert
-          ? { suplidoresUpsert: snapshot.changes.suplidoresUpsert.map(s => ({ ...s, deuda: 0 })) }
+          ? { suplidoresUpsert: snapshot.changes.suplidoresUpsert.map(redactSupplier) }
+          : {}),
+        ...(snapshot.changes.formulasUpsert ? { formulasUpsert: [] } : {}),
+        ...(snapshot.changes.facturasUpsert
+          ? { facturasUpsert: redactDocWithItems(snapshot.changes.facturasUpsert) }
+          : {}),
+        ...(snapshot.changes.cuentasTallerUpsert
+          ? { cuentasTallerUpsert: redactDocWithItems(snapshot.changes.cuentasTallerUpsert) }
           : {}),
         ...(snapshot.changes.comprasUpsert ? { comprasUpsert: [] } : {}),
         ...(snapshot.changes.abonosUpsert
@@ -63,7 +80,10 @@ export function redactSnapshotForRole(snapshot, role) {
       productos: snapshot.state.productos.map(p => Array.isArray(p)
         ? Object.assign([...p], { 11: '0.0000' })
         : ({ ...p, costo: 0, costoExacto: '0.0000' })),
-      suplidores: (snapshot.state.suplidores || []).map(s => ({ ...s, deuda: 0 })),
+      formulas: [],
+      suplidores: (snapshot.state.suplidores || []).map(redactSupplier),
+      facturas: redactDocWithItems(snapshot.state.facturas),
+      cuentasTaller: redactDocWithItems(snapshot.state.cuentasTaller),
       compras: [],
       abonos: (snapshot.state.abonos || []).filter(a => a.tipo !== 'pago'),
       movimientos: (snapshot.state.movimientos || []).filter(m => m.tipo !== 'compra' && m.tipo !== 'anulacion_compra'),
@@ -71,11 +91,9 @@ export function redactSnapshotForRole(snapshot, role) {
   };
 }
 
-export function redactBootstrapForRole(download, role) {
-  if (isOwner(role) || !download) return download;
-  const snapshot = redactSnapshotForRole(download.snapshot, role);
-  if (!download.backup?.tables) return { ...download, snapshot };
-  const src = download.backup.tables;
+export function redactBackupTablesForRole(backup, role) {
+  if (isOwner(role) || !backup?.tables) return backup;
+  const src = backup.tables;
   // Conservar únicamente pagos en efectivo ligados a turnos de caja para preservar la cuadratura de caja en restore().
   const keptPayments = (src.abonos_cuentas || [])
     .filter(a => a.tipo === 'cobro' || (a.tipo === 'pago' && a.metodo_pago === 'efectivo' && a.caja_id !== null))
@@ -84,30 +102,69 @@ export function redactBootstrapForRole(download, role) {
   const keptCompras = (src.compras || [])
     .filter(c => keptPurchaseIds.has(String(c.id)))
     .map(c => ({ ...c, suplidor_nombre: 'Restringido', numero: `Restringido-${c.id}` }));
-  const keptDetails = (src.compra_detalles || [])
-    .filter(d => keptPurchaseIds.has(String(d.compra_id)))
-    .map(d => ({ ...d, nombre: 'Restringido' }));
-  const keptDetailIds = new Set(keptDetails.map(d => String(d.id)));
+  const fallbackProductId = src.productos?.[0]?.id ?? null;
+  // Reemplazar detalles comerciales reales por una sola línea sintética por compra retenida para no filtrar códigos ni costos.
+  const keptDetails = [];
+  if (keptCompras.length && fallbackProductId !== null) {
+    const firstDetailIdByPurchase = new Map();
+    for (const d of src.compra_detalles || []) {
+      const key = String(d.compra_id);
+      if (keptPurchaseIds.has(key) && !firstDetailIdByPurchase.has(key)) firstDetailIdByPurchase.set(key, d.id);
+    }
+    for (const c of keptCompras) {
+      const detailId = firstDetailIdByPurchase.get(String(c.id)) ?? c.id;
+      const totalStr = String(c.total);
+      const costStr = totalStr.includes('.') ? totalStr.replace(/\.(\d+)$/, (_, dec) => '.' + dec.padEnd(4, '0').slice(0, 4)) : `${totalStr}.0000`;
+      keptDetails.push({
+        id: detailId,
+        compra_id: c.id,
+        producto_id: fallbackProductId,
+        codigo: 'RESTRINGIDO',
+        nombre: 'Restringido',
+        cantidad: '1.00',
+        costo: costStr,
+        precio1: '0.0000',
+        precio2: '0.0000',
+        precio3: '0.0000',
+        total: totalStr,
+      });
+    }
+  }
   const movimientos = (src.movimientos_inventario || []).map(m => {
-    if ((m.tipo === 'compra' && !keptDetailIds.has(String(m.compra_detalle_id))) || m.tipo === 'anulacion_compra') {
+    if (m.tipo === 'compra' || m.tipo === 'anulacion_compra') {
       return { ...m, tipo: 'ajuste', compra_detalle_id: null, motivo: '' };
     }
     return m;
   });
   return {
+    ...backup,
+    tables: {
+      ...src,
+      formulas_precios: [],
+      suplidores: (src.suplidores || []).map(s => ({ ...s, dias_credito: null, formula_id: null })),
+      productos: (src.productos || []).map(p => ({ ...p, costo: '0.0000' })),
+      venta_detalles: (src.venta_detalles || []).map(d => (
+        Object.hasOwn(d, 'costo_unitario') ? { ...d, costo_unitario: null } : d
+      )),
+      cuentas_taller_items: (src.cuentas_taller_items || []).map(i => (
+        Object.hasOwn(i, 'costo_unitario') ? { ...i, costo_unitario: null } : i
+      )),
+      compras: keptCompras,
+      compra_detalles: keptDetails,
+      abonos_cuentas: keptPayments,
+      movimientos_inventario: movimientos,
+      secuencias_ncf: [],
+    },
+  };
+}
+
+export function redactBootstrapForRole(download, role) {
+  if (isOwner(role) || !download) return download;
+  const snapshot = redactSnapshotForRole(download.snapshot, role);
+  if (!download.backup?.tables) return { ...download, snapshot };
+  return {
     ...download,
     snapshot,
-    backup: {
-      ...download.backup,
-      tables: {
-        ...src,
-        productos: (src.productos || []).map(p => ({ ...p, costo: '0.0000' })),
-        compras: keptCompras,
-        compra_detalles: keptDetails,
-        abonos_cuentas: keptPayments,
-        movimientos_inventario: movimientos,
-        secuencias_ncf: [],
-      },
-    },
+    backup: redactBackupTablesForRole(download.backup, role),
   };
 }

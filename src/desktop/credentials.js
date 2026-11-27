@@ -56,8 +56,13 @@ export class RemoteClient {
         !(url.protocol === 'https:' || url.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(url.hostname))) throw new Error('Dirección del servidor no permitida.');
     this.origin = url.origin; this.ledger = ledger; this.secrets = secrets; this.fetcher = fetcher; this.cookie = null; this.revision = 0;
     this.cookieName = url.protocol === 'https:' ? '__Host-felix-session' : 'felix-session';
+    this.abortController = new AbortController();
   }
-  async request(path, { method = 'GET', body, key, authenticated = true, etag, receiptOnly = false } = {}) {
+  abortAll() {
+    this.abortController.abort();
+    this.abortController = new AbortController();
+  }
+  async request(path, { method = 'GET', body, key, authenticated = true, etag, receiptOnly = false, backupVersion = CURRENT_BACKUP_VERSION, timeoutMs = 25000 } = {}) {
     if (!path.startsWith('/api/') && !['/login', '/logout', '/cuenta/clave'].includes(path)) throw new Error('Ruta remota no permitida.');
     const revision = this.revision;
     if (authenticated && this.cookie === null) {
@@ -67,10 +72,15 @@ export class RemoteClient {
       if (this.cookie === null) this.cookie = loaded;
     }
     let response;
+    const signal = typeof AbortSignal.any === 'function'
+      ? AbortSignal.any([AbortSignal.timeout(timeoutMs), this.abortController.signal])
+      : AbortSignal.timeout(timeoutMs);
+    const minimalBootstrap = path === '/api/sync/bootstrap' || path === '/api/sync/retire';
     try {
-      response = await this.fetcher(this.origin + path, { method, redirect: 'manual', signal: AbortSignal.timeout(25000),
+      response = await this.fetcher(this.origin + path, { method, redirect: 'manual', signal,
         headers: { 'Content-Type': 'application/json', Origin: this.origin, ...(authenticated && this.cookie && { Cookie: this.cookie }), ...(key && { 'Idempotency-Key': key }), ...(etag && { 'If-None-Match': etag }),
-          ...(path.startsWith('/api/sync/') && { 'X-Felix-Backup-Version': String(CURRENT_BACKUP_VERSION) }),
+          ...(path.startsWith('/api/sync/') && { 'X-Felix-Backup-Version': String(backupVersion) }),
+          ...(minimalBootstrap && { 'X-Felix-Bootstrap': 'minimal' }),
           ...(receiptOnly === true && method === 'POST' && path === '/api/sync/operations' && { Prefer: 'return=receipt' }) },
         body: body && JSON.stringify(body) });
     } catch { throw Object.assign(new Error('No se pudo conectar con el servidor.'), { status: 503 }); }
@@ -83,6 +93,10 @@ export class RemoteClient {
       ...(path === '/api/sync/retire' && response.status === 409 && result?.retirementRejection &&
         typeof result.retirementRejection === 'object' && !Array.isArray(result.retirementRejection) && { retirementRejection: result.retirementRejection }),
     });
+    const bootstrapEtag = response.headers.get('x-felix-bootstrap-etag');
+    if (bootstrapEtag && result && typeof result === 'object' && !Array.isArray(result)) {
+      result.bootstrapEtag = bootstrapEtag;
+    }
     const nextCookie = sessionCookie(response.headers, this.cookieName);
     if (nextCookie !== undefined && this.revision === revision) {
       if (!nextCookie) this.clear();

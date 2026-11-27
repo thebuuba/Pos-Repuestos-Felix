@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -79,7 +79,10 @@ function ProductKardexDialog({ product, onOpenChange, fetchMovements }) {
   const [data, setData] = useState(null);
   const productId = product?.id ?? null;
 
+  const requestSeqRef = useRef(0);
+
   const load = useCallback(async () => {
+    const seq = ++requestSeqRef.current;
     if (!productId || !fetchMovements) {
       setData(null);
       setError(null);
@@ -90,21 +93,25 @@ function ProductKardexDialog({ product, onOpenChange, fetchMovements }) {
     setError(null);
     try {
       const result = await fetchMovements(productId);
+      if (requestSeqRef.current !== seq) return;
       setData(result);
     } catch (cause) {
+      if (requestSeqRef.current !== seq) return;
       setError(cause?.message || "No se pudo cargar el historial de movimientos.");
     } finally {
-      setLoading(false);
+      if (requestSeqRef.current === seq) setLoading(false);
     }
   }, [productId, fetchMovements]);
 
   useEffect(() => {
     if (productId) load();
     else {
+      requestSeqRef.current += 1;
       setData(null);
       setError(null);
       setLoading(false);
     }
+    return () => { requestSeqRef.current += 1; };
   }, [productId, load]);
 
   const movements = data?.movements ?? [];

@@ -94,13 +94,16 @@ export function negotiateBackupVersion(requested) {
   return Math.min(parsed, CURRENT_BACKUP_VERSION);
 }
 
-async function bootstrap(client, databaseLabel, observed, backupVersion = CURRENT_BACKUP_VERSION) {
+async function bootstrap(client, databaseLabel, observed, backupVersion = CURRENT_BACKUP_VERSION, { minimal = false } = {}) {
   const resolvedVersion = negotiateBackupVersion(backupVersion);
-  const current = observed ?? await snapshot(client, databaseLabel);
+  const current = observed ?? (minimal ? await snapshotVersion(client, databaseLabel) : await snapshot(client, databaseLabel));
+  const catalogo = minimal
+    ? (await client.query('SELECT pos_privado.netpos_opciones() AS catalogo')).rows[0].catalogo
+    : current.state.catalogo;
   const backup = await exportBackup(client, resolvedVersion);
-  return { snapshot: current, backup, catalogo: current.state.catalogo, cashHead: cashHeadFromBackup(backup), etag: bootstrapTag({ ...current, backupVersion: resolvedVersion }) };
+  return { snapshot: current, backup, catalogo, cashHead: cashHeadFromBackup(backup), etag: bootstrapTag({ ...current, backupVersion: resolvedVersion }) };
 }
-export async function readSyncBootstrap(pool, databaseLabel, isNotModified, { backupVersion = CURRENT_BACKUP_VERSION } = {}) {
+export async function readSyncBootstrap(pool, databaseLabel, isNotModified, { backupVersion = CURRENT_BACKUP_VERSION, minimal = false } = {}) {
   const resolvedVersion = negotiateBackupVersion(backupVersion);
   const client = await pool.connect();
   let discard;
@@ -111,7 +114,7 @@ export async function readSyncBootstrap(pool, databaseLabel, isNotModified, { ba
     }
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     await client.query('SELECT pg_advisory_xact_lock_shared($1)', [maintenanceLock]);
-    const response = await bootstrap(client, databaseLabel, undefined, resolvedVersion);
+    const response = await bootstrap(client, databaseLabel, undefined, resolvedVersion, { minimal });
     await client.query('COMMIT');
     return response;
   } catch (error) {
@@ -204,7 +207,7 @@ function streamKey(kind, actorId, deviceId, databaseId) {
 }
 
 // A retired stream is a durable server-side barrier, not deletion of invoices.
-export async function retireSyncStream(pool, body, databaseLabel, actor, { backupVersion = CURRENT_BACKUP_VERSION } = {}) {
+export async function retireSyncStream(pool, body, databaseLabel, actor, { backupVersion = CURRENT_BACKUP_VERSION, minimal = false } = {}) {
   const resolvedVersion = negotiateBackupVersion(backupVersion);
   if (!body || Object.keys(body).sort().join(',') !== 'databaseId,deviceId,operationIds' ||
       !uuid.test(body.deviceId) || !uuid.test(body.databaseId) || !Array.isArray(body.operationIds) ||
@@ -237,7 +240,7 @@ export async function retireSyncStream(pool, body, databaseLabel, actor, { backu
         [key, 'sync:retired', fingerprint, { databaseId: body.databaseId, retirement }]);
     }
     await client.query('SELECT database_id FROM pos_privado.sistema WHERE id=1 FOR SHARE');
-    const download = await bootstrap(client, databaseLabel, undefined, resolvedVersion);
+    const download = await bootstrap(client, databaseLabel, undefined, resolvedVersion, { minimal });
     await client.query('COMMIT');
     return { ...download, retirement };
   } catch (cause) {
@@ -375,8 +378,13 @@ export async function writeSyncOperation(pool, envelope, databaseLabel, actor, {
             await verifyCashHead(client, expected.cashHead, occurredAt, null);
           }
         } else {
-          await verifyCashHead(client, expected.cashHead, occurredAt, (path === '/api/ventas' || resource === 'taller/facturar') ? body : null);
+          const additiveOpenTurn = path === '/api/ventas' || resource === 'taller/facturar' || (path === '/api/cuentas/cobros' && body?.metodoPago === 'efectivo');
+          await verifyCashHead(client, expected.cashHead, occurredAt, additiveOpenTurn ? body : null);
         }
+      }
+      if (path === '/api/ventas' || resource === 'taller/facturar') {
+        const cfg = (await client.query('SELECT version FROM configuracion WHERE id=1 FOR SHARE')).rows[0];
+        if (cfg) executionBody.versionConfiguracion = Number(cfg.version);
       }
       if (path === '/api/ventas' || ((resource === 'taller' || resource === 'taller/despachar') && Array.isArray(body.items) && body.items.length)) {
         const versions = new Map((await client.query('SELECT id,version FROM productos WHERE id=ANY($1::bigint[]) ORDER BY id FOR UPDATE',

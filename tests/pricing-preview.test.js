@@ -48,7 +48,7 @@ test('product previews reject invalid and overflowing suggestions and allow vali
 
   await cost.fill('100');
   await calculate.click();
-  assert.equal(await firstPrice.inputValue(), '135');
+  assert.equal(await firstPrice.inputValue(), '170');
   await cost.fill('1.00001');
   assert.equal(await calculate.isDisabled(), true);
   await sheet.getByRole('alert').getByText(/hasta cuatro decimales/).waitFor();
@@ -67,16 +67,18 @@ test('product previews reject invalid and overflowing suggestions and allow vali
 test('purchase suggestions guard entry and editable rows against invalid and overflowing costs', async (t) => {
   const page = await open(t, '/compras');
   const main = page.getByRole('main');
-  const cost = main.getByPlaceholder('0.00', { exact: true });
+  const cost = main.getByLabel('Costo unitario', { exact: true });
   const add = main.getByRole('button', { name: 'Agregar', exact: true });
   const upload = main.getByRole('button', { name: 'Subir factura al inventario' });
   const name = 'Artículo de compra de prueba';
-  await main.getByPlaceholder('Código', { exact: true }).fill('COMPRA-PRUEBA');
+  await main.getByRole('combobox', { name: 'Suplidor', exact: true }).click();
+  await page.getByRole('option', { name: /Arias Piezas y Gomas/ }).click();
+  await main.getByPlaceholder('Código, referencia o nombre…', { exact: true }).fill('COMPRA-PRUEBA');
   await main.getByPlaceholder('Nombre del artículo', { exact: true }).fill(name);
 
   await cost.fill('1e2');
   assert.equal(await add.isDisabled(), true);
-  await main.getByRole('alert').getByText(/hasta 4 decimales/).waitFor();
+  await main.getByRole('alert').getByText(/hasta (?:4|cuatro) decimales/).waitFor();
   await cost.fill('999999999999.99');
   assert.equal(await add.isDisabled(), true);
   await main.getByRole('alert').getByText(/límite permitido/).waitFor();
@@ -88,33 +90,36 @@ test('purchase suggestions guard entry and editable rows against invalid and ove
   await add.click();
 
   const row = main.getByRole('row').filter({ hasText: name });
-  const rowCost = row.getByRole('spinbutton').nth(1);
-  const firstPrice = row.getByRole('spinbutton').nth(2);
-  assert.equal(await firstPrice.inputValue(), '135');
-  await rowCost.fill('-1');
-  await row.getByRole('alert').getByText(/hasta 4 decimales/).waitFor();
+  const rowCost = row.getByLabel('Costo de la línea', { exact: true });
+  const wholesalePrice = row.getByLabel('P/Mayor', { exact: true });
+  const firstPrice = row.getByLabel('Detalle', { exact: true });
   assert.equal(await firstPrice.inputValue(), '');
+  await row.getByRole('button', { name: /Sugerencia P\/Mayor: 115\.00/ }).click();
+  await row.getByRole('button', { name: /Sugerencia Detalle: 150\.00/ }).click();
+  assert.equal(await wholesalePrice.inputValue(), '115.00');
+  assert.equal(await firstPrice.inputValue(), '150.00');
+  await rowCost.fill('-1');
+  await row.getByRole('alert').getByText(/hasta (?:4|cuatro) decimales/).waitFor();
   assert.equal(await upload.isDisabled(), true);
   await rowCost.fill('999999999999.99');
   await row.getByRole('alert').getByText(/límite permitido/).waitFor();
   assert.equal(await upload.isDisabled(), true);
   await rowCost.fill('100');
-  assert.equal(await firstPrice.inputValue(), '135');
   assert.equal(await upload.isEnabled(), true);
 });
 
 test('a purchase row accepts explicit zero and rejects a blank cost', async (t) => {
   const page = await open(t, '/compras');
   const main = page.getByRole('main');
-  const cost = main.getByPlaceholder('0.00', { exact: true });
+  const cost = main.getByLabel('Costo unitario', { exact: true });
   const add = main.getByRole('button', { name: 'Agregar', exact: true });
   const upload = main.getByRole('button', { name: 'Subir factura al inventario' });
   const name = 'Artículo de costo cero';
 
-  await main.getByRole('combobox').filter({ hasText: 'Selecciona un suplidor' }).click();
-  await page.getByRole('option', { name: 'Arias Piezas y Gomas', exact: true }).click();
+  await main.getByRole('combobox', { name: 'Suplidor', exact: true }).click();
+  await page.getByRole('option', { name: /Arias Piezas y Gomas/ }).click();
   await main.getByPlaceholder('Ej. FAC-4589').fill('CERO-PRUEBA');
-  await main.getByPlaceholder('Código', { exact: true }).fill('COSTO-CERO');
+  await main.getByPlaceholder('Código, referencia o nombre…', { exact: true }).fill('COSTO-CERO');
   await main.getByPlaceholder('Nombre del artículo', { exact: true }).fill(name);
   await cost.fill('0');
   assert.equal(await add.isDisabled(), true);
@@ -122,15 +127,16 @@ test('a purchase row accepts explicit zero and rejects a blank cost', async (t) 
   await add.click();
 
   const row = main.getByRole('row').filter({ hasText: name });
-  const rowCost = row.getByRole('spinbutton').nth(1);
-  const firstPrice = row.getByRole('spinbutton').nth(2);
+  const rowCost = row.getByLabel('Costo de la línea', { exact: true });
+  const wholesalePrice = row.getByLabel('P/Mayor', { exact: true });
+  const firstPrice = row.getByLabel('Detalle', { exact: true });
+  await wholesalePrice.fill('0');
+  await firstPrice.fill('0');
   await rowCost.fill('');
   await row.getByRole('alert').getByText(/costo/).waitFor();
-  assert.equal(await firstPrice.inputValue(), '');
   assert.equal(await upload.isDisabled(), true);
 
   await rowCost.fill('0');
-  assert.equal(await firstPrice.inputValue(), '0');
   assert.equal(await upload.isEnabled(), true);
   await upload.click();
   const history = main.getByRole('row').filter({ hasText: 'CERO-PRUEBA' });
@@ -142,21 +148,24 @@ test('the formula editor reports invalid or overflowing previews and recovers on
   await page.getByRole('tab', { name: 'Fórmulas de precios', exact: true }).click();
   const panel = page.getByRole('tabpanel', { name: 'Fórmulas de precios', exact: true });
   const standard = panel.locator('div.rounded-2xl').filter({ has: page.locator('input[value="Estándar"]') });
-  const factor = standard.getByRole('spinbutton').nth(0);
-  const firstMargin = standard.getByRole('spinbutton').nth(1);
-  const originalPrice = standard.getByText('RD$ 1,350.00', { exact: true });
+  const factor = standard.getByLabel('Ajuste costo', { exact: true });
+  const firstMargin = standard.getByLabel('P1 ganancia %', { exact: true });
+  const originalPrice = standard.getByText('RD$ 170.00', { exact: true });
   await originalPrice.waitFor();
 
-  await factor.fill('1.0001');
+  await factor.fill('1.0000001');
   await standard.getByRole('alert').getByText(/factor de costo/).waitFor();
   assert.equal(await originalPrice.count(), 0);
   await factor.fill('1');
   await originalPrice.waitFor();
 
+  const secondMargin = standard.getByLabel('P2 ganancia %', { exact: true });
   await factor.fill('999999.999');
+  await secondMargin.fill('99999.9999');
   await firstMargin.fill('99999.9999');
   await standard.getByRole('alert').getByText(/límite permitido/).waitFor();
   await firstMargin.fill('35');
+  await secondMargin.fill('25');
   await factor.fill('1');
   await originalPrice.waitFor();
   assert.equal(await standard.getByRole('alert').count(), 0);

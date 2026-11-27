@@ -203,13 +203,25 @@ function actions(client) {
     })),
     saveProduct: record('productos', productPayload), deleteProduct: record('productos'),
     fetchProductMovements: async (productId) => {
-      const response = await fetch('/api/productos/' + encodeURIComponent(String(productId)) + '/movimientos', {
-        cache: 'no-store',
-        signal: AbortSignal.timeout(15000),
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || 'No se pudo cargar el historial del artículo.');
-      return body;
+      const controller = new AbortController();
+      const timer = window.setTimeout(() => controller.abort(), 15000);
+      try {
+        const response = await fetch('/api/productos/' + encodeURIComponent(String(productId)) + '/movimientos', {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error || 'No se pudo cargar el historial del artículo.');
+        return body;
+      } catch (err) {
+        if (err?.name === 'AbortError') throw new Error('Tiempo de espera agotado al consultar el historial del artículo.');
+        if (err instanceof TypeError || /failed to fetch|networkerror|load failed/i.test(String(err?.message || ''))) {
+          throw new Error('Sin conexión al servidor. No se pudo cargar el historial del artículo.');
+        }
+        throw err;
+      } finally {
+        window.clearTimeout(timer);
+      }
     },
     saveCustomer: record('clientes', c => writeFields(c, customerFields)), deleteCustomer: record('clientes'),
     saveSupplier: record('suplidores', s => writeFields(s, supplierFields)), deleteSupplier: record('suplidores'),
@@ -249,7 +261,7 @@ function actions(client) {
 export function OperationalStoreProvider({ client, children }) {
   const state = useSyncExternalStore(client.subscribe, client.getState);
   const writes = useMemo(() => actions(client), [client]);
-  const [account, setAccount] = useState({ id: null, username: '', role: 'dueno' });
+  const [account, setAccount] = useState({ id: null, username: '', role: 'cajero', resolved: false });
   useEffect(() => {
     const reload = () => { client.reload({ background: !!client.getState().snapshot, recover: true, resumeRecovery: true }).catch(() => {}); };
     const refreshVisible = event => {
@@ -275,14 +287,25 @@ export function OperationalStoreProvider({ client, children }) {
   useEffect(() => {
     if (!state.snapshot || state.authenticationRequired) return;
     let active = true;
-    fetch('/api/account', { credentials: 'same-origin', cache: 'no-store' })
-      .then(res => res.ok ? res.json() : null)
-      .then(info => {
-        if (!active || !info || typeof info.username !== 'string') return;
-        setAccount({ id: info.id ?? null, username: info.username, role: normalizeRole(info.role) });
-      })
-      .catch(() => {});
-    return () => { active = false; };
+    let retryTimer = null;
+    let attempts = 0;
+    const loadAccount = () => {
+      fetch('/api/account', { credentials: 'same-origin', cache: 'no-store' })
+        .then(res => res.ok ? res.json() : null)
+        .then(info => {
+          if (!active) return;
+          if (info && typeof info.username === 'string') {
+            setAccount({ id: info.id ?? null, username: info.username, role: normalizeRole(info.role), resolved: true });
+            return;
+          }
+          if (++attempts < 3) retryTimer = window.setTimeout(loadAccount, 2500);
+        })
+        .catch(() => {
+          if (active && ++attempts < 3) retryTimer = window.setTimeout(loadAccount, 2500);
+        });
+    };
+    loadAccount();
+    return () => { active = false; if (retryTimer) window.clearTimeout(retryTimer); };
   }, [state.snapshot?.databaseId, state.authenticationRequired, state.connection]);
   const { snapshot } = state;
   const rawState = snapshot?.state;
@@ -372,13 +395,15 @@ export function OperationalStoreProvider({ client, children }) {
     })),
     [rawState?.recordatorios, databaseId],
   );
-  const role = normalizeRole(account.role);
+  const rawRole = account.resolved ? account.role : (state.viewerRole ?? 'dueno');
+  const role = normalizeRole(rawRole);
+  const desktopMode = typeof window !== 'undefined' && Boolean(window.__FELIX_DESKTOP__);
   const runtime = useMemo(() => ({
-    ...state, mode: 'online', databaseId, revision: snapshot?.revision ?? null,
+    ...state, mode: desktopMode ? 'desktop' : 'online', databaseId, revision: snapshot?.revision ?? null,
     role, isOwner: isOwner(role), account,
     accountDetailsAvailable: true, reload: client.reload, retryPending: client.retryPending,
     readArchives: client.readArchives, archivePending: client.archivePending, logout: client.logout,
-  }), [state, databaseId, snapshot?.revision, role, account, client]);
+  }), [state, desktopMode, databaseId, snapshot?.revision, role, account, client]);
   const value = useMemo(() => ({
     runtime, products, categories, customers, suppliers, formulas, settings, workshopAccounts, reminders, ...docsAndCash, ...writes,
   }), [runtime, products, categories, customers, suppliers, formulas, settings, workshopAccounts, reminders, docsAndCash, writes]);

@@ -657,7 +657,7 @@ export function createPosClient() {
   // reload. The journal is shared; another tab's pending sale is not this draft.
   let saleOperationId = null;
   try { saleOperationId = sessionStorage.getItem('repuestos-felix-venta-pendiente'); } catch { /* Optional receipt ownership. */ }
-  let state = { snapshot: null, pending: null, inFlightOperationId: null, archiveCount: 0, busy: false, recovering: false, recoveryIssue: null, resolution: null, saleOperationId, readErrorRetryable: false, connection: 'checking', error: null, lastSync: null, authenticationRequired: false };
+  let state = { snapshot: null, viewerRole: null, pending: null, inFlightOperationId: null, archiveCount: 0, busy: false, recovering: false, recoveryIssue: null, resolution: null, saleOperationId, readErrorRetryable: false, connection: 'checking', error: null, lastSync: null, authenticationRequired: false };
   const listeners = new Set();
   const retired = new Set();
   const changes = new BroadcastChannel('repuestos-felix-operaciones');
@@ -745,7 +745,7 @@ export function createPosClient() {
     clearCachedSnapshot().catch(() => {});
     clearDraftStorage();
     try { sessionStorage.removeItem('repuestos-felix-venta-pendiente'); } catch { /* Optional receipt ownership. */ }
-    set({ authenticationRequired: true, snapshot: null, resolution: null, saleOperationId: null, lastSync: null, connection: 'unavailable' });
+    set({ authenticationRequired: true, snapshot: null, viewerRole: null, resolution: null, saleOperationId: null, lastSync: null, connection: 'unavailable' });
   }
   changes.onmessage = event => {
     if (event.data === 'logout') lockSession();
@@ -759,7 +759,7 @@ export function createPosClient() {
     return pending;
   }
 
-  function apply(snapshot, tag, request, { skipCacheWrite = false } = {}) {
+  function apply(snapshot, tag, request, { skipCacheWrite = false, viewerRole = undefined } = {}) {
     if (state.authenticationRequired) return;
     const current = state.snapshot;
     if (current?.databaseId === snapshot.databaseId) {
@@ -772,7 +772,7 @@ export function createPosClient() {
     etag = tag;
     lastConfirmedSync = new Date().toISOString();
     if (tag && !skipCacheWrite) writeCachedSnapshot(snapshot, tag);
-    set({ snapshot, connection: 'connected', authenticationRequired: false, readErrorRetryable: false, error: operationError, lastSync: lastConfirmedSync });
+    set({ snapshot, ...(viewerRole ? { viewerRole } : {}), connection: 'connected', authenticationRequired: false, readErrorRetryable: false, error: operationError, lastSync: lastConfirmedSync });
   }
 
   async function working(work, background = false, readSequence = null) {
@@ -825,16 +825,17 @@ export function createPosClient() {
           },
           signal: timeout.signal,
         });
+        const responseRole = response.headers.get('X-Felix-Role') || undefined;
         if (response.status === 304) {
           if (!previous || !previousTag) throw new Error('No hay una copia confirmada del catálogo.');
           if (!sameVersionTag(response.headers.get('ETag'), previousTag)) throw new Error('El servicio no confirmó la versión del catálogo.');
           if (fromCache) {
-            apply(previous, previousTag, sequence, { skipCacheWrite: true });
+            apply(previous, previousTag, sequence, { skipCacheWrite: true, viewerRole: responseRole });
           } else if (previous === state.snapshot && previousTag === etag) {
             latestConfirmed = Math.max(latestConfirmed, sequence);
             lastConfirmedSync = new Date().toISOString();
-            if (state.connection !== 'connected' || state.authenticationRequired || state.readErrorRetryable || state.error !== operationError) {
-              set({ connection: 'connected', authenticationRequired: false, readErrorRetryable: false, error: operationError, lastSync: lastConfirmedSync });
+            if (state.connection !== 'connected' || state.authenticationRequired || state.readErrorRetryable || state.error !== operationError || (responseRole && state.viewerRole !== responseRole)) {
+              set({ ...(responseRole ? { viewerRole: responseRole } : {}), connection: 'connected', authenticationRequired: false, readErrorRetryable: false, error: operationError, lastSync: lastConfirmedSync });
             }
           }
           return previous;
@@ -842,7 +843,7 @@ export function createPosClient() {
         if (response.status === 401 && sequence >= latestConfirmed) lockSession();
         if (response.status !== 200) throw new Error((await serviceError(response))?.error || 'El servicio no confirmó la lectura del catálogo.');
         const observed = checkSnapshot(expandCompactSnapshot(await response.json()));
-        apply(observed, response.headers.get('ETag'), sequence);
+        apply(observed, response.headers.get('ETag'), sequence, { viewerRole: responseRole });
         return observed;
       } catch (error) {
         if (response && [400, 401, 403, 404, 409].includes(response.status)) error.recoveryStopped = true;

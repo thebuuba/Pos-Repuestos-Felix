@@ -130,7 +130,7 @@ function ReportsPage() {
       </div>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <SectionCard
-          title="Ventas por día"
+          title={period === "hoy" ? "Ventas por hora" : "Ventas por día"}
           icon={TrendingUp}
           className="lg:col-span-2"
           bodyClassName="pt-2"
@@ -269,7 +269,14 @@ function ReportsPage() {
                     <td className="px-3 py-3 text-right font-semibold tabular-nums">
                       {formatMoney(t.revenue)}
                     </td>
-                    <td className="px-5 py-3 text-right tabular-nums text-emerald-600 dark:text-emerald-400">
+                    <td
+                      className={cn(
+                        "px-5 py-3 text-right tabular-nums",
+                        t.profit !== null && t.profit < 0
+                          ? "text-destructive"
+                          : "text-emerald-600 dark:text-emerald-400",
+                      )}
+                    >
                       {t.profit === null ? "—" : formatMoney(t.profit)}
                     </td>
                   </tr>

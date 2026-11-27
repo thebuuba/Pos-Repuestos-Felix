@@ -110,6 +110,8 @@ function PurchaseEntryForm({
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [catalogSeed, setCatalogSeed] = useState("");
   const appliedInitialSearchRef = useRef("");
+  const linesRef = useRef(lines);
+  linesRef.current = lines;
   const [error, setError] = useState(null);
   const [retryInput, setRetryInput] = useState(null);
   const [sending, setSending] = useState(false);
@@ -286,23 +288,27 @@ function PurchaseEntryForm({
     const currentCost = product.costExact ?? String(product.cost);
     const normalizedCost = purchaseDecimal(cleanPurchaseDecimal(currentCost));
     const autoList = purchaseListFromCost(currentCost, formula);
-    let added = false;
-    setLines((prev) => {
-      const existingIdx = prev.findIndex(
-        (l) => l.productId === product.id && !l.costManual && l.listPriceAuto && l.cost === normalizedCost,
-      );
-      if (existingIdx >= 0) {
-        added = true;
-        return prev.map((l, idx) => {
-          if (idx !== existingIdx) return l;
-          const prevUnits = quantityUnits(purchaseDecimal(l.quantity), "la cantidad", 0.01);
-          const sumText = cleanPurchaseDecimal(decimalUnits(prevUnits + qtyUnits, 2));
-          return { ...l, quantity: purchaseDecimal(sumText) };
-        });
+    const prev = linesRef.current;
+    const existingIdx = prev.findIndex((l) => {
+      if (!(l.productId === product.id && !l.costManual && l.listPriceAuto && l.cost === normalizedCost)) return false;
+      try {
+        quantityUnits(purchaseDecimal(l.quantity), "la cantidad", 0.01);
+        return true;
+      } catch {
+        return false;
       }
-      if (prev.length >= 1000) return prev;
-      added = true;
-      return [
+    });
+    let next;
+    if (existingIdx >= 0) {
+      next = prev.map((l, idx) => {
+        if (idx !== existingIdx) return l;
+        const prevUnits = quantityUnits(purchaseDecimal(l.quantity), "la cantidad", 0.01);
+        const sumText = cleanPurchaseDecimal(decimalUnits(prevUnits + qtyUnits, 2));
+        return { ...l, quantity: purchaseDecimal(sumText) };
+      });
+    } else {
+      if (prev.length >= 1000) return false;
+      next = [
         ...prev,
         {
           key: crypto.randomUUID(),
@@ -319,8 +325,10 @@ function PurchaseEntryForm({
           overrides: {},
         },
       ];
-    });
-    return added;
+    }
+    linesRef.current = next;
+    setLines(next);
+    return true;
   };
   const pickProduct = (product) => {
     const currentCost = product.costExact ?? String(product.cost);
@@ -775,7 +783,9 @@ function PurchaseEntryForm({
                         setProductHighlight((h) => Math.max(h - 1, 0));
                       } else if (e.key === "Enter") {
                         const exact = findProduct(entry.code);
-                        const picked = exact || productResults[productHighlight] || productResults[0];
+                        const picked = productSelected
+                          ? (productResults[productHighlight] || productResults[0])
+                          : (exact || productResults[productHighlight] || productResults[0]);
                         if (picked) {
                           e.preventDefault();
                           pickProduct(picked);
@@ -910,7 +920,7 @@ function PurchaseEntryForm({
                 ref={qtyRef}
                 type="number"
                 inputMode="decimal"
-                min="1" step="1" aria-label="Cantidad"
+                min="0.01" step="any" aria-label="Cantidad"
                 value={entry.quantity}
                 onChange={(e) =>
                   setEntry({
@@ -964,6 +974,7 @@ function PurchaseEntryForm({
                     ...entry,
                     cost: e.target.value,
                     costManual: true,
+                    listPriceAuto: false,
                   })
                 }
                 onKeyDown={(e) => {
@@ -1202,7 +1213,7 @@ function PurchaseEntryForm({
                         <Input
                           type="number"
                           inputMode="decimal"
-                          min="1" step="1" aria-label="Cantidad de la línea"
+                          min="0.01" step="any" aria-label="Cantidad de la línea"
                           data-row-key={l.key}
                           data-row-field="qty"
                           value={l.quantity}
@@ -1253,6 +1264,7 @@ function PurchaseEntryForm({
                             updateLine(l.key, {
                               cost: e.target.value,
                               costManual: true,
+                              listPriceAuto: false,
                             })
                           }
                           onKeyDown={(e) => {
@@ -1443,6 +1455,7 @@ function PurchaseEntryForm({
         showCosts={true}
         initialQuery={catalogSeed}
         supplierName={supplier?.name || ""}
+        listPriceForProduct={formula ? (p) => purchaseListFromCost(p.costExact ?? String(p.cost), formula) : null}
         existingQuantities={existingPurchaseQuantities}
         onQuickAdd={quickAddFromCatalog}
         onSelect={pickProduct}

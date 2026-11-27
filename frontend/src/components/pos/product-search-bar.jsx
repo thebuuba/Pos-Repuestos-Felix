@@ -193,7 +193,7 @@ function ProductSearchBar({
         commit();
         return;
       }
-      // Si las teclas llegaron en ráfaga de lector USB (o pegado masivo sin tecleo humano),
+      // Si las teclas llegaron en ráfaga de lector USB (o entrada no humana),
       // exige código literal para que una lectura mala nunca venda otra pieza por error.
       if (fastScan !== null || !typedByHumanRef.current) {
         if (e.currentTarget.value) scanCode(e.currentTarget.value);
@@ -230,7 +230,9 @@ function ProductSearchBar({
           type="button"
           onClick={() => setQuantity((q) => {
             const n = Math.round(Number(q) * 100);
-            return n <= 100 ? 1 : (n - 100) / 100;
+            if (!Number.isFinite(n) || n <= 1) return 1;
+            if (n <= 100) return Math.max(1, n - 10) / 100;
+            return (n - 100) / 100;
           })}
           className="flex h-full w-10 items-center justify-center text-muted-foreground hover:text-foreground"
           aria-label="Restar"
@@ -336,12 +338,19 @@ function ProductSearchBar({
                     if (!next) {
                       typedByHumanRef.current = false;
                       keyboardScanRef.current.reset();
+                    } else if (Math.abs(next.length - query.length) <= 2) {
+                      // Teclados virtuales Android envían e.key === "Unidentified" en keydown.
+                      typedByHumanRef.current = true;
                     }
                     setQuery(next);
                     setHighlight(0);
                     setSelected(false);
                     setError("");
                     setOpen(true);
+                  }}
+                  onPaste={() => {
+                    typedByHumanRef.current = true;
+                    keyboardScanRef.current.reset();
                   }}
                   onFocus={() => setOpen(true)}
                   onKeyDown={handleKeyDown}
@@ -354,6 +363,8 @@ function ProductSearchBar({
                     aria-label="Limpiar búsqueda"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
+                      typedByHumanRef.current = false;
+                      keyboardScanRef.current.reset();
                       setQuery("");
                       setHighlight(0);
                       setSelected(false);
@@ -476,7 +487,7 @@ function ProductSearchBar({
                           "shrink-0 text-xs",
                           p.stock === 0
                             ? "text-primary"
-                            : p.stock <= p.minStock
+                            : p.notifyMinStock !== false && p.stock <= p.minStock
                               ? "text-amber-600 dark:text-amber-400"
                               : "text-muted-foreground",
                         )}
@@ -494,14 +505,14 @@ function ProductSearchBar({
           </div>
         )}
         {cameraOpen && !disabled && <BarcodeCameraDialog
-          onClose={() => { setCameraOpen(false); focusSearch(); }}
+          onClose={() => { setCameraOpen(false); window.requestAnimationFrame(() => focusSearch()); }}
           onCode={scanCode}
         />}
         <CatalogBrowserDialog
           open={catalogOpen}
           onOpenChange={(next) => {
             setCatalogOpen(next);
-            if (!next) focusSearch();
+            if (!next) window.requestAnimationFrame(() => focusSearch());
           }}
           products={products}
           mode="sale"
@@ -603,7 +614,7 @@ function ProductSearchBar({
                           "shrink-0 text-xs",
                           p.stock === 0
                             ? "text-primary"
-                            : p.stock <= p.minStock
+                            : p.notifyMinStock !== false && p.stock <= p.minStock
                               ? "text-amber-600 dark:text-amber-400"
                               : "text-muted-foreground",
                         )}

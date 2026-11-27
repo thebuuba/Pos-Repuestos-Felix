@@ -310,7 +310,7 @@ test('archived history does not duplicate recovery controls for the current sale
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.route('**/api/ventas', route => route.abort());
   await page.goto(origin + '/ventas');
-  const search = page.getByPlaceholder('Escanea o escribe… ej. BUJ-C7HSA');
+  const search = page.getByPlaceholder('Escanea o escribe código, referencia o nombre…');
   await search.fill('BG-1'); await search.press('Enter');
   await page.getByRole('button', { name: 'Tarjeta', exact: true }).click();
   await page.getByRole('button', { name: /Registrar venta/ }).click();
@@ -371,7 +371,7 @@ test('desktop synchronization refreshes without disabling checkout while a confi
   await page.route('**/api/desktop/pending', route => route.fulfill({ json: [] }));
   await page.route('**/api/desktop/sync', route => { lastSync = '2026-11-22T12:01:00Z'; return route.fulfill({ json: {} }); });
   await page.goto(origin + '/ventas');
-  const search = page.getByPlaceholder('Escanea o escribe… ej. BUJ-C7HSA');
+  const search = page.getByPlaceholder('Escanea o escribe código, referencia o nombre…');
   await search.fill('BG-1'); await search.press('Enter');
   await page.getByRole('button', { name: 'Tarjeta', exact: true }).click();
   const checkout = page.getByRole('button', { name: /Registrar venta/ });

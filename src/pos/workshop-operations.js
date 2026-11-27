@@ -2,6 +2,7 @@ import { saleDocumentTotals, saleLineAmounts } from '../domain/sale-pricing.js';
 import { cents, costUnits, decimalUnits, fail, id, money, quantityUnits, text } from './operation-fields.js';
 import { lockCash } from './cash-operations.js';
 import { addDaysIso, nextNcfIfActive } from './account-operations.js';
+import { isOwner, MAX_CASHIER_DISCOUNT_BPS } from './roles.js';
 
 const quantityText = value => decimalUnits(value, 2);
 const iso = value => value instanceof Date ? value.toISOString() : (typeof value === 'string' && value ? new Date(value).toISOString() : value);
@@ -258,7 +259,7 @@ export async function cancelWorkshopAccount(client, accountId, body, actor, occu
 
 export async function billWorkshopAccount(client, accountId, body, actor, occurredAt = null, allowNcf = true) {
   // Orden global de bloqueos: caja primero, luego cuenta, cliente e ítems.
-  const turn = await lockCash(client, body.cajaId);
+  const turn = await lockCash(client, body.cajaId, undefined, occurredAt);
   const expectedVersion = id(body.version, 'la versión de la cuenta de taller');
   if (body.condicion === 'Credito' ? body.metodoPago !== 'credito' : !['efectivo', 'tarjeta', 'transferencia'].includes(body.metodoPago)) {
     fail('Selecciona un método de pago válido para cobrar la cuenta.');
@@ -320,6 +321,12 @@ export async function billWorkshopAccount(client, accountId, body, actor, occurr
   } catch (error) {
     if (error instanceof RangeError) fail(error.message);
     throw error;
+  }
+  if (!isOwner(actor?.role)) {
+    const grossTotal = lines.reduce((sum, l) => sum + l.total, 0n);
+    if (totals.discountBps > MAX_CASHIER_DISCOUNT_BPS || (grossTotal > 0n && totals.discount * 10000n > grossTotal * MAX_CASHIER_DISCOUNT_BPS)) {
+      fail('Tu cuenta de cajero solo puede aplicar descuentos de hasta 10 %. Solicita autorización del dueño.', 403);
+    }
   }
 
   if (body.condicion === 'Credito') {

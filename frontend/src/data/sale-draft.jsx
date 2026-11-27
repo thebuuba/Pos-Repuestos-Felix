@@ -469,7 +469,7 @@ export function SaleDraftProvider({ children }) {
     setReceipt(null);
     initialRecovery.current = null;
     setSending(false);
-    setPriceLevel(settings.defaultPriceLevel ?? 'p1');
+    setPriceLevel(settings.defaultPriceLevel === 'p2' ? 'p2' : 'p1');
     inFlight.current = false;
     return null; // React retries this render before committing children.
   }

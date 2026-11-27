@@ -77,7 +77,7 @@ test('provider maps confirmed contacts, formula relationships, documentary dates
   assert.equal(view.sales[0].customerId, 6);
   assert.equal(view.sales[0].date, sale.fechaISO);
   assert.equal(view.sales[0].total, 15);
-  assert.match(view.sales[0].number, /registro.*9/i);
+  assert.equal(view.sales[0].number, 'F-000009');
   assert.equal(view.sales[0].status, 'pendiente');
   assert.equal(view.purchases.length, 1);
   assert.equal(view.purchases[0].supplierId, 7);

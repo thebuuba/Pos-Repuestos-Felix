@@ -248,7 +248,7 @@ test('receiptOnly solicita respuestas compactas únicamente al enviar operacione
       const { remote } = await client(t, { fetcher: async (_url, options) => { sent = options; return Response.json(compact); } });
       assert.deepEqual(await remote.request(path, { method, receiptOnly }), compact);
       assert.equal(sent.headers.Prefer, expected);
-      assert.equal(sent.headers['X-Felix-Backup-Version'], '10');
+      assert.equal(sent.headers['X-Felix-Backup-Version'], '12');
     });
   }
   let accountHeaders;

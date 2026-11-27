@@ -47,8 +47,8 @@ export function formatStartupError(error, stage) {
   const code = typeof error?.code === 'string' && error.code ? ` [${error.code}]` : '';
   const causeCode = typeof error?.cause?.code === 'string' && error.cause.code ? ` [${error.cause.code}]` : '';
   const detail = sanitizeDiagnostic(error?.message || error?.name || 'Error inesperado.');
-  if (stage === 'server' && error?.code === 'EADDRINUSE') {
-    return `Error en ${label}: el puerto guardado del POS está ocupado por otro programa [EADDRINUSE].`;
+  if (stage === 'server' && (error?.code === 'EADDRINUSE' || error?.code === 'EACCES')) {
+    return `Error en ${label}: el puerto guardado del POS no está disponible [${error.code}].`;
   }
   return `Error en ${label}: ${detail}${code || causeCode}`;
 }
@@ -122,12 +122,30 @@ export async function startDesktop({ directory, assetsDirectory, remoteOptions, 
     if (port !== null && (!Number.isSafeInteger(port) || port < 1 || port > 65535)) throw new Error('El puerto guardado del POS necesita revisión.');
     // IndexedDB is scoped to the origin. Keep the first assigned port so an
     // uncertain browser request can still replay its UUID after restarting.
-    // If another process occupies it, fail startup instead of losing that journal.
-    await new Promise((done, reject) => { server.once('error', reject); server.listen(port ?? 0, '127.0.0.1', done); });
+    // On first launch, prefer a non-ephemeral local port (39120-39899) to avoid
+    // Windows Hyper-V/WinNAT dynamic port exclusions in 49152-65535.
+    const listenOn = targetPort => new Promise((done, reject) => {
+      const onError = err => { server.off('listening', onListening); reject(err); };
+      const onListening = () => { server.off('error', onError); done(); };
+      server.once('error', onError);
+      server.once('listening', onListening);
+      server.listen(targetPort, '127.0.0.1');
+    });
+    if (port !== null) {
+      await listenOn(port);
+    } else {
+      const basePort = 39120 + (createHash('sha256').update(String(directory || '')).digest().readUInt16BE(0) % 700);
+      let bound = false;
+      for (let offset = 0; offset < 25 && !bound; offset++) {
+        try { await listenOn(basePort + offset); bound = true; }
+        catch (err) { if (err?.code !== 'EADDRINUSE' && err?.code !== 'EACCES') throw err; }
+      }
+      if (!bound) await listenOn(0);
+    }
     ledger.set('port', server.address().port);
     let stopping;
     return { engine, server, remote, origin: 'http://127.0.0.1:' + server.address().port,
-      stop() { return stopping ||= (async () => { server.closeAllConnections(); await new Promise(done => server.close(done)); await engine.close(); await release(); })(); } };
+      stop() { return stopping ||= (async () => { remote.abortAll?.(); server.closeAllConnections(); await new Promise(done => server.close(done)); await engine.close(); await release(); })(); } };
   } catch (error) {
     if (error && typeof error === 'object' && !error.startupStage) error.startupStage = stage;
     server?.close();

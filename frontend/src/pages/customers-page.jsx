@@ -343,7 +343,7 @@ function CustomersPage() {
         onOpenChange={setFormOpen}
         title={editing ? "Editar cliente" : "Nuevo cliente"}
         description="Si el cliente pide crédito fiscal (B01), registra su RNC."
-        fields={FIELDS}
+        fields={runtime && !runtime.isOwner ? FIELDS.filter((f) => f.key !== "creditLimit") : FIELDS}
         initial={{
           name: editing?.name ?? "",
           rnc: editing?.rnc ?? "",
@@ -354,6 +354,7 @@ function CustomersPage() {
         }}
         submitLabel={editing ? "Guardar cambios" : "Crear cliente"}
         onSave={async (v) => {
+          const canEditCredit = !runtime || runtime.isOwner;
           await saveCustomer({
             ...(runtime ? {databaseId: editing?.databaseId ?? creationDatabaseId, version: editing?.version} : {}),
             id: editing?.id ?? (runtime ? crypto.randomUUID() : newId("c")),
@@ -362,7 +363,7 @@ function CustomersPage() {
             phone: v.phone.trim(),
             email: v.email.trim(),
             address: v.address.trim(),
-            creditLimit: v.creditLimit.trim() === "" ? null : v.creditLimit,
+            ...(canEditCredit ? { creditLimit: v.creditLimit.trim() === "" ? null : v.creditLimit } : {}),
             balance: editing?.balance ?? 0,
           });
           ue.success(editing ? "Cliente actualizado" : "Cliente creado", {

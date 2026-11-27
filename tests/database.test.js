@@ -49,7 +49,7 @@ test('schema.sql crea toda la estructura en una base sin esquema previo', async 
     await client.query('BEGIN');
     await client.query('DROP SCHEMA pos_privado CASCADE');
     await client.query(schema);
-    assert.equal((await client.query("SELECT count(*) FROM pg_tables WHERE schemaname='public'")).rows[0].count,'13');
+    assert.equal((await client.query("SELECT count(*) FROM pg_tables WHERE schemaname='public'")).rows[0].count,'18');
     assert.equal((await client.query("SELECT relrowsecurity FROM pg_class WHERE oid='public.formulas_precios'::regclass")).rows[0].relrowsecurity, true);
     assert.equal((await client.query("SELECT relrowsecurity FROM pg_class WHERE oid='public.recordatorios'::regclass")).rows[0].relrowsecurity, true);
     await client.query('SET LOCAL ROLE pos_app');

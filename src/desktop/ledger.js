@@ -239,11 +239,15 @@ export class DesktopLedger {
       }
       return result;
     });
-    return { translated, bindings, resetIdentityTables };
+    return { translated, bindings, resetIdentityTables, resetAll: Boolean(resetAll) };
   }
   applyRemoteImport(plan) {
-    for (const table of plan.resetIdentityTables) {
-      this.database.prepare('DELETE FROM identities WHERE table_name=?').run(table);
+    if (plan.resetAll) {
+      this.database.exec('DELETE FROM identities');
+    } else {
+      for (const table of plan.resetIdentityTables) {
+        this.database.prepare('DELETE FROM identities WHERE table_name=?').run(table);
+      }
     }
     for (const [table, local, remote] of plan.bindings) {
       this.bind(table, local, remote);
@@ -251,8 +255,8 @@ export class DesktopLedger {
     this.projection(plan.translated);
     return plan.translated;
   }
-  importRemote(backup) {
-    return this.applyRemoteImport(this.planRemoteImport(backup));
+  importRemote(backup, options = {}) {
+    return this.applyRemoteImport(this.planRemoteImport(backup, options));
   }
   repairInventoryMovementOrder() {
     if (this.pending().length || this.get('reconciliation')) return false;

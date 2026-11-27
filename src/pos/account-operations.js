@@ -154,7 +154,7 @@ export async function accountPayment(client, kind, body, actor, occurredAt = nul
 
   let turn = null, cashSummary = null;
   if (isCash) {
-    turn = await lockCash(client, body.cajaId);
+    turn = await lockCash(client, body.cajaId, undefined, occurredAt);
     cashSummary = await turnTotals(client, turn);
   }
 

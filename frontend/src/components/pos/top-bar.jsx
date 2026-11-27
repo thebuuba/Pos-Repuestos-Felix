@@ -147,6 +147,10 @@ function TopBar({ onBrandClick } = {}) {
     () => buildSearchResults(deferredSearchQuery),
     [deferredSearchQuery, products, customers, suppliers, sales, isOwner],
   );
+  const totalProductMatches = useMemo(() => {
+    const clean = deferredSearchQuery.trim();
+    return clean ? countMatchingProducts(products, clean) : products.length;
+  }, [products, deferredSearchQuery]);
   useEffect(() => {
     setHighlight((h) => (searchResults.length === 0 ? 0 : Math.min(h, searchResults.length - 1)));
   }, [searchResults.length]);
@@ -233,7 +237,7 @@ function TopBar({ onBrandClick } = {}) {
                     <BookOpen className="h-3.5 w-3.5 shrink-0" />
                     <span className="truncate">
                       {searchQuery.trim()
-                        ? `Ver los ${formatNumber(countMatchingProducts(products, searchQuery))} artículos en catálogo completo`
+                        ? `Ver los ${formatNumber(totalProductMatches)} artículos en catálogo completo`
                         : `Explorar catálogo completo (${formatNumber(products.length)} artículos)`}
                     </span>
                   </span>

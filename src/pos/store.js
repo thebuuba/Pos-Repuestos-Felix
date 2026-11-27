@@ -5,7 +5,7 @@ import { OperationError, fail, text, productCode, id, money, cents, quantityUnit
 import { contactOperation, settingsOperation } from './contact-operations.js';
 import { backupLayout, exportBackup, rows, tables } from './relational-backup.js';
 import { cashOperation, cashPresentation, lockCash, validateCashRestore } from './cash-operations.js';
-import { isOwner } from './roles.js';
+import { isOwner, MAX_CASHIER_DISCOUNT_BPS } from './roles.js';
 import { accountPayment, addDaysIso, ncfSequenceOperation, nextNcfIfActive, voidPurchase, voidSale } from './account-operations.js';
 import {
   billWorkshopAccount, cancelWorkshopAccount, dispatchWorkshopItems,
@@ -452,6 +452,7 @@ async function fetchWorkshopSlice(client, ids) {
       'items', COALESCE((SELECT json_agg(json_build_object(
         'id', i.id, 'producto_id', i.producto_id, 'codigo', i.codigo, 'nombre', i.nombre,
         'gravado', i.gravado, 'nivel_precio', i.nivel_precio, 'precio', i.precio::text,
+        'costo_unitario', i.costo_unitario::text,
         'cantidad', i.cantidad::text, 'cantidad_devuelta', i.cantidad_devuelta::text,
         'despachado_por', i.despachado_por, 'retirado_por', i.retirado_por, 'creado_en', i.creado_en
       ) ORDER BY i.id) FROM public.cuentas_taller_items i WHERE i.cuenta_id=ct.id), '[]'::json)
@@ -770,8 +771,8 @@ export async function readProductMovements(pool, productId, { limit = 100, role 
     client.release();
   }
 }
-async function sale(client, body, occurredAt, allowNcf = true) {
-  const turn = await lockCash(client, body.cajaId);
+async function sale(client, body, occurredAt, allowNcf = true, actor = null) {
+  const turn = await lockCash(client, body.cajaId, undefined, occurredAt);
   if (body.condicion === 'Credito' ? body.metodoPago !== 'credito' : !['efectivo','tarjeta','transferencia'].includes(body.metodoPago)) fail('Selecciona un método de pago válido para la venta.');
   const customer = (await client.query('SELECT * FROM clientes WHERE id=$1 AND activo FOR UPDATE', [id(body.clienteId)])).rows[0];
   if (!customer) fail('Selecciona un cliente activo.');
@@ -816,6 +817,12 @@ async function sale(client, body, occurredAt, allowNcf = true) {
   } catch (error) {
     if (error instanceof RangeError) fail(error.message);
     throw error;
+  }
+  if (!isOwner(actor?.role)) {
+    const grossTotal = lines.reduce((sum, l) => sum + l.total, 0n);
+    if (totals.discountBps > MAX_CASHIER_DISCOUNT_BPS || (grossTotal > 0n && totals.discount * 10000n > grossTotal * MAX_CASHIER_DISCOUNT_BPS)) {
+      fail('Tu cuenta de cajero solo puede aplicar descuentos de hasta 10 %. Solicita autorización del dueño.', 403);
+    }
   }
   if (body.condicion === 'Credito') {
     if (customer.es_contado || customer.limite_credito === null) fail('Configura el límite de crédito de este cliente antes de vender a crédito.');
@@ -910,7 +917,7 @@ async function purchase(client, body, occurredAt) {
   return { id: number(header.id) };
 }
 
-async function restore(client, body) {
+async function restore(client, body, context = {}) {
   const current = (await client.query('SELECT revision FROM pos_privado.sistema WHERE id=1 FOR UPDATE')).rows[0];
   if (!Number.isSafeInteger(body.revision) || body.revision < 0) fail('Revisión inválida.');
   if (number(current.revision) !== body.revision) fail('La base cambió. Exporta o actualiza antes de restaurar.', 409);
@@ -919,7 +926,9 @@ async function restore(client, body) {
   let legacy, layout;
   if (Object.hasOwn(backup, 'version') || Object.hasOwn(backup, 'tables') || Object.hasOwn(backup, 'format')) layout = backupLayout(backup);
   else { try { legacy = validateState(backup); } catch (error) { fail(error.message); } }
-  await client.query('INSERT INTO pos_privado.respaldos(motivo,datos) VALUES($1,$2)', ['Antes de restaurar', await exportBackup(client)]);
+  if (!context.skipArchive) {
+    await client.query('INSERT INTO pos_privado.respaldos(motivo,datos) VALUES($1,$2)', ['Antes de restaurar', await exportBackup(client)]);
+  }
   for (const table of Object.keys(tables).reverse()) await client.query(`DELETE FROM public.${table}`);
   if (legacy) await client.query('SELECT pos_privado.importar_estado_legacy($1::jsonb)', [legacy]);
   else {
@@ -992,14 +1001,14 @@ async function execute(client, method, path, body, actor, occurredAt, context) {
   if ((path === '/api/productos' && method === 'POST') || (productMatch && ['PUT', 'DELETE'].includes(method))) return productOperation(client, method, productMatch ? id(Number(productMatch[1])) : null, body, occurredAt);
   const contactMatch = path.match(/^\/api\/(clientes|suplidores|formulas)(?:\/(\d+))?$/);
   if (contactMatch && (contactMatch[2] ? ['PUT', 'DELETE'].includes(method) : method === 'POST'))
-    return contactOperation(client, contactMatch[1], method, contactMatch[2] ? id(Number(contactMatch[2])) : null, body);
+    return contactOperation(client, contactMatch[1], method, contactMatch[2] ? id(Number(contactMatch[2])) : null, body, actor);
   const reminderMatch = path.match(/^\/api\/recordatorios(?:\/(\d+))?$/);
   if (reminderMatch && (reminderMatch[1] ? ['PUT', 'DELETE'].includes(method) : method === 'POST'))
     return reminderOperation(client, method, reminderMatch[1] ? id(Number(reminderMatch[1])) : null, body, actor, occurredAt);
   if (method === 'PUT' && path === '/api/configuracion') return settingsOperation(client, body);
-  if (method === 'POST' && path === '/api/ventas') return sale(client, body, occurredAt, context.allowNcf !== false);
+  if (method === 'POST' && path === '/api/ventas') return sale(client, body, occurredAt, context.allowNcf !== false, actor);
   if (method === 'POST' && path === '/api/compras') return purchase(client, body, occurredAt);
-  if (method === 'POST' && path === '/api/restore') return restore(client, body);
+  if (method === 'POST' && path === '/api/restore') return restore(client, body, context);
   fail('Ruta de operación no encontrada.', 404);
 }
 // Context is supplied only by trusted in-process callers; ordinary HTTP bodies never set it.
