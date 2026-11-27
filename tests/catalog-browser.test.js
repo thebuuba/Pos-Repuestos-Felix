@@ -7,7 +7,7 @@ import test from 'node:test';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright-core';
 import pg from 'pg';
-import { countMatchingProducts, filterAndSortCatalog } from '../frontend/src/data/product-search.js';
+import { countMatchingProducts, filterAndSortCatalog, searchTopProducts } from '../frontend/src/data/product-search.js';
 import { buildOperational } from '../scripts/build-operational.mjs';
 import { migrateDatabase } from '../src/db/migrations.js';
 import { createApp } from '../src/server.js';
@@ -60,6 +60,53 @@ test('filterAndSortCatalog filtra por referencia exclusiva y ordena por existenc
 
   const allUnfiltered = filterAndSortCatalog(sample, { query: '' });
   assert.equal(allUnfiltered.length, 1500);
+});
+
+test('búsqueda prioriza artículos que empiezan por "goma", admite multipalabra en cualquier orden e ignora tildes', () => {
+  const catalog = [];
+  // 30 piezas que mencionan "goma" en el medio al principio del catálogo
+  for (let i = 1; i <= 30; i++) {
+    catalog.push({
+      id: i,
+      code: `BJ-${i}`,
+      reference: `REF-${i}`,
+      name: `BUJE DE GOMA AMORTIGUADOR #${i}`,
+      brand: 'GENERICO',
+      category: 'Suspensión',
+      stock: 15,
+      minStock: 2,
+      cost: 20,
+      prices: { p1: 50, p2: 40, p3: 35 },
+    });
+  }
+  // Las verdaderas GOMAS al final del catálogo (una agotada y dos disponibles) + artículos con tildes
+  catalog.push(
+    { id: 101, code: 'GM-300', reference: 'CTR1 901', name: 'GOMA TRASERA 300-18 SHIMIZU 6PR', brand: 'SHIMIZU', category: 'Gomas', stock: 0, minStock: 2, cost: 900, prices: { p1: 1400, p2: 1200, p3: 1100 } },
+    { id: 102, code: 'GM-275', reference: 'CTR1 902', name: 'GOMA DELANTERA 275-18 COMANDO', brand: 'COMANDO', category: 'Gomas', stock: 8, minStock: 2, cost: 750, prices: { p1: 1150, p2: 1000, p3: 950 } },
+    { id: 103, code: 'GM-9090', reference: 'PERCOLI 88', name: 'GOMA 90/90-18 TUBELESS', brand: 'VIC', category: 'Gomas', stock: 4, minStock: 2, cost: 1100, prices: { p1: 1650, p2: 1450, p3: 1350 } },
+    { id: 104, code: 'BUJ-01', reference: 'ZR1 55', name: 'BUJÍA C7HSA NGK ORIGINAL', brand: 'NGK', category: 'Motor', stock: 20, minStock: 5, cost: 60, prices: { p1: 110, p2: 90, p3: 85 } },
+    { id: 105, code: 'CAM-18', reference: 'CTR1 903', name: 'CÁMARA 300-18 REFORZADA', brand: 'SHIMIZU', category: 'Gomas', stock: 12, minStock: 4, cost: 150, prices: { p1: 260, p2: 220, p3: 200 } },
+  );
+
+  // 1. En Ventas (preferInStock: true): "goma" pone primero las GOMAS con stock, luego la goma agotada, luego los bujes de goma
+  const saleTop = searchTopProducts(catalog, 'goma', 12, { preferInStock: true });
+  assert.deepEqual(saleTop.slice(0, 3).map((p) => p.code), ['GM-275', 'GM-9090', 'GM-300']);
+
+  // 2. En Catálogo completo (sortBy: 'default'): "goma" pone TODAS las GOMAS arriba antes de "BUJE DE GOMA" y por último categoría "Gomas"
+  const browserGoma = filterAndSortCatalog(catalog, { query: 'goma', sortBy: 'default' });
+  assert.deepEqual(browserGoma.slice(0, 3).map((p) => p.code), ['GM-300', 'GM-275', 'GM-9090']);
+  assert.equal(browserGoma.length, 34);
+  assert.equal(browserGoma[33].code, 'CAM-18');
+
+  // 3. Multipalabra salteada y combinando nombre + referencia (GOMA siempre primero, categoría Gomas al final)
+  assert.deepEqual(searchTopProducts(catalog, 'goma 300', 5).map((p) => p.code), ['GM-300', 'CAM-18']);
+  assert.deepEqual(searchTopProducts(catalog, 'goma shimizu', 5).map((p) => p.code), ['GM-300', 'CAM-18']);
+  assert.deepEqual(searchTopProducts(catalog, 'goma ctr1', 5).map((p) => p.code), ['GM-300', 'GM-275', 'CAM-18']);
+  assert.deepEqual(searchTopProducts(catalog, 'goma 18', 5).map((p) => p.code), ['GM-300', 'GM-275', 'GM-9090', 'BJ-18', 'CAM-18']);
+
+  // 4. Insensible a tildes ("bujia" -> "BUJÍA", "camara 300" -> "CÁMARA 300-18")
+  assert.deepEqual(searchTopProducts(catalog, 'bujia', 5).map((p) => p.code), ['BUJ-01']);
+  assert.deepEqual(searchTopProducts(catalog, 'camara 300', 5).map((p) => p.code), ['CAM-18']);
 });
 
 test('E2E Catálogo completo (F2 / Shift+F2): Compras multi-pedido por referencia, Ventas sin costo e Inventario ordenable', { timeout: 90_000 }, async (t) => {

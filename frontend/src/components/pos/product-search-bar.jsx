@@ -120,7 +120,10 @@ function ProductSearchBar({
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [operational, open]);
-  const results = useMemo(() => searchTopProducts(products, query, operational ? 12 : 6), [products, query, operational]);
+  const results = useMemo(
+    () => searchTopProducts(products, query, operational ? 12 : 6, { preferInStock: operational }),
+    [products, query, operational],
+  );
   const totalMatches = useMemo(() => (operational && query.trim() ? countMatchingProducts(products, query) : 0), [products, query, operational]);
   useEffect(() => {
     if (!open || !results.length) return;
